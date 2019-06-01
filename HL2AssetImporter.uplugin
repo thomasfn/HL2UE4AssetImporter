@@ -1,0 +1,18 @@
+{
+    "FileVersion" : 3,
+    "FriendlyName" : "Half-Life 2 Asset Importer",
+    "Version" : 1,
+    "VersionName": "1.0",
+    "Description" : "Tools for importing assets from Half-Life 2 and other Source games.",
+    "Category" : "HL2.AssetImporter",
+    "CreatedBy" : "thomasfn",
+    "CreatedByURL" : "",
+    
+	"Modules":
+	[
+		{
+			"Name": "HL2Editor",
+			"Type": "Editor"
+		}
+	]
+}

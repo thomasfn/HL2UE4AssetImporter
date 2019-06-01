@@ -8,6 +8,8 @@
 #include "Runtime/Engine/Classes/Engine/TextureCube.h"
 #include "Runtime/JsonUtilities/Public/JsonObjectConverter.h"
 
+#include "VTFLib/VTFLib.h"
+
 UVTFFactory::UVTFFactory()
 {
 	// We only want to create assets by importing files.
@@ -30,6 +32,7 @@ UVTFFactory::UVTFFactory()
 
 UVTFFactory::~UVTFFactory()
 {
+	
 }
 
 // Begin UFactory Interface
@@ -250,14 +253,11 @@ UObject* UVTFFactory::FactoryCreateBinary(
 		Texture2D->bHasBeenPaintedInEditor = false;
 	}
 
-	// Automatically detect if the texture is a normal map and configure its properties accordingly
-	// NormalMapIdentification::HandleAssetPostImport(this, Texture); // TODO
-
 	if (IsAutomatedImport())
 	{
 		// Apply Auto import settings 
 		// Should be applied before post edit change
-		// ApplyAutoImportSettings(Texture); // TODO
+		ApplyAutoImportSettings(Texture);
 	}
 
 	GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, Texture);
@@ -302,6 +302,36 @@ bool UVTFFactory::FactoryCanImport(const FString& Filename)
 
 // End UFactory Interface
 
+bool UVTFFactory::IsImportResolutionValid(int32 Width, int32 Height, bool bAllowNonPowerOfTwo, FFeedbackContext* Warn)
+{
+	// Calculate the maximum supported resolution utilizing the global max texture mip count
+	// (Note, have to subtract 1 because 1x1 is a valid mip-size; this means a GMaxTextureMipCount of 4 means a max resolution of 8x8, not 2^4 = 16x16)
+	const int32 MaximumSupportedResolution = 1 << (GMaxTextureMipCount - 1);
+
+	bool bValid = true;
+
+	// Check if the texture is above the supported resolution and prompt the user if they wish to continue if it is
+	if (Width > MaximumSupportedResolution || Height > MaximumSupportedResolution)
+	{
+		if (EAppReturnType::Yes != FMessageDialog::Open(EAppMsgType::YesNo, FText::Format(
+			NSLOCTEXT("UnrealEd", "Warning_LargeTextureImport", "Attempting to import {0} x {1} texture, proceed?\nLargest supported texture size: {2} x {3}"),
+			FText::AsNumber(Width), FText::AsNumber(Height), FText::AsNumber(MaximumSupportedResolution), FText::AsNumber(MaximumSupportedResolution))))
+		{
+			bValid = false;
+		}
+	}
+
+	const bool bIsPowerOfTwo = FMath::IsPowerOfTwo(Width) && FMath::IsPowerOfTwo(Height);
+	// Check if the texture dimensions are powers of two
+	if (!bAllowNonPowerOfTwo && !bIsPowerOfTwo)
+	{
+		Warn->Log(ELogVerbosity::Error, *NSLOCTEXT("UnrealEd", "Warning_TextureNotAPowerOfTwo", "Cannot import texture with non-power of two dimensions").ToString());
+		bValid = false;
+	}
+
+	return bValid;
+}
+
 void UVTFFactory::ApplyAutoImportSettings(UTexture* Texture)
 {
 	if (AutomatedImportSettings.IsValid())
@@ -316,93 +346,138 @@ UTexture* UVTFFactory::ImportTexture(UClass* Class, UObject* InParent, FName Nam
 	GConfig->GetBool(TEXT("TextureImporter"), TEXT("AllowNonPowerOfTwoTextures"), bAllowNonPowerOfTwo, GEditorIni);
 
 	// Validate it.
-	const int32 Length = BufferEnd - Buffer;
+	const uint32 Length = BufferEnd - Buffer;
 
-	//if (!IsImportResolutionValid(PngImageWrapper->GetWidth(), PngImageWrapper->GetHeight(), bAllowNonPowerOfTwo, Warn))
-	//{
-	//	return nullptr;
-	//}
+	// Throw it at VTFLib
+	VTFLib::CVTFFile vtfFile;
+	if (!vtfFile.Load(Buffer, Length))
+	{
+		FString err = VTFLib::LastError.Get();
+		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to load VTF: %s"), *err);
+		return nullptr;
+	}
 
-	//// Select the texture's source format
-	//ETextureSourceFormat TextureFormat = TSF_Invalid;
-	//int32 BitDepth = PngImageWrapper->GetBitDepth();
-	//ERGBFormat Format = PngImageWrapper->GetFormat();
+	if (!IsImportResolutionValid(vtfFile.GetWidth(), vtfFile.GetHeight(), bAllowNonPowerOfTwo, Warn))
+	{
+		return nullptr;
+	}
 
-	//if (Format == ERGBFormat::Gray)
-	//{
-	//	if (BitDepth <= 8)
-	//	{
-	//		TextureFormat = TSF_G8;
-	//		Format = ERGBFormat::Gray;
-	//		BitDepth = 8;
-	//	}
-	//	else if (BitDepth == 16)
-	//	{
-	//		// TODO: TSF_G16?
-	//		TextureFormat = TSF_RGBA16;
-	//		Format = ERGBFormat::RGBA;
-	//		BitDepth = 16;
-	//	}
-	//}
-	//else if (Format == ERGBFormat::RGBA || Format == ERGBFormat::BGRA)
-	//{
-	//	if (BitDepth <= 8)
-	//	{
-	//		TextureFormat = TSF_BGRA8;
-	//		Format = ERGBFormat::BGRA;
-	//		BitDepth = 8;
-	//	}
-	//	else if (BitDepth == 16)
-	//	{
-	//		TextureFormat = TSF_RGBA16;
-	//		Format = ERGBFormat::RGBA;
-	//		BitDepth = 16;
-	//	}
-	//}
+	if (vtfFile.GetFrameCount() > 1)
+	{
+		Warn->Logf(ELogVerbosity::Warning, TEXT("Animated VTFs are not yet supported"));
+	}
 
-	//if (TextureFormat == TSF_Invalid)
-	//{
-	//	Warn->Logf(ELogVerbosity::Error, TEXT("PNG file contains data in an unsupported format."));
-	//	return nullptr;
-	//}
+	if (vtfFile.GetFaceCount() == 1)
+	{
+		UTexture2D* texture = CreateTexture2D(InParent, Name, Flags);
+		if (texture == nullptr)
+		{
+			return nullptr;
+		}
 
-	//UTexture2D* Texture = CreateTexture2D(InParent, Name, Flags);
-	//if (Texture)
-	//{
-	//	Texture->Source.Init(
-	//		PngImageWrapper->GetWidth(),
-	//		PngImageWrapper->GetHeight(),
-	//		/*NumSlices=*/ 1,
-	//		/*NumMips=*/ 1,
-	//		TextureFormat
-	//	);
-	//	Texture->SRGB = BitDepth < 16;
-	//	const TArray<uint8>* RawPNG = nullptr;
-	//	if (PngImageWrapper->GetRaw(Format, BitDepth, RawPNG))
-	//	{
-	//		uint8* MipData = Texture->Source.LockMip(0);
-	//		FMemory::Memcpy(MipData, RawPNG->GetData(), RawPNG->Num());
+		if (vtfFile.GetFlag(VTFImageFlag::TEXTUREFLAGS_NORMAL))
+		{
+			texture->CompressionSettings = TC_Normalmap;
+			texture->SRGB = false;
+			texture->LODGroup = TEXTUREGROUP_WorldNormalMap;
+			texture->bFlipGreenChannel = bFlipNormalMapGreenChannel;
+		}
+		else
+		{
+			texture->SRGB = true;
+		}
 
-	//		bool bFillPNGZeroAlpha = true;
-	//		GConfig->GetBool(TEXT("TextureImporter"), TEXT("FillPNGZeroAlpha"), bFillPNGZeroAlpha, GEditorIni);
+		bool hdr;
+		switch (vtfFile.GetFormat())
+		{
+			case VTFImageFormat::IMAGE_FORMAT_RGBA16161616:
+			case VTFImageFormat::IMAGE_FORMAT_RGBA16161616F:
+			case VTFImageFormat::IMAGE_FORMAT_RGBA32323232F:
+			case VTFImageFormat::IMAGE_FORMAT_RGB323232F:
+				hdr = true;
+				break;
+			default:
+				hdr = false;
+				break;
+		}
 
-	//		if (bFillPNGZeroAlpha)
-	//		{
-	//			// Replace the pixels with 0.0 alpha with a color value from the nearest neighboring color which has a non-zero alpha
-	//			FillZeroAlphaPNGData(Texture->Source, MipData);
-	//		}
-	//	}
-	//	else
-	//	{
-	//		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to decode PNG."));
-	//		Texture->Source.UnlockMip(0);
-	//		Texture->MarkPendingKill();
-	//		return nullptr;
-	//	}
-	//	Texture->Source.UnlockMip(0);
-	//}
+		texture->Source.Init(
+			vtfFile.GetWidth(),
+			vtfFile.GetHeight(),
+			/*NumSlices=*/ 1,
+			/*NumMips=*/ 1,
+			hdr ? TSF_RGBA16 : TSF_BGRA8
+		);
 
-	//return Texture;
+		uint8* mipData = texture->Source.LockMip(0);
+		bool success = VTFLib::CVTFFile::Convert(vtfFile.GetData(0, 0, 0, 0), mipData, vtfFile.GetWidth(), vtfFile.GetHeight(), vtfFile.GetFormat(), hdr ? VTFImageFormat::IMAGE_FORMAT_RGBA16161616 : VTFImageFormat::IMAGE_FORMAT_BGRA8888);
+		texture->Source.UnlockMip(0);
 
-	return nullptr;
+		if (!success)
+		{
+			FString err = VTFLib::LastError.Get();
+			Warn->Logf(ELogVerbosity::Error, TEXT("Failed to convert VTF image data to RGBA8: %s"), *err);
+			return nullptr;
+		}
+
+		return texture;
+	}
+	else
+	{
+		int faceCount = (int)vtfFile.GetFaceCount();
+		if (faceCount > 6)
+		{
+			// Some cubemaps have 7 faces, the 7th being a spheremap, we can ignore that one
+			faceCount = 6;
+		}
+		else if (faceCount < 6)
+		{
+			Warn->Logf(ELogVerbosity::Error, TEXT("Cubemap VTF only has %d faces"), faceCount);
+			return nullptr;
+		}
+
+		UTextureCube* texture = CreateTextureCube(InParent, Name, Flags);
+		if (texture == nullptr)
+		{
+			return nullptr;
+		}
+
+		bool hdr;
+		switch (vtfFile.GetFormat())
+		{
+		case VTFImageFormat::IMAGE_FORMAT_RGBA16161616:
+		case VTFImageFormat::IMAGE_FORMAT_RGBA16161616F:
+		case VTFImageFormat::IMAGE_FORMAT_RGBA32323232F:
+		case VTFImageFormat::IMAGE_FORMAT_RGB323232F:
+			hdr = true;
+			break;
+		default:
+			hdr = false;
+			break;
+		}
+
+		texture->Source.Init(
+			vtfFile.GetWidth(),
+			vtfFile.GetHeight(),
+			/*NumSlices=*/ faceCount,
+			/*NumMips=*/ 1,
+			hdr ? TSF_RGBA16 : TSF_BGRA8
+		);
+
+		int mipSize = texture->Source.CalcMipSize(0) / faceCount;
+		uint8* mipData = texture->Source.LockMip(0);
+		for (int i = 0; i < faceCount; ++i)
+		{
+			bool success = VTFLib::CVTFFile::Convert(vtfFile.GetData(0, (uint32)faceCount, 0, 0), mipData + mipSize * i, vtfFile.GetWidth(), vtfFile.GetHeight(), vtfFile.GetFormat(), hdr ? VTFImageFormat::IMAGE_FORMAT_RGBA16161616 : VTFImageFormat::IMAGE_FORMAT_BGRA8888);
+			if (!success)
+			{
+				FString err = VTFLib::LastError.Get();
+				Warn->Logf(ELogVerbosity::Error, TEXT("Failed to convert VTF image data to RGBA8: %s"), *err);
+				return nullptr;
+			}
+		}
+		texture->Source.UnlockMip(0);
+
+		return texture;
+	}
 }

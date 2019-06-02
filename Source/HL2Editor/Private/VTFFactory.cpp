@@ -28,6 +28,8 @@ UVTFFactory::UVTFFactory()
 
 	// Tells the Editor which Asset type this UFactory can import
 	SupportedClass = UTexture2D::StaticClass();
+
+	++ImportPriority;
 }
 
 UVTFFactory::~UVTFFactory()

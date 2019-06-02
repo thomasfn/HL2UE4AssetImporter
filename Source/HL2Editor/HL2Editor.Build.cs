@@ -8,7 +8,7 @@ public class HL2Editor : ModuleRules
 		PrivatePCHHeaderFile = "Private/HL2EditorPrivatePCH.h";
 		
         PrivateIncludePaths.AddRange(new string[] { "HL2Editor/Private" });
-        PublicIncludePaths.AddRange(new string[] { "HL2Editor/Public" });
+        // PublicIncludePaths.AddRange(new string[] { "HL2Editor/Public" });
 
         PrivateDependencyModuleNames.AddRange(new string[] { "JsonUtilities", "RHI", "Engine", "UnrealEd" });
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject" });

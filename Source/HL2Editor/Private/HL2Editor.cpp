@@ -2,6 +2,8 @@
 
 #include "HL2Editor.h"
 
+DEFINE_LOG_CATEGORY(LogHL2Editor);
+
 void HL2EditorImpl::StartupModule()
 {
 }

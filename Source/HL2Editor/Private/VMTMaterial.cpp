@@ -53,19 +53,19 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 			case VMTNodeType::NODE_TYPE_INTEGER:
 			{
 				int value = ((VTFLib::Nodes::CVMTIntegerNode*)node)->GetValue();
-				SetScalarParameterValue(info.Name, (float)value);
+				SetScalarParameterValueEditorOnly(info, (float)value);
 				break;
 			}
 			case VMTNodeType::NODE_TYPE_STRING:
 			{
 				FString value = ((VTFLib::Nodes::CVMTStringNode*)node)->GetValue();
-				SetScalarParameterValue(info.Name, FCString::Atof(*value));
+				SetScalarParameterValueEditorOnly(info, FCString::Atof(*value));
 				break;
 			}
 			case VMTNodeType::NODE_TYPE_SINGLE:
 			{
 				float value = ((VTFLib::Nodes::CVMTSingleNode*)node)->GetValue();
-				SetScalarParameterValue(info.Name, value);
+				SetScalarParameterValueEditorOnly(info, value);
 				break;
 			}
 			default:
@@ -73,6 +73,8 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 				break;
 		}
 	}
+
+	// TODO: Deal with matrices and vectors
 
 	// Read keywords
 	vmtKeywords.Empty();
@@ -131,7 +133,7 @@ void UVMTMaterial::TryResolveTextures()
 		FMaterialParameterInfo info;
 		if (GetMaterialParameterByKey(materialParams, pair.Key, info))
 		{
-			SetTextureParameterValue(info.Name, texture);
+			SetTextureParameterValueEditorOnly(info, texture);
 		}
 	}
 }

@@ -3,13 +3,13 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/UObjectGlobals.h"
-#include "Engine/Classes/Materials/MaterialInstanceDynamic.h"
-#include "VTFLib/VMTGroupNode.h"
+#include "Engine/Classes/Materials/MaterialInstanceConstant.h"
+#include "VTFLib/VTFLib.h"
 
 #include "VMTMaterial.generated.h"
 
 UCLASS()
-class UVMTMaterial : public UMaterialInstanceDynamic
+class UVMTMaterial : public UMaterialInstanceConstant
 {
 	GENERATED_BODY()
 

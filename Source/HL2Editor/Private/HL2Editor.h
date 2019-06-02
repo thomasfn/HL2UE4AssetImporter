@@ -23,11 +23,9 @@ private:
 	const FString hl2BasePath = "/Game/hl2/";
 	const FString pluginBasePath = "/HL2AssetImporter/";
 
-	const FString hl2TextureBasePath = hl2BasePath + "materials/";
+	const FString hl2TextureBasePath = hl2BasePath + "textures/";
 	const FString hl2MaterialBasePath = hl2BasePath + "materials/";
 	const FString hl2ShaderBasePath = pluginBasePath + "Shaders/";
-
-	const FString hl2MaterialPostfix = "_Mat";
 
 	bool isLoading;
 

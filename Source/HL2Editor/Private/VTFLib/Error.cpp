@@ -61,5 +61,5 @@ void CError::Set(const char *errMessage, bool systemError)
 	}
 	
 	cErrorMessage = new char[strlen(buffer) + 1];
-	strcpy_s(cErrorMessage, sizeof(cErrorMessage), buffer);
+	strcpy_s(cErrorMessage, strlen(buffer) + 1, buffer);
 }

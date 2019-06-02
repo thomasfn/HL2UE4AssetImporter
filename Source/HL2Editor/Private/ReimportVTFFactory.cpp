@@ -14,6 +14,8 @@ UReimportVTFFactory::UReimportVTFFactory()
 	SupportedClass = UTexture::StaticClass();
 
 	bCreateNew = false;
+
+	++ImportPriority;
 }
 
 UReimportVTFFactory::~UReimportVTFFactory()

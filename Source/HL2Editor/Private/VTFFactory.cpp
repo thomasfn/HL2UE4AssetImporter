@@ -17,7 +17,7 @@ UVTFFactory::UVTFFactory()
 	// the editor.
 	bCreateNew = false;
 
-	// Our Asset will be imported from a text file (xml), not a binary file
+	// Our Asset will be imported from a binary file
 	bText = false;
 
 	// Allows us to actually use the "Import" button in the Editor for this Asset
@@ -39,7 +39,6 @@ UVTFFactory::~UVTFFactory()
 
 // Begin UFactory Interface
 
-/** Imports the OpenStreetMapFile from the text of the .osm xml file. */
 UObject* UVTFFactory::FactoryCreateBinary(
 	UClass* InClass,
 	UObject* InParent,

@@ -56,7 +56,7 @@ UObject* UVMTFactory::FactoryCreateText(
 		return nullptr;
 	}
 
-	//material->AssetImportData->Update(CurrentFilename, FileHash.IsValid() ? &FileHash : nullptr);
+	material->AssetImportData->Update(CurrentFilename, FileHash.IsValid() ? &FileHash : nullptr);
 
 	GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, material);
 
@@ -82,14 +82,14 @@ bool UVMTFactory::FactoryCanImport(const FString& Filename)
 
 UVMTMaterial* UVMTFactory::CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags)
 {
-	UObject* NewObject = CreateOrOverwriteAsset(UVMTMaterial::StaticClass(), InParent, Name, Flags);
-	UVMTMaterial* NewMaterial = nullptr;
-	if (NewObject)
+	UObject* newObject = CreateOrOverwriteAsset(UVMTMaterial::StaticClass(), InParent, Name, Flags);
+	UVMTMaterial* newMaterial = nullptr;
+	if (newObject)
 	{
-		NewMaterial = CastChecked<UVMTMaterial>(NewObject);
+		newMaterial = CastChecked<UVMTMaterial>(newObject);
 	}
 
-	return NewMaterial;
+	return newMaterial;
 }
 
 UVMTMaterial* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FName Name, EObjectFlags Flags, const TCHAR* Type, const TCHAR*& Buffer, const TCHAR* BufferEnd, FFeedbackContext* Warn)

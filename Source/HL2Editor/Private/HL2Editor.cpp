@@ -34,7 +34,17 @@ void HL2EditorImpl::HandleFilesLoaded()
 void HL2EditorImpl::HandleAssetAdded(const FAssetData& assetData)
 {
 	if (isLoading) { return; }
-	UE_LOG(LogHL2Editor, Log, TEXT("HandleAssetAdded: %s"), *assetData.AssetName.ToString());
+	if (Cast<UTexture>(assetData.GetAsset()))
+	{
+		TArray<UVMTMaterial*> materials;
+		FindAllMaterialsThatReferenceTexture(assetData.ObjectPath, materials);
+		for (UVMTMaterial* material : materials)
+		{
+			material->TryResolveTextures();
+			material->PostEditChange();
+			UE_LOG(LogHL2Editor, Log, TEXT("Trying to resolve textures on '%s' as '%s' now exists"), *material->GetName(), *assetData.AssetName.ToString());
+		}
+	}
 }
 
 FName HL2EditorImpl::HL2TexturePathToAssetPath(const FString& hl2TexturePath) const
@@ -93,7 +103,11 @@ UMaterial* HL2EditorImpl::TryResolveHL2Shader(const FString& hl2ShaderPath) cons
 
 void HL2EditorImpl::FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const
 {
-	FName assetPath = HL2TexturePathToAssetPath(hl2TexturePath);
+	FindAllMaterialsThatReferenceTexture(HL2TexturePathToAssetPath(hl2TexturePath), out);
+}
+
+void HL2EditorImpl::FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const
+{
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
 	TArray<FAssetData> assets;

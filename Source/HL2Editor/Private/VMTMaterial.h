@@ -19,10 +19,17 @@ public:
 	bool DoesReferenceTexture(FName assetPath) const;
 	void TryResolveTextures();
 
+	virtual void PostInitProperties() override;
+
+#if WITH_EDITORONLY_DATA
+	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
+	virtual void Serialize(FArchive& Ar) override;
+#endif
+
 private:
 
 	UPROPERTY()
-	TMap<FName, FString> vmtTextures;
+	TMap<FName, FName> vmtTextures;
 
 	UPROPERTY()
 	TArray<FString> vmtKeywords;

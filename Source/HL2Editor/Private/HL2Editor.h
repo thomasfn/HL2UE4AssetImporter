@@ -43,6 +43,7 @@ public:
 	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath) const override;
 	
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const override;
+	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const override;
 
 private:
 

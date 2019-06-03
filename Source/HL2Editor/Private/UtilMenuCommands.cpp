@@ -15,7 +15,8 @@ FUtilMenuCommands::FUtilMenuCommands()
 
 void FUtilMenuCommands::RegisterCommands()
 {
-	UI_COMMAND(BulkImportTextures, "Bulk Import Textures", "Imports multiple VTFs at once.", EUserInterfaceActionType::Button, FInputGesture());
+	UI_COMMAND(BulkImportTextures, "Bulk Import Textures", "Imports all VTFs from the HL2 materials directory at once.", EUserInterfaceActionType::Button, FInputGesture());
+	UI_COMMAND(BulkImportMaterials, "Bulk Import Materials", "Imports all VMTs from the HL2 materials directory at once.", EUserInterfaceActionType::Button, FInputGesture());
 }
 
 #undef LOCTEXT_NAMESPACE

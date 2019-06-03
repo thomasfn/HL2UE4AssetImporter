@@ -15,4 +15,5 @@ public:
 #endif
 
 	TSharedPtr<FUICommandInfo> BulkImportTextures;
+	TSharedPtr<FUICommandInfo> BulkImportMaterials;
 };

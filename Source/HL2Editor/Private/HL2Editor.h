@@ -67,6 +67,7 @@ private:
 	void HandleAssetAdded(const FAssetData& assetData);
 
 	void BulkImportTexturesClicked();
+	void BulkImportMaterialsClicked();
 
 	static void GroupFileListByDirectory(const TArray<FString>& files, TMap<FString, TArray<FString>>& outMap);
 

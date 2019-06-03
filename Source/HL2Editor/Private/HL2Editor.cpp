@@ -39,6 +39,11 @@ void HL2EditorImpl::StartupModule()
 		FExecuteAction::CreateRaw(this, &HL2EditorImpl::BulkImportTexturesClicked),
 		FCanExecuteAction()
 	);
+	utilMenuCommandList->MapAction(
+		FUtilMenuCommands::Get().BulkImportMaterials,
+		FExecuteAction::CreateRaw(this, &HL2EditorImpl::BulkImportMaterialsClicked),
+		FCanExecuteAction()
+	);
 
 	myExtender = MakeShareable(new FExtender);
 	myExtender->AddToolBarExtension("Content", EExtensionHook::After, NULL, FToolBarExtensionDelegate::CreateRaw(this, &HL2EditorImpl::AddToolbarExtension));
@@ -115,6 +120,7 @@ TSharedRef<SWidget> HL2EditorImpl::GenerateUtilityMenu(TSharedRef<FUICommandList
 	menuBuilder.BeginSection("Asset Import");
 	{
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportTextures);
+		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportMaterials);
 	}
 	menuBuilder.EndSection();
 
@@ -145,6 +151,35 @@ void HL2EditorImpl::BulkImportTexturesClicked()
 		if (FPaths::MakePathRelativeTo(dir, *rootPath))
 		{
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, hl2TextureBasePath / dir);
+			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
+		}
+	}
+}
+
+void HL2EditorImpl::BulkImportMaterialsClicked()
+{
+	// Ask user to select folder to import from
+	IDesktopPlatform* desktopPlatform = FDesktopPlatformModule::Get();
+	FString rootPath;
+	if (!desktopPlatform->OpenDirectoryDialog(nullptr, TEXT("Choose VMT Location"), TEXT(""), rootPath)) { return; }
+	rootPath += "/";
+
+	// Scan folder
+	IPlatformFile& platformFile = FPlatformFileManager::Get().GetPlatformFile();
+	TArray<FString> filesToImport;
+	platformFile.FindFilesRecursively(filesToImport, *rootPath, TEXT(".vmt"));
+	UE_LOG(LogHL2Editor, Log, TEXT("Importing %d files from '%s'..."), filesToImport.Num(), *rootPath);
+
+	// Import all
+	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
+	TMap<FString, TArray<FString>> groupedFilesToImport;
+	GroupFileListByDirectory(filesToImport, groupedFilesToImport);
+	for (const auto& pair : groupedFilesToImport)
+	{
+		FString dir = pair.Key;
+		if (FPaths::MakePathRelativeTo(dir, *rootPath))
+		{
+			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, hl2MaterialBasePath / dir);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}

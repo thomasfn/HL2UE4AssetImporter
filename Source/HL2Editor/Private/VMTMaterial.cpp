@@ -41,76 +41,100 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 {
 	IHL2Editor& hl2Editor = IHL2Editor::Get();
 
+	// Special case: identify translucency
+	const bool translucent = GetVMTKeyAsBool(groupNode, "$translucent");
+
 	// Try resolve shader
-	Parent = hl2Editor.TryResolveHL2Shader(groupNode.GetName());
+	Parent = hl2Editor.TryResolveHL2Shader(groupNode.GetName(), translucent);
 	if (Parent == nullptr)
 	{
 		UE_LOG(LogHL2Editor, Error, TEXT("Shader '%s' not found"), groupNode.GetName());
 		return false;
 	}
 
-	TArray<FMaterialParameterInfo> materialParams;
-	TArray<FGuid> materialIDs;
+	// Cache all material parameters from the shader
+	TArray<FMaterialParameterInfo> textureParams, scalarParams, vectorParams, staticSwitchParams;
+	TArray<FGuid> textureParamIDs, scalarParamIDs, vectorParamIDs, staticSwitchParamIDs;
+	Parent->GetAllTextureParameterInfo(textureParams, textureParamIDs);
+	Parent->GetAllScalarParameterInfo(scalarParams, scalarParamIDs);
+	Parent->GetAllVectorParameterInfo(vectorParams, vectorParamIDs);
+	Parent->GetAllStaticSwitchParameterInfo(staticSwitchParams, staticSwitchParamIDs);
+	FStaticParameterSet staticParamSet;
 
-	// Set all textures
-	vmtTextures.Empty();
-	Parent->GetAllTextureParameterInfo(materialParams, materialIDs);
+	// Iterate all vmt params and try to push them to the material
 	for (uint32 i = 0; i < groupNode.GetNodeCount(); ++i)
 	{
 		const auto node = groupNode.GetNode(i);
 		FMaterialParameterInfo info;
-		if (!GetMaterialParameterByKey(materialParams, node->GetName(), info)) { continue; }
-		switch (node->GetType())
-		{
-		case VMTNodeType::NODE_TYPE_STRING:
-		{
-			FString value = ((VTFLib::Nodes::CVMTStringNode*)node)->GetValue();
-			vmtTextures.Add(info.Name, hl2Editor.HL2TexturePathToAssetPath(value));
-			break;
-		}
-		default:
-			UE_LOG(LogHL2Editor, Warning, TEXT("Material key '%s' for shader '%s' was of unexpected type (expecting texture path as string)"), node->GetName(), groupNode.GetName());
-			break;
-		}
-	}
-	TryResolveTextures();
-
-	// Set all scalars
-	materialParams.Empty();
-	materialIDs.Empty();
-	Parent->GetAllScalarParameterInfo(materialParams, materialIDs);
-	for (uint32 i = 0; i < groupNode.GetNodeCount(); ++i)
-	{
-		const auto node = groupNode.GetNode(i);
-		FMaterialParameterInfo info;
-		if (!GetMaterialParameterByKey(materialParams, node->GetName(), info)) { continue; }
+		FName key = GetVMTKeyAsParameterName(node->GetName());
 		switch (node->GetType())
 		{
 			case VMTNodeType::NODE_TYPE_INTEGER:
 			{
 				int value = ((VTFLib::Nodes::CVMTIntegerNode*)node)->GetValue();
-				SetScalarParameterValueEditorOnly(info, (float)value);
+
+				// Scalar
+				if (GetMaterialParameterByKey(scalarParams, key, info))
+				{
+					SetScalarParameterValueEditorOnly(info, (float)value);
+				}
+				// Static switch
+				else if (GetMaterialParameterByKey(staticSwitchParams, key, info))
+				{
+					FStaticSwitchParameter staticSwitchParam;
+					staticSwitchParam.bOverride = true;
+					staticSwitchParam.ParameterInfo = info;
+					staticSwitchParam.Value = value != 0;
+					staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
+				}
 				break;
 			}
 			case VMTNodeType::NODE_TYPE_STRING:
 			{
 				FString value = ((VTFLib::Nodes::CVMTStringNode*)node)->GetValue();
-				SetScalarParameterValueEditorOnly(info, FCString::Atof(*value));
+
+				// Scalar
+				if (GetMaterialParameterByKey(scalarParams, key, info))
+				{
+					SetScalarParameterValueEditorOnly(info, FCString::Atof(*value));
+				}
+				// Texture
+				else if (GetMaterialParameterByKey(textureParams, key, info))
+				{
+					vmtTextures.Add(info.Name, hl2Editor.HL2TexturePathToAssetPath(value));
+					if (GetMaterialParameterByKey(staticSwitchParams, GetVMTKeyAsParameterName(node->GetName(), "_present"), info))
+					{
+						FStaticSwitchParameter staticSwitchParam;
+						staticSwitchParam.bOverride = true;
+						staticSwitchParam.ParameterInfo = info;
+						staticSwitchParam.Value = true;
+						staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
+					}
+				}
+				// Static switch
+				else if (GetMaterialParameterByKey(staticSwitchParams, key, info))
+				{
+					FStaticSwitchParameter staticSwitchParam;
+					staticSwitchParam.bOverride = true;
+					staticSwitchParam.ParameterInfo = info;
+					staticSwitchParam.Value = value.ToBool();
+					staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
+				}
 				break;
 			}
 			case VMTNodeType::NODE_TYPE_SINGLE:
 			{
 				float value = ((VTFLib::Nodes::CVMTSingleNode*)node)->GetValue();
-				SetScalarParameterValueEditorOnly(info, value);
+
+				// Scalar
+				if (GetMaterialParameterByKey(scalarParams, node->GetName(), info))
+				{
+					SetScalarParameterValueEditorOnly(info, value);
+				}
 				break;
 			}
-			default:
-				UE_LOG(LogHL2Editor, Warning, TEXT("Material key '%s' for shader '%s' was of unexpected type (expecting some kind of scalar)"), node->GetName(), groupNode.GetName());
-				break;
 		}
 	}
-
-	// TODO: Deal with matrices and vectors
 
 	// Read keywords
 	vmtKeywords.Empty();
@@ -146,6 +170,12 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 			vmtSurfaceProp = ((VTFLib::Nodes::CVMTStringNode*)surfacePropNode)->GetValue();
 		}
 	}
+
+	// Update textures
+	TryResolveTextures();
+
+	// Update static parameters
+	UpdateStaticPermutation(staticParamSet);
 
 	// Shader found
 	return true;
@@ -196,6 +226,14 @@ FName UVMTMaterial::GetVMTKeyAsParameterName(const char* key)
 	return FName(*keyAsString);
 }
 
+FName UVMTMaterial::GetVMTKeyAsParameterName(const char* key, const FString& postfix)
+{
+	FString keyAsString(key);
+	keyAsString.RemoveFromStart("$");
+	keyAsString.Append(postfix);
+	return FName(*keyAsString);
+}
+
 bool UVMTMaterial::GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParams, const char* key, FMaterialParameterInfo& out)
 {
 	return GetMaterialParameterByKey(materialParams, GetVMTKeyAsParameterName(key), out);
@@ -212,4 +250,30 @@ bool UVMTMaterial::GetMaterialParameterByKey(const TArray<FMaterialParameterInfo
 		}
 	}
 	return false;
+}
+
+bool UVMTMaterial::GetVMTKeyAsBool(const VTFLib::Nodes::CVMTGroupNode& groupNode, const char* key, bool defaultValue)
+{
+	const auto node = groupNode.GetNode(key);
+	if (node != nullptr)
+	{
+		switch (node->GetType())
+		{
+			case VMTNodeType::NODE_TYPE_INTEGER:
+			{
+				int value = ((VTFLib::Nodes::CVMTIntegerNode*)node)->GetValue();
+				return value != 0;
+			}
+			case VMTNodeType::NODE_TYPE_STRING:
+			{
+				FString value = ((VTFLib::Nodes::CVMTStringNode*)node)->GetValue();
+				return value.ToBool();
+			}
+			default: return defaultValue;
+		}
+	}
+	else
+	{
+		return defaultValue;
+	}
 }

@@ -42,6 +42,7 @@ void HL2EditorImpl::HandleAssetAdded(const FAssetData& assetData)
 		{
 			material->TryResolveTextures();
 			material->PostEditChange();
+			material->MarkPackageDirty();
 			UE_LOG(LogHL2Editor, Log, TEXT("Trying to resolve textures on '%s' as '%s' now exists"), *material->GetName(), *assetData.AssetName.ToString());
 		}
 	}
@@ -63,11 +64,12 @@ FName HL2EditorImpl::HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) 
 	return FName(*(hl2TextureBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
 }
 
-FName HL2EditorImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath) const
+FName HL2EditorImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool translucent) const
 {
 	// e.g. "VertexLitGeneric" -> "/HL2Editor/Shaders/VertexLitGeneric.VertexLitGeneric"
 	FString tmp = hl2ShaderPath;
 	tmp.ReplaceCharInline('\\', '/');
+	if (translucent) { tmp = tmp.Append("_translucent"); }
 	return FName(*(hl2ShaderBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
 }
 
@@ -91,9 +93,9 @@ UVMTMaterial* HL2EditorImpl::TryResolveHL2Material(const FString& hl2MaterialPat
 	return CastChecked<UVMTMaterial>(assetData.GetAsset());
 }
 
-UMaterial* HL2EditorImpl::TryResolveHL2Shader(const FString& hl2ShaderPath) const
+UMaterial* HL2EditorImpl::TryResolveHL2Shader(const FString& hl2ShaderPath, bool translucent) const
 {
-	FName assetPath = HL2ShaderPathToAssetPath(hl2ShaderPath);
+	FName assetPath = HL2ShaderPathToAssetPath(hl2ShaderPath, translucent);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
 	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);

@@ -36,11 +36,11 @@ public:
 
 	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const override;
 	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const override;
-	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath) const override;
+	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool translucent = false) const override;
 	
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const override;
 	virtual UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath) const override;
-	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath) const override;
+	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, bool translucent = false) const override;
 	
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const override;
 	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const override;

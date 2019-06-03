@@ -87,6 +87,14 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 					staticSwitchParam.Value = value != 0;
 					staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
 				}
+				// Vector
+				else if (GetMaterialParameterByKey(vectorParams, key, info))
+				{
+					FLinearColor tmp;
+					tmp.R = tmp.G = tmp.G = value / 255.0f;
+					tmp.A = 1.0f;
+					SetVectorParameterValueEditorOnly(info, tmp);
+				}
 				break;
 			}
 			case VMTNodeType::NODE_TYPE_STRING:
@@ -120,6 +128,19 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 					staticSwitchParam.Value = value.ToBool();
 					staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
 				}
+				// Vector
+				else if (GetMaterialParameterByKey(vectorParams, key, info))
+				{
+					FLinearColor tmp;
+					if (ParseFloatVec3(value, tmp) || ParseIntVec3(value, tmp))
+					{
+						SetVectorParameterValueEditorOnly(info, tmp);
+					}
+					else
+					{
+						UE_LOG(LogHL2Editor, Warning, TEXT("Material key '%s' ('%s') was of unexpected type (expecting vector)"), node->GetName(), *value);
+					}
+				}
 				break;
 			}
 			case VMTNodeType::NODE_TYPE_SINGLE:
@@ -130,6 +151,14 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 				if (GetMaterialParameterByKey(scalarParams, node->GetName(), info))
 				{
 					SetScalarParameterValueEditorOnly(info, value);
+				}
+				// Vector
+				else if (GetMaterialParameterByKey(staticSwitchParams, key, info))
+				{
+					FLinearColor tmp;
+					tmp.R = tmp.G = tmp.G = value;
+					tmp.A = 1.0f;
+					SetVectorParameterValueEditorOnly(info, tmp);
 				}
 				break;
 			}
@@ -276,4 +305,70 @@ bool UVMTMaterial::GetVMTKeyAsBool(const VTFLib::Nodes::CVMTGroupNode& groupNode
 	{
 		return defaultValue;
 	}
+}
+
+bool UVMTMaterial::ParseFloatVec3(const FString& value, FVector& out)
+{
+	const static FRegexPattern patternFloatVector(TEXT("^\\s*\\[\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s*\\]\\s*$"));
+	FRegexMatcher matchFloatVector(patternFloatVector, value);
+	if (matchFloatVector.FindNext())
+	{
+		out.X = FCString::Atof(*matchFloatVector.GetCaptureGroup(1));
+		out.Y = FCString::Atof(*matchFloatVector.GetCaptureGroup(2));
+		out.Z = FCString::Atof(*matchFloatVector.GetCaptureGroup(3));
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+bool UVMTMaterial::ParseFloatVec3(const FString& value, FLinearColor& out)
+{
+	FVector tmp;
+	if (!ParseFloatVec3(value, tmp)) { return false; }
+	out.R = tmp.X;
+	out.G = tmp.Y;
+	out.B = tmp.Z;
+	out.A = 1.0f;
+	return true;
+}
+
+bool UVMTMaterial::ParseIntVec3(const FString& value, FIntVector& out)
+{
+	const static FRegexPattern patternIntVector(TEXT("^\\s*\\{\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s*\\}\\s*$"));
+	FRegexMatcher matchIntVector(patternIntVector, value);
+	if (matchIntVector.FindNext())
+	{
+		out.X = FCString::Atoi(*matchIntVector.GetCaptureGroup(1));
+		out.Y = FCString::Atoi(*matchIntVector.GetCaptureGroup(2));
+		out.Z = FCString::Atoi(*matchIntVector.GetCaptureGroup(3));
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+bool UVMTMaterial::ParseIntVec3(const FString& value, FVector& out)
+{
+	FIntVector tmp;
+	if (!ParseIntVec3(value, tmp)) { return false; }
+	out.X = tmp.X;
+	out.Y = tmp.Y;
+	out.Z = tmp.Z;
+	return true;
+}
+
+bool UVMTMaterial::ParseIntVec3(const FString& value, FLinearColor& out)
+{
+	FIntVector tmp;
+	if (!ParseIntVec3(value, tmp)) { return false; }
+	out.R = tmp.X / 255.0f;
+	out.G = tmp.Y / 255.0f;
+	out.B = tmp.Z / 255.0f;
+	out.A = 1.0f;
+	return true;
 }

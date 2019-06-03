@@ -5,6 +5,7 @@
 #include "UObject/UObjectGlobals.h"
 #include "Engine/Classes/Materials/MaterialInstanceConstant.h"
 #include "VTFLib/VTFLib.h"
+#include "Internationalization/Regex.h"
 
 #include "VMTMaterial.generated.h"
 
@@ -45,4 +46,10 @@ private:
 
 	static bool GetVMTKeyAsBool(const VTFLib::Nodes::CVMTGroupNode& groupNode, const char* key, bool defaultValue = false);
 
+	static bool ParseFloatVec3(const FString& value, FVector& out);
+	static bool ParseFloatVec3(const FString& value, FLinearColor& out);
+
+	static bool ParseIntVec3(const FString& value, FIntVector& out);
+	static bool ParseIntVec3(const FString& value, FVector& out);
+	static bool ParseIntVec3(const FString& value, FLinearColor& out);
 };

@@ -10,7 +10,7 @@ public class HL2Editor : ModuleRules
         PrivateIncludePaths.AddRange(new string[] { "HL2Editor/Private" });
         // PublicIncludePaths.AddRange(new string[] { "HL2Editor/Public" });
 
-        PrivateDependencyModuleNames.AddRange(new string[] { "JsonUtilities", "RHI", "Engine", "UnrealEd", "RenderCore", "Slate", "SlateCore", "EditorStyle"});
+        PrivateDependencyModuleNames.AddRange(new string[] { "JsonUtilities", "RHI", "Engine", "UnrealEd", "RenderCore", "Slate", "SlateCore", "EditorStyle", "DesktopPlatform", "AssetTools" });
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject" });
     }
 }

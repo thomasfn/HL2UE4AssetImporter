@@ -11,6 +11,9 @@
 #include "Framework/SlateDelegates.h"
 #include "UtilMenuCommands.h"
 #include "UtilMenuStyle.h"
+#include "DesktopPlatformModule.h"
+#include "AssetToolsModule.h"
+#include "PlatformFilemanager.h"
 #endif
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
@@ -120,7 +123,31 @@ TSharedRef<SWidget> HL2EditorImpl::GenerateUtilityMenu(TSharedRef<FUICommandList
 
 void HL2EditorImpl::BulkImportTexturesClicked()
 {
-	UE_LOG(LogHL2Editor, Log, TEXT("BulkImportTexturesClicked"));
+	// Ask user to select folder to import from
+	IDesktopPlatform* desktopPlatform = FDesktopPlatformModule::Get();
+	FString rootPath;
+	if (!desktopPlatform->OpenDirectoryDialog(nullptr, TEXT("Choose VTF Location"), TEXT(""), rootPath)) { return; }
+	rootPath += "/";
+
+	// Scan folder
+	IPlatformFile& platformFile = FPlatformFileManager::Get().GetPlatformFile();
+	TArray<FString> filesToImport;
+	platformFile.FindFilesRecursively(filesToImport, *rootPath, TEXT(".vtf"));
+	UE_LOG(LogHL2Editor, Log, TEXT("Importing %d files from '%s'..."), filesToImport.Num(), *rootPath);
+
+	// Import all
+	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
+	TMap<FString, TArray<FString>> groupedFilesToImport;
+	GroupFileListByDirectory(filesToImport, groupedFilesToImport);
+	for (const auto& pair : groupedFilesToImport)
+	{
+		FString dir = pair.Key;
+		if (FPaths::MakePathRelativeTo(dir, *rootPath))
+		{
+			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, hl2TextureBasePath / dir);
+			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
+		}
+	}
 }
 
 #endif
@@ -198,6 +225,19 @@ void HL2EditorImpl::FindAllMaterialsThatReferenceTexture(FName assetPath, TArray
 		{
 			out.Add(material);
 		}
+	}
+}
+
+void HL2EditorImpl::GroupFileListByDirectory(const TArray<FString>& files, TMap<FString, TArray<FString>>& outMap)
+{
+	for (const FString& file : files)
+	{
+		FString path = FPaths::GetPath(file);
+		if (!outMap.Contains(path))
+		{
+			outMap.Add(path, TArray<FString>());
+		}
+		outMap[path].Add(file);
 	}
 }
 

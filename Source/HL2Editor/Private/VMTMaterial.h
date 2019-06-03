@@ -52,4 +52,6 @@ private:
 	static bool ParseIntVec3(const FString& value, FIntVector& out);
 	static bool ParseIntVec3(const FString& value, FVector& out);
 	static bool ParseIntVec3(const FString& value, FLinearColor& out);
+
+	static bool ParseTransform(const FString& value, FMatrix& out);
 };

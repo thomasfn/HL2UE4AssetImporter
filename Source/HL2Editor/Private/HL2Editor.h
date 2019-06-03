@@ -3,6 +3,10 @@
 #include "ModuleManager.h"
 #include "AssetRegistryModule.h"
 
+#ifdef WITH_EDITOR
+#include "LevelEditor.h"
+#endif
+
 #include "IHL2Editor.h"
 
 class UTexture;
@@ -27,10 +31,17 @@ private:
 	const FString hl2MaterialBasePath = hl2BasePath + "materials/";
 	const FString hl2ShaderBasePath = pluginBasePath + "Shaders/";
 
+#ifdef WITH_EDITOR
+
 	bool isLoading;
+
+	TSharedPtr<FUICommandList> utilMenuCommandList;
+	TSharedPtr<FExtender> myExtender;
 
 	FDelegateHandle handleFilesLoaded;
 	FDelegateHandle handleAssetAdded;
+
+#endif
 
 public:
 
@@ -47,7 +58,16 @@ public:
 
 private:
 
+#ifdef WITH_EDITOR
+
+	void AddToolbarExtension(FToolBarBuilder& builder);
+	static TSharedRef<SWidget> GenerateUtilityMenu(TSharedRef<FUICommandList> InCommandList);
+
 	void HandleFilesLoaded();
 	void HandleAssetAdded(const FAssetData& assetData);
+
+	void BulkImportTexturesClicked();
+
+#endif
 
 };

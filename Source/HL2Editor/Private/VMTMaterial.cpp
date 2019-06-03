@@ -141,6 +141,23 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 						UE_LOG(LogHL2Editor, Warning, TEXT("Material key '%s' ('%s') was of unexpected type (expecting vector)"), node->GetName(), *value);
 					}
 				}
+				// Matrix
+				else if (GetMaterialParameterByKey(vectorParams, GetVMTKeyAsParameterName(node->GetName(), "_v0"), info))
+				{
+					FMatrix tmp;
+					if (ParseTransform(value, tmp))
+					{
+						SetVectorParameterValueEditorOnly(info, tmp.GetScaledAxis(EAxis::X));
+						GetMaterialParameterByKey(vectorParams, GetVMTKeyAsParameterName(node->GetName(), "_v1"), info);
+						SetVectorParameterValueEditorOnly(info, tmp.GetScaledAxis(EAxis::Y));
+						GetMaterialParameterByKey(vectorParams, GetVMTKeyAsParameterName(node->GetName(), "_v2"), info);
+						SetVectorParameterValueEditorOnly(info, tmp.GetOrigin());
+					}
+					else
+					{
+						UE_LOG(LogHL2Editor, Warning, TEXT("Material key '%s' ('%s') was of unexpected type (expecting transform)"), node->GetName(), *value);
+					}
+				}
 				break;
 			}
 			case VMTNodeType::NODE_TYPE_SINGLE:
@@ -370,5 +387,62 @@ bool UVMTMaterial::ParseIntVec3(const FString& value, FLinearColor& out)
 	out.G = tmp.Y / 255.0f;
 	out.B = tmp.Z / 255.0f;
 	out.A = 1.0f;
+	return true;
+}
+
+bool UVMTMaterial::ParseTransform(const FString& value, FMatrix& out)
+{
+	const static FRegexPattern patternCenter(TEXT("center\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)"));
+	const static FRegexPattern patternScale(TEXT("scale\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)"));
+	const static FRegexPattern patternRotate(TEXT("rotate\\s*((?:\\d*\\.)?\\d+)"));
+	const static FRegexPattern patternTranslate(TEXT("translate\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)"));
+	// default: "center .5 .5 scale 1 1 rotate 0 translate 0 0"
+	float cX = 0.5f, cY = 0.5f;
+	float sX = 1.0f, sY = 1.0f;
+	float r = 0.0f;
+	float tX = 0.0f, tY = 0.0f;
+	bool cF = false, sF = false, rF = false, tF = false;
+	FRegexMatcher matchCenter(patternCenter, value);
+	if (matchCenter.FindNext())
+	{
+		cX = FCString::Atof(*matchCenter.GetCaptureGroup(1));
+		cY = FCString::Atof(*matchCenter.GetCaptureGroup(2));
+		cF = true;
+	}
+	FRegexMatcher matchScale(patternScale, value);
+	if (matchScale.FindNext())
+	{
+		sX = FCString::Atof(*matchScale.GetCaptureGroup(1));
+		sY = FCString::Atof(*matchScale.GetCaptureGroup(2));
+		sF = true;
+	}
+	FRegexMatcher matchRotate(patternRotate, value);
+	if (matchRotate.FindNext())
+	{
+		r = FCString::Atof(*matchRotate.GetCaptureGroup(1));
+		rF = true;
+	}
+	FRegexMatcher matchTranslate(patternTranslate, value);
+	if (matchTranslate.FindNext())
+	{
+		tX = FCString::Atof(*matchTranslate.GetCaptureGroup(1));
+		tY = FCString::Atof(*matchTranslate.GetCaptureGroup(2));
+		tF = true;
+	}
+	if (!(cF && sF && rF && tF)) { return false; }
+	const float rD = FMath::DegreesToRadians(r);
+	FTransform transform = FTransform::Identity;
+	FVector translation = FVector::ZeroVector;
+	translation.X = (cX - 0.5f) + cX * FMath::Cos(rD) * 2.0f;
+	translation.Y = (cY - 0.5f) + cY * FMath::Sin(rD) * 2.0f;
+	transform.SetTranslation(translation);
+	FQuat quat(FVector::UpVector, rD);
+	transform.SetRotation(quat);
+	FVector scale;
+	scale.X = sX;
+	scale.Y = sY;
+	scale.Z = 1.0f;
+	transform.SetScale3D(scale);
+	out = transform.ToMatrixWithScale();
 	return true;
 }

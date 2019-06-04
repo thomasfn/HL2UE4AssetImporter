@@ -68,6 +68,7 @@ private:
 
 	void BulkImportTexturesClicked();
 	void BulkImportMaterialsClicked();
+	void ImportBSPClicked();
 
 	static void GroupFileListByDirectory(const TArray<FString>& files, TMap<FString, TArray<FString>>& outMap);
 

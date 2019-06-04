@@ -16,4 +16,6 @@ public:
 
 	TSharedPtr<FUICommandInfo> BulkImportTextures;
 	TSharedPtr<FUICommandInfo> BulkImportMaterials;
+
+	TSharedPtr<FUICommandInfo> ImportBSP;
 };

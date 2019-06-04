@@ -6,6 +6,7 @@
 #include "Misc/Paths.h"
 #include "Engine/Texture.h"
 #include "VMTMaterial.h"
+#include "BSPImporter.h"
 
 #ifdef WITH_EDITOR
 #include "Framework/SlateDelegates.h"
@@ -42,6 +43,11 @@ void HL2EditorImpl::StartupModule()
 	utilMenuCommandList->MapAction(
 		FUtilMenuCommands::Get().BulkImportMaterials,
 		FExecuteAction::CreateRaw(this, &HL2EditorImpl::BulkImportMaterialsClicked),
+		FCanExecuteAction()
+	);
+	utilMenuCommandList->MapAction(
+		FUtilMenuCommands::Get().ImportBSP,
+		FExecuteAction::CreateRaw(this, &HL2EditorImpl::ImportBSPClicked),
 		FCanExecuteAction()
 	);
 
@@ -124,6 +130,12 @@ TSharedRef<SWidget> HL2EditorImpl::GenerateUtilityMenu(TSharedRef<FUICommandList
 	}
 	menuBuilder.EndSection();
 
+	menuBuilder.BeginSection("Map Import");
+	{
+		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().ImportBSP);
+	}
+	menuBuilder.EndSection();
+
 	return menuBuilder.MakeWidget();
 }
 
@@ -182,6 +194,23 @@ void HL2EditorImpl::BulkImportMaterialsClicked()
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, hl2MaterialBasePath / dir);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
+	}
+}
+
+void HL2EditorImpl::ImportBSPClicked()
+{
+	// Ask user to select BSP to import
+	IDesktopPlatform* desktopPlatform = FDesktopPlatformModule::Get();
+	TArray<FString> selectedFilenames;
+	if (!desktopPlatform->OpenFileDialog(nullptr, "Import BSP", TEXT(""), TEXT(""), TEXT("bsp;Valve Map File"), EFileDialogFlags::None, selectedFilenames)) { return; }
+	if (selectedFilenames.Num() != 1) { return; }
+	const FString& fileName = selectedFilenames[0];
+
+	// Run import
+	FBSPImporter bspImporter;
+	if (!bspImporter.ImportToCurrentLevel(fileName))
+	{
+		return;
 	}
 }
 

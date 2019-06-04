@@ -9,6 +9,14 @@
 //#include "BSPOps.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
+#include "Vector2D.h"
+#include "IHL2Editor.h"
+
+DEFINE_LOG_CATEGORY(LogVBSPBrushBuilder);
+
+const float UVBSPBrushBuilder::snapThreshold = 1.0f / 128.0f;
+const float UVBSPBrushBuilder::containsThreshold = 1.0f / 256.0f;
+const float UVBSPBrushBuilder::lineParallelThreshold = 1.0f / 256.0f;
 
 #define LOCTEXT_NAMESPACE "BrushBuilder"
 
@@ -234,17 +242,14 @@ bool UVBSPBrushBuilder::BadParameters(const FText& Msg)
 
 int32 UVBSPBrushBuilder::Vertexv(FVector V)
 {
-	int32 Result = Vertices.Num();
-	new(Vertices)FVector(V);
-
-	return Result;
+	//FRotator temp = FRotator::ZeroRotator;
+	//FSnappingUtils::SnapToBSPVertex(V, FVector::ZeroVector, temp);
+	return Vertices.AddUnique(V);
 }
 
 int32 UVBSPBrushBuilder::Vertex3f(float X, float Y, float Z)
 {
-	int32 Result = Vertices.Num();
-	new(Vertices)FVector(X, Y, Z);
-	return Result;
+	return Vertexv(FVector(X, Y, Z));
 }
 
 void UVBSPBrushBuilder::Poly3i(int32 Direction, int32 i, int32 j, int32 k, FName ItemName, bool bIsTwoSidedNonSolid)
@@ -287,14 +292,36 @@ void UVBSPBrushBuilder::PolyEnd()
 {
 }
 
-void UVBSPBrushBuilder::BuildVBSP(TArray<FVBSPBrushPlane> planes)
+FVector UVBSPBrushBuilder::EvaluateGeometricCenter() const
 {
-	const int planeCnt = planes.Num();
+	FVector intersectionSum = FVector::ZeroVector;
+	int intersectionCnt = 0;
+	for (int i = 0; i < Planes.Num(); ++i)
+	{
+		for (int j = i + 1; j < Planes.Num(); ++j)
+		{
+			for (int k = j + 1; k < Planes.Num(); ++k)
+			{
+				FVector tmp;
+				if (FMath::IntersectPlanes3(tmp, Planes[i], Planes[j], Planes[k]))
+				{
+					intersectionSum += tmp;
+					++intersectionCnt;
+				}
+			}
+		}
+	}
+	return SnapPoint(intersectionSum / intersectionCnt);
+}
+
+void UVBSPBrushBuilder::BuildVBSP()
+{
+	const int planeCnt = Planes.Num();
 
 	// Iterate all planes
 	for (int i = 0; i < planeCnt; ++i)
 	{
-		const FVBSPBrushPlane& plane = planes[i];
+		const FPlane& plane = Planes[i];
 
 		TArray<TTuple<FVector, FVector>> lines;
 		TArray<FVector> points;
@@ -305,9 +332,9 @@ void UVBSPBrushBuilder::BuildVBSP(TArray<FVBSPBrushPlane> planes)
 			if (j != i)
 			{
 				// Intersect both planes, if it produces a line then emit that
-				const FVBSPBrushPlane& otherPlane = planes[j];
+				const FPlane& otherPlane = Planes[j];
 				FVector vI, vD;
-				if (FMath::IntersectPlanes2(vI, vD, plane.Plane, otherPlane.Plane))
+				if (FMath::IntersectPlanes2(vI, vD, plane, otherPlane))
 				{
 					lines.Add(TTuple<FVector, FVector>(vI, vD));
 				}
@@ -317,25 +344,15 @@ void UVBSPBrushBuilder::BuildVBSP(TArray<FVBSPBrushPlane> planes)
 		// Iterate all lines
 		for (const auto& line : lines)
 		{
-			// Iterate all other lines
-			for (const auto& otherLine : lines)
+			// Iterate all other planes
+			for (const FPlane& otherPlane : Planes)
 			{
-				// Intersect both lines, if it produces a point then emit that but only if the point is behind ALL planes
-				FVector point;
-				if (IntersectLines(line.Key, line.Value, otherLine.Key, otherLine.Value, point))
+				// Intersect line with plane, if it produces a point then emit that but only if the point is inside the brush
+				const float d = FVector::DotProduct(line.Value, otherPlane);
+				if (FMath::Abs(d) > lineParallelThreshold)
 				{
-					FRotator Temp(0.0f, 0.0f, 0.0f);
-					FSnappingUtils::SnapToBSPVertex(point, FVector::ZeroVector, Temp);
-					bool isOK = true;
-					/*for (const FVBSPBrushPlane& otherPlane : planes)
-					{
-						if (otherPlane.Plane.PlaneDot(point) > 0.0f)
-						{
-							isOK = false;
-							break;
-						}
-					}*/
-					if (isOK)
+					FVector point = FMath::LinePlaneIntersection(line.Key, line.Key + line.Value, otherPlane);
+					if (ContainsPoint(point))
 					{
 						points.AddUnique(point);
 					}
@@ -343,40 +360,234 @@ void UVBSPBrushBuilder::BuildVBSP(TArray<FVBSPBrushPlane> planes)
 			}
 		}
 
-		// TODO: Convex hull around the points
+		// Commit the points as a poly
+		if (CommitPoly(plane, points))
+		{
+			UE_LOG(LogVBSPBrushBuilder, Log, TEXT("- Built plane %d into a poly with %d verts"), i, Polys.Top().VertexIndices.Num());
+		}
+		else
+		{
+			UE_LOG(LogVBSPBrushBuilder, Log, TEXT("- Ignored plane %d"), i);
+		}
 	}
 }
 
-bool UVBSPBrushBuilder::IntersectLines(const FVector& i1, const FVector& d1, const FVector& i2, const FVector& d2, FVector& out)
+// isLeft(): test if a point is Left|On|Right of an infinite 2D line.
+//    Input:  three points P0, P1, and P2
+//    Return: >0 for P2 left of the line through P0 to P1
+//          =0 for P2 on the line
+//          <0 for P2 right of the line
+inline float isLeft(const FVector2D& P0, const FVector2D& P1, const FVector2D& P2)
 {
-	const FVector& fromA = i1;
-	const FVector& fromB = i2;
-	const FVector toA = i1 + d1;
-	const FVector toB = i2 + d2;
+	return (P1.X - P0.X) * (P2.Y - P0.Y) - (P2.X - P0.X) * (P1.Y - P0.Y);
+}
+//===================================================================
 
-	const FVector da = fromB - fromA;
-	const FVector db = toB - toA;
-	const FVector dc = toA - fromA;
-
-	const FVector crossDaDb = FVector::CrossProduct(da, db);
-	float prod = crossDaDb.X * crossDaDb.X + crossDaDb.Y * crossDaDb.Y + crossDaDb.Z * crossDaDb.Z;
-	if (prod == 0 || FVector::DotProduct(dc, crossDaDb) != 0)
+uint32 FindRightmostLowestPoint(const TArray<FVector2D>& points)
+{
+	if (points.Num() <= 1) { return 0; }
+	uint32 bestPointIdx = 0;
+	FVector2D bestPoint = points[bestPointIdx];
+	for (uint32 i = 1; i < (uint32)points.Num(); ++i)
 	{
-		return false;
+		const FVector2D& pt = points[i];
+		if (pt.Y < bestPoint.Y || (pt.Y == bestPoint.Y && pt.X > bestPoint.X))
+		{
+			bestPointIdx = i;
+			bestPoint = pt;
+		}
 	}
-	const float res = FVector::DotProduct(FVector::CrossProduct(dc, db), FVector::CrossProduct(da, db)) / prod;
+	return bestPointIdx;
+}
 
-	out = fromA + da * FVector(res, res, res);
 
-	FVector fromAToIntersectPoint = out - fromA;
-	FVector fromBToIntersectPoint = out - fromB;
-	FVector toAToIntersectPoint = out - toA;
-	FVector toBToIntersectPoint = out - toB;
-	if (FVector::DotProduct(fromAToIntersectPoint, fromBToIntersectPoint) <= 0 && FVector::DotProduct(toAToIntersectPoint, toBToIntersectPoint) <= 0)
+bool UVBSPBrushBuilder::CommitPoly(const FPlane& plane, const TArray<FVector>& points)
+{
+	// We can't make a poly unless we have at least 3 points
+	if (points.Num() < 3) { return false; }
+
+	// Find a quaternion that rotates the plane to Z=1
+	// That way, all points lie on the Z=1 plane and we can reduce the problem to 2D
+	FQuat quat = FQuat::FindBetweenNormals(plane, FVector::UpVector);
+	TArray<FVector2D> localPoints;
+	for (const FVector& point : points)
 	{
-		return true;
+		FVector transformed = quat * point;
+		localPoints.Add(FVector2D(transformed.X, transformed.Y));
 	}
-	return false;
+
+	// Sort S by increasing X then by Y
+	localPoints.Sort([](const FVector2D& LHS, const FVector2D& RHS)
+		{
+			if (LHS.X < RHS.X)
+			{
+				return true;
+			}
+			else if (LHS.X > RHS.X)
+			{
+				return false;
+			}
+			else
+			{
+				return LHS.Y < RHS.Y;
+			}
+		});
+
+	// Derive convex hull
+	TArray<FVector2D> convexHull;
+	ChainHull2D(localPoints, convexHull);
+
+	// Transform points back to original coord space, snap here too and trim duplicates
+	TArray<FVector> polyPoints;
+	FQuat invQuat = quat.Inverse();
+	for (int i = 1; i < convexHull.Num(); ++i)
+	{
+		const FVector2D& localPt = convexHull[i];
+		FVector transformed = FPlane::PointPlaneProject(invQuat * FVector(localPt.X, localPt.Y, 0.0f), plane);
+		SnapPoint(transformed);
+		polyPoints.AddUnique(transformed);
+		
+	}
+	if (polyPoints.Num() < 3) { return false; }
+
+	// Emit
+	PolyBegin(1);
+	for (const FVector& point : polyPoints)
+	{
+		Polyi(Vertexv(point));
+	}
+	PolyEnd();
+	return true;
+}
+
+
+// chainHull_2D(): Andrew's monotone chain 2D convex hull algorithm
+//     Input:  P[] = an array of 2D points 
+//                  presorted by increasing x and y-coordinates
+//     Output: H[] = an array of the convex hull vertices (max is n)
+void UVBSPBrushBuilder::ChainHull2D(const TArray<FVector2D>& P, TArray<FVector2D>& H)
+{
+	// http://geomalgorithms.com/a10-_hull-1.html
+
+	const int n = P.Num();
+
+	// the output array H[] will be used as the stack
+	int    bot = 0, top = (-1);   // indices for bottom and top of the stack
+	int    i;                 // array scan index
+
+	// Get the indices of points with min x-coord and min|max y-coord
+	int minmin = 0, minmax;
+	float xmin = P[0].X;
+	for (i = 1; i < n; i++)
+	{
+		if (P[i].X != xmin) break;
+	}
+	minmax = i - 1;
+	if (minmax == n - 1) // degenerate case: all x-coords == xmin
+	{
+		H.Push(P[minmin]);
+		if (P[minmax].Y != P[minmin].Y) // a  nontrivial segment
+		{
+			H.Push(P[minmax]);
+		}
+		H.Push(P[minmin]);            // add polygon endpoint
+		return;
+	}
+
+	// Get the indices of points with max x-coord and min|max y-coord
+	int maxmin, maxmax = n - 1;
+	float xmax = P[n - 1].X;
+	for (i = n - 2; i >= 0; i--)
+	{
+		if (P[i].X != xmax) break;
+	}
+	maxmin = i + 1;
+
+	// Compute the lower hull on the stack H
+	H.Push(P[minmin]);      // push  minmin point onto stack
+	i = minmax;
+	while (++i <= maxmin)
+	{
+		// the lower line joins P[minmin]  with P[maxmin]
+		if (isLeft(P[minmin], P[maxmin], P[i]) >= 0 && i < maxmin)
+		{
+			continue;           // ignore P[i] above or on the lower line
+		}
+
+		while (top > 0)         // there are at least 2 points on the stack
+		{
+			// test if  P[i] is left of the line at the stack top
+			if (isLeft(H[top - 1], H[top], P[i]) > 0)
+			{
+				break;         // P[i] is a new hull  vertex
+			}
+			else
+			{
+				H.Pop();		// pop top point off  stack
+			}
+		}
+		H.Push(P[i]);        // push P[i] onto stack
+	}
+
+	// Next, compute the upper hull on the stack H above  the bottom hull
+	if (maxmax != maxmin)      // if  distinct xmax points
+	{
+		H.Push(P[maxmax]);  // push maxmax point onto stack
+	}
+	bot = top;                  // the bottom point of the upper hull stack
+	i = maxmin;
+	while (--i >= minmax)
+	{
+		// the upper line joins P[maxmax]  with P[minmax]
+		if (isLeft(P[maxmax], P[minmax], P[i]) >= 0 && i > minmax)
+		{
+			continue;           // ignore P[i] below or on the upper line
+		}
+
+		while (top > bot)     // at least 2 points on the upper stack
+		{
+			// test if  P[i] is left of the line at the stack top
+			if (isLeft(H[top - 1], H[top], P[i]) > 0)
+			{
+				break;         // P[i] is a new hull  vertex
+			}
+			else
+			{
+				H.Pop();         // pop top point off  stack
+			}
+		}
+		H.Push(P[i]);        // push P[i] onto stack
+	}
+	if (minmax != minmin)
+	{
+		H.Push(P[minmin]);  // push  joining endpoint onto stack
+	}
+}
+
+bool UVBSPBrushBuilder::ContainsPoint(const FVector& point, float threshold) const
+{
+	// The point must sit behind all planes to be considered inside the brush
+	for (const auto& plane : Planes)
+	{
+		// If the distance is negative, it sits behind the plane
+		const float dist = plane.PlaneDot(point);
+		if (dist > threshold) return false;
+	}
+	return true;
+}
+
+void UVBSPBrushBuilder::SnapPoint(FVector& point)
+{
+	point.X = FMath::RoundToFloat(point.X / snapThreshold) * snapThreshold;
+	point.Y = FMath::RoundToFloat(point.Y / snapThreshold) * snapThreshold;
+	point.Z = FMath::RoundToFloat(point.Z / snapThreshold) * snapThreshold;
+}
+
+FVector UVBSPBrushBuilder::SnapPoint(const FVector& point)
+{
+	FVector pointCp = point;
+	SnapPoint(pointCp);
+	return pointCp;
 }
 
 bool UVBSPBrushBuilder::Build(UWorld* InWorld, ABrush* InBrush)
@@ -387,7 +598,7 @@ bool UVBSPBrushBuilder::Build(UWorld* InWorld, ABrush* InBrush)
 	// TODO: Extra validation on planes? Check for unbound volume etc
 
 	BeginBrush(false, GroupName);
-	BuildVBSP(Planes);
+	BuildVBSP();
 	return EndBrush(InWorld, InBrush);
 }
 

@@ -7,19 +7,9 @@
 #include "Materials/MaterialInterface.h"
 #include "VBSPBrushBuilder.generated.h"
 
+DECLARE_LOG_CATEGORY_EXTERN(LogVBSPBrushBuilder, Log, All);
+
 class ABrush;
-
-USTRUCT()
-struct FVBSPBrushPlane
-{
-	GENERATED_BODY();
-
-	UPROPERTY(EditAnywhere)
-	FPlane Plane;
-
-	UPROPERTY(EditAnywhere)
-	UMaterialInterface* Material;
-};
 
 UCLASS(MinimalAPI, autoexpandcategories = BrushSettings, EditInlineNew, meta = (DisplayName = "VBSP"))
 class UVBSPBrushBuilder : public UBrushBuilder
@@ -32,7 +22,11 @@ public:
 
 	/** The planes that bound the brush volume. */
 	UPROPERTY(EditAnywhere, Category = BrushSettings)
-	TArray<FVBSPBrushPlane> Planes;
+	TArray<FPlane> Planes;
+
+	/** Offset applied to geometry. */
+	UPROPERTY(EditAnywhere, Category = BrushSettings)
+	FVector Offset;
 
 	UPROPERTY()
 	FName GroupName;
@@ -58,12 +52,30 @@ public:
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 	// ~ End UObject interface
 
+	FVector EvaluateGeometricCenter() const;
+
 private:
 
 	// @todo document
-	virtual void BuildVBSP(TArray<FVBSPBrushPlane> planes);
+	virtual void BuildVBSP();
 
-	static bool IntersectLines(const FVector& i1, const FVector& d1, const FVector& i2, const FVector& d2, FVector& out);
+	static const float snapThreshold;
+	static const float containsThreshold;
+	static const float lineParallelThreshold;
+
+	bool CommitPoly(const FPlane& plane, const TArray<FVector>& points);
+
+	bool ContainsPoint(const FVector& point, float threshold = containsThreshold) const;
+
+	static void SnapPoint(FVector& point);
+
+	static FVector SnapPoint(const FVector& point);
+
+	// chainHull_2D(): Andrew's monotone chain 2D convex hull algorithm
+	//     Input:  P[] = an array of 2D points 
+	//                  presorted by increasing x and y-coordinates
+	//     Output: H[] = an array of the convex hull vertices (max is n)
+	static void ChainHull2D(const TArray<FVector2D>& P, TArray<FVector2D>& H);
 };
 
 

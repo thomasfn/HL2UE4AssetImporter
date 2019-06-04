@@ -7,7 +7,9 @@
 #include "EditorActorFolders.h"
 #include "Engine/World.h"
 #include "Engine/Brush.h"
+#include "Engine/Polys.h"
 #include "Builders/EditorBrushBuilder.h"
+#include "Components/BrushComponent.h"
 #include "VBSPBrushBuilder.h"
 #endif
 
@@ -60,6 +62,7 @@ bool FBSPImporter::ImportBrushesToWorld(const Valve::BSPFile& bspFile, UWorld* w
 		GatherBrushes(bspFile, model.m_Headnode, brushIndices);
 		brushIndices.Sort();
 
+		int num = 0;
 		for (uint16 brushIndex : brushIndices)
 		{
 			if (i == 0)
@@ -67,6 +70,8 @@ bool FBSPImporter::ImportBrushesToWorld(const Valve::BSPFile& bspFile, UWorld* w
 				AActor* brushActor = ImportBrush(world, bspFile, brushIndex);
 				GEditor->SelectActor(brushActor, true, false, true, false);
 				folders.SetSelectedFolderPath(brushesFolder);
+				++num;
+				//if (num >= 100) break;
 			}
 			else
 			{
@@ -75,28 +80,51 @@ bool FBSPImporter::ImportBrushesToWorld(const Valve::BSPFile& bspFile, UWorld* w
 		}
 	}
 
+	//GEditor->csgRebuild(world);
+	GEditor->RebuildAlteredBSP();
+
 	return true;
 }
 
 AActor* FBSPImporter::ImportBrush(UWorld* world, const Valve::BSPFile& bspFile, uint16 brushIndex)
 {
 	const Valve::BSP::dbrush_t& brush = bspFile.m_Brushes[brushIndex];
+
+	// Create and initialise brush actor
 	ABrush* brushActor = world->SpawnActor<ABrush>(FVector::ZeroVector, FRotator::ZeroRotator);
 	brushActor->SetActorLabel(FString::Printf(TEXT("Brush_%d"), brushIndex));
+	brushActor->Brush = NewObject<UModel>(brushActor, NAME_None, RF_Transactional);
+	brushActor->Brush->Initialize(nullptr, true);
+	brushActor->Brush->Polys = NewObject<UPolys>(brushActor->Brush, NAME_None, RF_Transactional);
+	brushActor->GetBrushComponent()->Brush = brushActor->Brush;
+
+	// Create and initialise brush builder
 	UVBSPBrushBuilder* brushBuilder = NewObject<UVBSPBrushBuilder>(brushActor);
 	brushActor->BrushBuilder = brushBuilder;
 	
+	// Add all planes to the brush builder
 	for (uint32 i = 0, l = brush.m_Numsides; i < l; ++i)
 	{
 		const Valve::BSP::dbrushside_t& brushSide = bspFile.m_Brushsides[brush.m_Firstside + i];
 		const Valve::BSP::cplane_t& plane = bspFile.m_Planes[brushSide.m_Planenum];
 
-		FVBSPBrushPlane brushPlane;
-		brushPlane.Material = nullptr; // TODO: Resolve material
-		brushPlane.Plane = ValveToUnrealPlane(plane);
-		brushBuilder->Planes.Add(brushPlane);
+		brushBuilder->Planes.Add(ValveToUnrealPlane(plane));
 	}
 
+	// Evaluate the geometric center of the brush and transform all planes to it
+	FVector origin = brushBuilder->EvaluateGeometricCenter();
+	FTransform transform = FTransform::Identity;
+	transform.SetLocation(-origin);
+	FMatrix transformMtx = transform.ToMatrixNoScale();
+	for (uint32 i = 0, l = brush.m_Numsides; i < l; ++i)
+	{
+		brushBuilder->Planes[i] = brushBuilder->Planes[i].TransformBy(transformMtx);
+	}
+
+	// Relocate the brush
+	brushActor->SetActorLocation(origin);
+
+	// Build brush geometry
 	brushBuilder->Build(world, brushActor);
 
 	return brushActor;

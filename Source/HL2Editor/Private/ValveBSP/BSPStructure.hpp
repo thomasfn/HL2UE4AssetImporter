@@ -221,6 +221,15 @@ namespace Valve { namespace BSP {
         int32_t                       m_Texdata;      /// 0x44
     };///Size=0x48
 
+	class texdata_t
+	{
+	public:
+		Vector3	m_Reflectivity;				// 0x00
+		int	m_NameStringTableID;			// 0x0C
+		int	m_Width, m_Height;				// 0x10
+		int	m_View_width, m_View_height;	// 0x18
+	};///Size=0x2C
+
     class VPlane
     {
     public:

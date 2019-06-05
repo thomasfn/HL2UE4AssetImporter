@@ -48,6 +48,7 @@ namespace Valve {
                << "> Nodes: "       << bsp_file.m_Nodes.size()        << "\n"
                << "> Surfaces: "    << bsp_file.m_Surfaces.size()     << "\n"
                << "> Texinfos: "    << bsp_file.m_Texinfos.size()     << "\n"
+			   << "> Texdata: "		<< bsp_file.m_Texdatas.size()     << "\n"
                << "> Brushes: "     << bsp_file.m_Brushes.size()      << "\n"
                << "> Brushsides: "  << bsp_file.m_Brushsides.size()   << "\n"
                << "> Leaffaces: "   << bsp_file.m_Leaffaces.size()    << "\n"
@@ -132,6 +133,7 @@ namespace Valve {
         std::vector< BSP::snode_t >      m_Nodes;
         std::vector< BSP::dface_t >      m_Surfaces;
         std::vector< BSP::texinfo_t >    m_Texinfos;
+		std::vector< BSP::texdata_t >    m_Texdatas;
         std::vector< BSP::dbrush_t >     m_Brushes;
         std::vector< BSP::dbrushside_t > m_Brushsides;
 		std::vector< BSP::dmodel_t >	 m_Models;

@@ -49,9 +49,9 @@ private:
 
 	AStaticMeshActor* RenderFacesToActor(const Valve::BSPFile& bspFile, UWorld* world, const TArray<uint16>& faceIndices);
 
-	void RenderNodeToMesh(const Valve::BSPFile& bspFile, uint32 nodeIndex, FMeshDescription& meshDesc, TArray<FName>& materials, TSet<int16>* clusterFilter = nullptr);
+	void RenderNodeToMesh(const Valve::BSPFile& bspFile, uint32 nodeIndex, FMeshDescription& meshDesc, TSet<int16>* clusterFilter = nullptr);
 
-	void RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, TArray<FName>& materials);
+	void RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc);
 
 	FString ParseMaterialName(const char* bspMaterialName);
 

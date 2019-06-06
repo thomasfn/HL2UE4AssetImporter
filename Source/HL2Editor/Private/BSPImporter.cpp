@@ -17,6 +17,8 @@
 #include "VBSPBrushBuilder.h"
 #include "MeshAttributes.h"
 #include "Internationalization/Regex.h"
+#include "MeshAttributes.h"
+#include "MeshSplitter.h"
 #endif
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
@@ -227,21 +229,23 @@ AStaticMeshActor* FBSPImporter::RenderFacesToActor(const Valve::BSPFile& bspFile
 	settings.bRecomputeNormals = false;
 	settings.bRecomputeTangents = false;
 	settings.bGenerateLightmapUVs = true;
-	settings.SrcLightmapIndex = 1;
-	settings.DstLightmapIndex = 2;
+	settings.SrcLightmapIndex = 0;
+	settings.DstLightmapIndex = 1;
 	settings.bRemoveDegenerates = false;
 	settings.bUseFullPrecisionUVs = true;
-	settings.MinLightmapResolution = 1024;
-	staticMesh->LightMapCoordinateIndex = 2;
-	staticMesh->LightMapResolution = 1024;
+	settings.MinLightmapResolution = 128;
+	staticMesh->LightMapCoordinateIndex = 1;
+	staticMesh->LightMapResolution = 128;
 	FMeshDescription* worldModelMesh = staticMesh->CreateMeshDescription(0);
 	staticMesh->RegisterMeshAttributes(*worldModelMesh);
-	TArray<FName> materials;
-	RenderFacesToMesh(bspFile, faceIndices, *worldModelMesh, materials);
-	for (const FName material : materials)
+	RenderFacesToMesh(bspFile, faceIndices, *worldModelMesh);
+	const auto& importedMaterialSlotNameAttr = worldModelMesh->PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
+	for (const FPolygonGroupID& polyGroupID : worldModelMesh->PolygonGroups().GetElementIDs())
 	{
+		FName material = importedMaterialSlotNameAttr[polyGroupID];
 		const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
 		staticMesh->SectionInfoMap.Set(0, meshSlot, FMeshSectionInfo(meshSlot));
+		staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Editor::Get().TryResolveHL2Material(material.ToString())));
 	}
 	staticMesh->CommitMeshDescription(0);
 	staticMesh->Build();
@@ -255,11 +259,6 @@ AStaticMeshActor* FBSPImporter::RenderFacesToActor(const Valve::BSPFile& bspFile
 	FLightmassPrimitiveSettings& lightmassSettings = staticMeshComponent->LightmassSettings;
 	lightmassSettings.bUseEmissiveForStaticLighting = true;
 	staticMeshComponent->bCastShadowAsTwoSided = true;
-
-	for (const FName material : materials)
-	{
-		staticMeshComponent->SetMaterialByName(material, Cast<UMaterialInterface>(IHL2Editor::Get().TryResolveHL2Material(material.ToString())));
-	}
 
 	staticMeshActor->PostEditChange();
 	return staticMeshActor;
@@ -407,15 +406,15 @@ FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 	return FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
 }
 
-void FBSPImporter::RenderNodeToMesh(const Valve::BSPFile& bspFile, uint32 nodeIndex, FMeshDescription& meshDesc, TArray<FName>& materials, TSet<int16>* clusterFilter)
+void FBSPImporter::RenderNodeToMesh(const Valve::BSPFile& bspFile, uint32 nodeIndex, FMeshDescription& meshDesc, TSet<int16>* clusterFilter)
 {
 	// Gather all faces to render out
 	TArray<uint16> faceIndices;
 	GatherFaces(bspFile, nodeIndex, faceIndices, clusterFilter);
-	RenderFacesToMesh(bspFile, faceIndices, meshDesc, materials);
+	RenderFacesToMesh(bspFile, faceIndices, meshDesc);
 }
 
-void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, TArray<FName>& materials)
+void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc)
 {
 	TMap<uint32, FVertexID> valveToUnrealVertexMap;
 	TMap<FName, FPolygonGroupID> materialToPolyGroupMap;
@@ -426,7 +425,7 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 
 	TAttributesSet<FVertexInstanceID>& vertexInstanceAttr = meshDesc.VertexInstanceAttributes();
 	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstanceAttrUV = vertexInstanceAttr.GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
-	vertexInstanceAttrUV.SetNumIndices(2);
+	// vertexInstanceAttrUV.SetNumIndices(2);
 
 	TAttributesSet<FEdgeID>& edgeAttr = meshDesc.EdgeAttributes();
 	TMeshAttributesRef<FEdgeID, bool> edgeAttrIsHard = edgeAttr.GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
@@ -457,7 +456,6 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 			polyGroup = meshDesc.CreatePolygonGroup();
 			materialToPolyGroupMap.Add(material, polyGroup);
 			polyGroupMaterial[polyGroup] = material;
-			materials.Add(material);
 		}
 		else
 		{
@@ -508,16 +506,16 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 					(FVector::DotProduct(texV_XYZ, pos) + texV_W) / bspTexData.m_Height
 				));
 			}
-			{
-				const FVector texU_XYZ = FVector(bspTexInfo.m_LightmapVecs[0][0], bspTexInfo.m_LightmapVecs[0][1], bspTexInfo.m_LightmapVecs[0][2]);
-				const float texU_W = bspTexInfo.m_LightmapVecs[0][3];
-				const FVector texV_XYZ = FVector(bspTexInfo.m_LightmapVecs[1][0], bspTexInfo.m_LightmapVecs[1][1], bspTexInfo.m_LightmapVecs[1][2]);
-				const float texV_W = bspTexInfo.m_LightmapVecs[1][3];
-				vertexInstanceAttrUV.Set(vertInst, 1, FVector2D(
-					((FVector::DotProduct(texU_XYZ, pos) + texU_W)/* - bspFace.m_LightmapTextureMinsInLuxels[0]*/) / (bspFace.m_LightmapTextureSizeInLuxels[0] + 1),
-					((FVector::DotProduct(texV_XYZ, pos) + texV_W)/* - bspFace.m_LightmapTextureMinsInLuxels[1]*/) / (bspFace.m_LightmapTextureSizeInLuxels[1] + 1)
-				));
-			}
+			//{
+			//	const FVector texU_XYZ = FVector(bspTexInfo.m_LightmapVecs[0][0], bspTexInfo.m_LightmapVecs[0][1], bspTexInfo.m_LightmapVecs[0][2]);
+			//	const float texU_W = bspTexInfo.m_LightmapVecs[0][3];
+			//	const FVector texV_XYZ = FVector(bspTexInfo.m_LightmapVecs[1][0], bspTexInfo.m_LightmapVecs[1][1], bspTexInfo.m_LightmapVecs[1][2]);
+			//	const float texV_W = bspTexInfo.m_LightmapVecs[1][3];
+			//	vertexInstanceAttrUV.Set(vertInst, 1, FVector2D(
+			//		((FVector::DotProduct(texU_XYZ, pos) + texU_W)/* - bspFace.m_LightmapTextureMinsInLuxels[0]*/) / (bspFace.m_LightmapTextureSizeInLuxels[0] + 1),
+			//		((FVector::DotProduct(texV_XYZ, pos) + texV_W)/* - bspFace.m_LightmapTextureMinsInLuxels[1]*/) / (bspFace.m_LightmapTextureSizeInLuxels[1] + 1)
+			//	));
+			//}
 
 			// Push
 			polyVerts.Add(vertInst);
@@ -528,7 +526,6 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 		{
 			FPolygonID poly = meshDesc.CreatePolygon(polyGroup, polyVerts);
 			FMeshPolygon& polygon = meshDesc.GetPolygon(poly);
-			meshDesc.ComputePolygonTriangulation(poly, polygon.Triangles);
 			polyToValveFaceMap.Add(poly, faceIndex);
 		}
 	}
@@ -560,6 +557,9 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 
 	// Compute tangents and normals
 	meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
+
+	// Triangulate
+	meshDesc.TriangulateMesh();
 }
 
 FString FBSPImporter::ParseMaterialName(const char* bspMaterialName)

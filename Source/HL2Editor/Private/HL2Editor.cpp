@@ -229,7 +229,7 @@ FName HL2EditorImpl::HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) 
 	// e.g. "Brick/brickfloor001a" -> "/Content/hl2/materials/Brick/brickfloor001a_vmt.brickfloor001a_vmt"
 	FString tmp = hl2MaterialPath;
 	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2TextureBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
+	return FName(*(hl2MaterialBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
 }
 
 FName HL2EditorImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool translucent) const

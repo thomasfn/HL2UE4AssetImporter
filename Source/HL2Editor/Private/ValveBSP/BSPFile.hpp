@@ -134,6 +134,8 @@ namespace Valve {
         std::vector< BSP::dface_t >      m_Surfaces;
         std::vector< BSP::texinfo_t >    m_Texinfos;
 		std::vector< BSP::texdata_t >    m_Texdatas;
+		std::vector< int32_t >           m_TexdataStringTable;
+		std::vector< char >				 m_TexdataStringData;
         std::vector< BSP::dbrush_t >     m_Brushes;
         std::vector< BSP::dbrushside_t > m_Brushsides;
 		std::vector< BSP::dmodel_t >	 m_Models;

@@ -47,6 +47,8 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
         parse_lump_data( bsp_binary, LUMP_FACES, m_Surfaces );
         parse_lump_data( bsp_binary, LUMP_TEXINFO, m_Texinfos );
 		parse_lump_data( bsp_binary, LUMP_TEXDATA, m_Texdatas );
+		parse_lump_data( bsp_binary, LUMP_TEXDATA_STRING_TABLE, m_TexdataStringTable );
+		parse_lump_data( bsp_binary, LUMP_TEXDATA_STRING_DATA, m_TexdataStringData );
         parse_lump_data( bsp_binary, LUMP_BRUSHES, m_Brushes );
         parse_lump_data( bsp_binary, LUMP_BRUSHSIDES, m_Brushsides );
 		parse_lump_data( bsp_binary, LUMP_MODELS, m_Models );

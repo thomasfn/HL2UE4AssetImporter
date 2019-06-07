@@ -37,6 +37,8 @@ private:
 
 	void GatherFaces(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<uint16>& out, TSet<int16>* clusterFilter = nullptr);
 
+	void GatherDisplacements(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, TArray<uint16>& out);
+
 	void GatherClusters(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<int16>& out);
 
 	FPlane ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
@@ -45,7 +47,9 @@ private:
 
 	AStaticMeshActor* RenderMeshToActor(UWorld* world, const FMeshDescription& meshDesc);
 
-	void RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc);
+	void RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter);
+
+	void RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& displacements, FMeshDescription& meshDesc);
 
 	FString ParseMaterialName(const char* bspMaterialName);
 

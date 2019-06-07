@@ -230,6 +230,68 @@ namespace Valve { namespace BSP {
 		int	m_View_width, m_View_height;	// 0x18
 	};///Size=0x2C
 
+	struct CDispSubNeighbor
+	{
+	public:
+		unsigned short		m_iNeighbor;		// This indexes into ddispinfos.
+												// 0xFFFF if there is no neighbor here.
+
+		unsigned char		m_NeighborOrientation;		// (CCW) rotation of the neighbor wrt this displacement.
+
+		// These use the NeighborSpan type.
+		unsigned char		m_Span;						// Where the neighbor fits onto this side of our displacement.
+		unsigned char		m_NeighborSpan;				// Where we fit onto our neighbor.
+	};
+
+
+	// NOTE: see the section above titled "displacement neighbor rules".
+	class CDispNeighbor
+	{
+	public:
+		// Note: if there is a neighbor that fills the whole side (CORNER_TO_CORNER),
+		//       then it will always be in CDispNeighbor::m_Neighbors[0]
+		CDispSubNeighbor	m_SubNeighbors[2];
+	};
+
+	class CDispCornerNeighbors
+	{
+	public:
+		unsigned short	m_Neighbors[MAX_DISP_CORNER_NEIGHBORS];	// indices of neighbors.
+		unsigned char	m_nNeighbors;
+	};
+
+	class ddispinfo_t
+	{
+	public:
+		Vector3			m_StartPosition;		// start position used for orientation
+		int			m_DispVertStart;		// Index into LUMP_DISP_VERTS.
+		int			m_DispTriStart;		// Index into LUMP_DISP_TRIS.
+		int			m_Power;			// power - indicates size of surface (2^power	1)
+		int			m_MinTess;		// minimum tesselation allowed
+		float			m_SmoothingAngle;		// lighting smoothing angle
+		int			m_Contents;		// surface contents
+		unsigned short		m_MapFace;		// Which map face this displacement comes from.
+		int			m_LightmapAlphaStart;	// Index into ddisplightmapalpha.
+		int			m_LightmapSamplePositionStart;	// Index into LUMP_DISP_LIGHTMAP_SAMPLE_POSITIONS.
+		CDispNeighbor		m_EdgeNeighbors[4];	// Indexed by NEIGHBOREDGE_ defines.
+		CDispCornerNeighbors	m_CornerNeighbors[4];	// Indexed by CORNER_ defines.
+		unsigned int		m_AllowedVerts[10];	// active verticies
+	};
+
+	class ddispvert_t
+	{
+	public:
+		Vector3	m_Vec;	// Vector field defining displacement volume.
+		float	m_Dist;	// Displacement distances.
+		float	m_Alpha;	// "per vertex" alpha values.
+	};
+
+	class ddisptri_t
+	{
+	public:
+		unsigned short m_Tags;	// Displacement triangle tags.
+	};
+
     class VPlane
     {
     public:

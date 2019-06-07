@@ -53,6 +53,7 @@ namespace Valve {
                << "> Brushsides: "  << bsp_file.m_Brushsides.size()   << "\n"
                << "> Leaffaces: "   << bsp_file.m_Leaffaces.size()    << "\n"
                << "> Leafbrushes: " << bsp_file.m_Leafbrushes.size()  << "\n"
+			   << "> Dispinfos: "   << bsp_file.m_Dispinfos.size()    << "\n"
                << "> Polygons: "    << bsp_file.m_Polygons.size();
 
             return os;
@@ -132,6 +133,7 @@ namespace Valve {
         std::vector< BSP::dleaf_t >      m_Leaves;
         std::vector< BSP::snode_t >      m_Nodes;
         std::vector< BSP::dface_t >      m_Surfaces;
+		std::vector< BSP::dface_t >      m_OrigSurfaces;
         std::vector< BSP::texinfo_t >    m_Texinfos;
 		std::vector< BSP::texdata_t >    m_Texdatas;
 		std::vector< int32_t >           m_TexdataStringTable;
@@ -141,6 +143,9 @@ namespace Valve {
 		std::vector< BSP::dmodel_t >	 m_Models;
         std::vector< uint16_t >          m_Leaffaces;
         std::vector< uint16_t >          m_Leafbrushes;
+		std::vector< BSP::ddispinfo_t >  m_Dispinfos;
+		std::vector< BSP::ddispvert_t >  m_Dispverts;
+		std::vector< BSP::ddisptri_t >   m_Disptris;
         std::vector< BSP::Polygon >      m_Polygons;
     };
 

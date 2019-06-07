@@ -133,57 +133,71 @@ bool FBSPImporter::ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* 
 
 void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* world, TArray<AStaticMeshActor*>& out, uint32 nodeIndex)
 {
-	const static bool useCells = true;
 	const static float cellSize = 1024.0f;
 
-	// Gather all faces from tree
+	// Gather all faces and displacements from tree
 	TArray<uint16> faces;
 	GatherFaces(bspFile, nodeIndex, faces);
+	TArray<uint16> displacements;
+	GatherDisplacements(bspFile, faces, displacements);
 
-	// Render whole tree to a single mesh
-	FMeshDescription meshDesc;
-	UStaticMesh::RegisterMeshAttributes(meshDesc);
-	RenderFacesToMesh(bspFile, faces, meshDesc);
-
-	// Early out if we're not using cells
-	if (!useCells)
 	{
-		out.Add(RenderMeshToActor(world, meshDesc));
-		return;
-	}
+		// Render whole tree to a single mesh
+		FMeshDescription meshDesc;
+		UStaticMesh::RegisterMeshAttributes(meshDesc);
+		RenderFacesToMesh(bspFile, faces, meshDesc, false);
+		RenderDisplacementsToMesh(bspFile, displacements, meshDesc);
+		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
 
-	// Determine cell mins and maxs
-	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[nodeIndex];
-	const int cellMinX = FMath::FloorToInt(bspNode.m_Mins[0] / cellSize);
-	const int cellMaxX = FMath::CeilToInt(bspNode.m_Maxs[0] / cellSize);
-	const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
-	const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
+		// Determine cell mins and maxs
+		const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[nodeIndex];
+		const int cellMinX = FMath::FloorToInt(bspNode.m_Mins[0] / cellSize);
+		const int cellMaxX = FMath::CeilToInt(bspNode.m_Maxs[0] / cellSize);
+		const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
+		const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
 
-	// Iterate each cell
-	for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
-	{
-		for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
+		// Iterate each cell
+		for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
 		{
-			// Establish bounding planes for cell
-			TArray<FPlane> boundingPlanes;
-			boundingPlanes.Add(FPlane(FVector(cellX * cellSize), FVector::ForwardVector));
-			boundingPlanes.Add(FPlane(FVector((cellX + 1) * cellSize), FVector::BackwardVector));
-			boundingPlanes.Add(FPlane(FVector(cellY * cellSize), FVector::RightVector));
-			boundingPlanes.Add(FPlane(FVector((cellY + 1) * cellSize), FVector::LeftVector));
-
-			// Clip the mesh by the planes into a new one
-			FMeshDescription cellMeshDesc = meshDesc;
-			FMeshSplitter::Clip(cellMeshDesc, boundingPlanes);
-
-			// Check if it has anything
-			if (cellMeshDesc.Polygons().Num() > 0)
+			for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
 			{
-				// Create a static mesh for it
-				AStaticMeshActor* staticMeshActor = RenderMeshToActor(world, cellMeshDesc);
-				staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
-				out.Add(staticMeshActor);
+				// Establish bounding planes for cell
+				TArray<FPlane> boundingPlanes;
+				boundingPlanes.Add(FPlane(FVector(cellX * cellSize), FVector::ForwardVector));
+				boundingPlanes.Add(FPlane(FVector((cellX + 1) * cellSize), FVector::BackwardVector));
+				boundingPlanes.Add(FPlane(FVector(cellY * cellSize), FVector::RightVector));
+				boundingPlanes.Add(FPlane(FVector((cellY + 1) * cellSize), FVector::LeftVector));
+
+				// Clip the mesh by the planes into a new one
+				FMeshDescription cellMeshDesc = meshDesc;
+				FMeshSplitter::Clip(cellMeshDesc, boundingPlanes);
+
+				// Check if it has anything
+				if (cellMeshDesc.Polygons().Num() > 0)
+				{
+					// Create a static mesh for it
+					AStaticMeshActor* staticMeshActor = RenderMeshToActor(world, cellMeshDesc);
+					staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
+					out.Add(staticMeshActor);
+				}
 			}
 		}
+	}
+
+	{
+		// Render skybox to a single mesh
+		FMeshDescription meshDesc;
+		UStaticMesh::RegisterMeshAttributes(meshDesc);
+		RenderFacesToMesh(bspFile, faces, meshDesc, true);
+		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
+		meshDesc.TriangulateMesh();
+
+		// Create actor for it
+		AStaticMeshActor* staticMeshActor = RenderMeshToActor(world, meshDesc);
+		staticMeshActor->SetActorLabel(TEXT("Skybox"));
+		staticMeshActor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+		staticMeshActor->GetStaticMeshComponent()->CastShadow = false;
+		out.Add(staticMeshActor);
 	}
 }
 
@@ -337,6 +351,18 @@ void FBSPImporter::GatherFaces(const Valve::BSPFile& bspFile, uint32 nodeIndex, 
 	}
 }
 
+void FBSPImporter::GatherDisplacements(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, TArray<uint16>& out)
+{
+	for (uint16 dispIndex = 0; dispIndex < (uint16)bspFile.m_Dispinfos.size(); ++dispIndex)
+	{
+		//const Valve::BSP::ddispinfo_t& bspDispInfo = bspFile.m_Dispinfos[dispIndex];
+		//if (faceIndices.Contains(bspDispInfo.m_MapFace))
+		{
+			out.Add(dispIndex);
+		}
+	}
+}
+
 void FBSPImporter::GatherClusters(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<int16>& out)
 {
 	const Valve::BSP::snode_t& node = bspFile.m_Nodes[nodeIndex];
@@ -371,7 +397,7 @@ FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 	return FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
 }
 
-void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc)
+void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter)
 {
 	TMap<uint32, FVertexID> valveToUnrealVertexMap;
 	TMap<FName, FPolygonGroupID> materialToPolyGroupMap;
@@ -382,6 +408,7 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 
 	TAttributesSet<FVertexInstanceID>& vertexInstanceAttr = meshDesc.VertexInstanceAttributes();
 	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstanceAttrUV = vertexInstanceAttr.GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
+	TMeshAttributesRef<FVertexInstanceID, FVector4> vertexInstanceAttrCol = vertexInstanceAttr.GetAttributesRef<FVector4>(MeshAttribute::VertexInstance::Color);
 	// vertexInstanceAttrUV.SetNumIndices(2);
 
 	TAttributesSet<FEdgeID>& edgeAttr = meshDesc.EdgeAttributes();
@@ -402,8 +429,9 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 		const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
 		const char* bspMaterialName = &bspFile.m_TexdataStringData[0] + bspFile.m_TexdataStringTable[bspTexData.m_NameStringTableID];
 		FString parsedMaterialName = ParseMaterialName(bspMaterialName);
-		if (parsedMaterialName.Contains(TEXT("tools/"), ESearchCase::IgnoreCase)) { continue; }
-		if (parsedMaterialName.Contains(TEXT("tools\\"), ESearchCase::IgnoreCase)) { continue; }
+
+		const bool isSkybox = parsedMaterialName.Equals(TEXT("tools/toolsskybox"), ESearchCase::IgnoreCase) || parsedMaterialName.Equals(TEXT("tools/toolsskybox2d"), ESearchCase::IgnoreCase);
+		if (isSkybox != skyboxFilter) { continue; }
 		FName material(*parsedMaterialName);
 
 		// Create polygroup if needed (we make one per material/texdata)
@@ -435,30 +463,30 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 			bspVerts.Add(vertIndex);
 
 			// Create vertices if needed
-			FVertexID vert;
+			FVertexID vertID;
 			if (!valveToUnrealVertexMap.Contains(vertIndex))
 			{
-				vert = meshDesc.CreateVertex();
-				valveToUnrealVertexMap.Add(vertIndex, vert);
+				vertID = meshDesc.CreateVertex();
+				valveToUnrealVertexMap.Add(vertIndex, vertID);
 				const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
-				vertexAttrPosition[vert] = FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
+				vertexAttrPosition[vertID] = FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
 			}
 			else
 			{
-				vert = valveToUnrealVertexMap[vertIndex];
+				vertID = valveToUnrealVertexMap[vertIndex];
 			}
 
 			// Create vertex instance
-			FVertexInstanceID vertInst = meshDesc.CreateVertexInstance(vert);
+			FVertexInstanceID vertInstID = meshDesc.CreateVertexInstance(vertID);
 
 			// Calculate texture coords
-			FVector pos = vertexAttrPosition[vert];
+			FVector pos = vertexAttrPosition[vertID];
 			{
 				const FVector texU_XYZ = FVector(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2]);
 				const float texU_W = bspTexInfo.m_TextureVecs[0][3];
 				const FVector texV_XYZ = FVector(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2]);
 				const float texV_W = bspTexInfo.m_TextureVecs[1][3];
-				vertexInstanceAttrUV.Set(vertInst, 0, FVector2D(
+				vertexInstanceAttrUV.Set(vertInstID, 0, FVector2D(
 					(FVector::DotProduct(texU_XYZ, pos) + texU_W) / bspTexData.m_Width,
 					(FVector::DotProduct(texV_XYZ, pos) + texV_W) / bspTexData.m_Height
 				));
@@ -474,8 +502,11 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 			//	));
 			//}
 
+			// Default color
+			vertexInstanceAttrCol[vertInstID] = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+
 			// Push
-			polyVerts.Add(vertInst);
+			polyVerts.Add(vertInstID);
 		}
 
 		// Create poly
@@ -511,12 +542,163 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 			}
 		}
 	}
+}
 
-	// Compute tangents and normals
-	meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
+void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& displacements, FMeshDescription& meshDesc)
+{
+	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
+	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
 
-	// Triangulate
-	meshDesc.TriangulateMesh();
+	TAttributesSet<FVertexInstanceID>& vertexInstanceAttr = meshDesc.VertexInstanceAttributes();
+	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstanceAttrUV = vertexInstanceAttr.GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
+	TMeshAttributesRef<FVertexInstanceID, FVector4> vertexInstanceAttrCol = vertexInstanceAttr.GetAttributesRef<FVector4>(MeshAttribute::VertexInstance::Color);
+
+	TAttributesSet<FEdgeID>& edgeAttr = meshDesc.EdgeAttributes();
+	TMeshAttributesRef<FEdgeID, bool> edgeAttrIsHard = edgeAttr.GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
+	TMeshAttributesRef<FEdgeID, float> edgeCreaseSharpness = edgeAttr.GetAttributesRef<float>(MeshAttribute::Edge::CreaseSharpness);
+
+	TAttributesSet<FPolygonGroupID>& polyGroupAttr = meshDesc.PolygonGroupAttributes();
+	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterial = polyGroupAttr.GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
+
+	for (const uint16 dispIndex : displacements)
+	{
+		const Valve::BSP::ddispinfo_t& bspDispinfo = bspFile.m_Dispinfos[dispIndex];
+		const Valve::BSP::dface_t& bspFace = bspFile.m_Surfaces[bspDispinfo.m_MapFace];
+		const int dispRes = 1 << bspDispinfo.m_Power;
+		const FVector dispStartPos = FVector(bspDispinfo.m_StartPosition(0, 0), bspDispinfo.m_StartPosition(0, 1), bspDispinfo.m_StartPosition(0, 2));
+
+		const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspFace.m_Texinfo];
+		const uint16 texDataIndex = (uint16)bspTexInfo.m_Texdata;
+		const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
+		const char* bspMaterialName = &bspFile.m_TexdataStringData[0] + bspFile.m_TexdataStringTable[bspTexData.m_NameStringTableID];
+		FString parsedMaterialName = ParseMaterialName(bspMaterialName);
+		FName material(*parsedMaterialName);
+
+		// Gather face verts
+		TArray<FVector> faceVerts;
+		for (uint16 i = 0; i < bspFace.m_Numedges; ++i)
+		{
+			const int32 surfEdge = bspFile.m_Surfedges[bspFace.m_Firstedge + i];
+			const uint32 edgeIndex = (uint32)(surfEdge < 0 ? -surfEdge : surfEdge);
+
+			const Valve::BSP::dedge_t& bspEdge = bspFile.m_Edges[edgeIndex];
+			const uint16 vertIndex = surfEdge < 0 ? bspEdge.m_V[1] : bspEdge.m_V[0];
+
+			const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
+
+			faceVerts.Add(FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2)));
+		}
+
+		// Check that it has 4 verts (we can't map a displacement to anything other than a quad)
+		if (faceVerts.Num() != 4)
+		{
+			UE_LOG(LogHL2BSPImporter, Warning, TEXT("Displacement by index $d is mapped to a non-quad face $d (with $d verts)"), dispIndex, bspDispinfo.m_MapFace, faceVerts.Num());
+			continue;
+		}
+
+		// Find the face vert nearest the given starting position
+		int startFaceVertIndex = 0;
+		{
+			FVector bestFaceVert = faceVerts[startFaceVertIndex];
+			float bestFaceVertDist = FVector::DistSquared(bestFaceVert, dispStartPos);
+			for (int i = startFaceVertIndex + 1; i < faceVerts.Num(); ++i)
+			{
+				const FVector faceVert = faceVerts[i];
+				const float faceVertDist = FVector::DistSquared(faceVert, dispStartPos);
+				if (faceVertDist < bestFaceVertDist)
+				{
+					bestFaceVert = faceVert;
+					bestFaceVertDist = faceVertDist;
+					startFaceVertIndex = i;
+				}
+			}
+		}
+
+		// Determine direction vectors
+		FVector dU, dV;
+		{
+			const FVector startPoint = faceVerts[startFaceVertIndex];
+			const FVector nextPoint = faceVerts[(startFaceVertIndex + 1) % faceVerts.Num()];
+			const FVector prevPoint = faceVerts[startFaceVertIndex == 0 ? faceVerts.Num() - 1 : startFaceVertIndex - 1];
+			dU = nextPoint - startPoint;
+			dV = prevPoint - startPoint;
+		}
+
+		// Create all verts
+		TArray<FVertexInstanceID> dispVertices;
+		dispVertices.AddDefaulted((dispRes + 1) * (dispRes + 1));
+		for (int x = 0; x <= dispRes; ++x)
+		{
+			const float dX = x / (float)dispRes;
+			for (int y = 0; y <= dispRes; ++y)
+			{
+				const float dY = y / (float)dispRes;
+
+				const int idx = x * (dispRes + 1) + y;
+				const Valve::BSP::ddispvert_t& bspVert = bspFile.m_Dispverts[bspDispinfo.m_DispVertStart + idx];
+				const FVector bspVertVec = FVector(bspVert.m_Vec(0, 0), bspVert.m_Vec(0, 1), bspVert.m_Vec(0, 2));
+
+				const FVector basePos = dispStartPos + dU * dX + dV * dY;
+				const FVector dispPos = basePos + bspVertVec * bspVert.m_Dist;
+
+				FVertexID meshVertID = meshDesc.CreateVertex();
+				vertexAttrPosition[meshVertID] = dispPos;
+
+				FVertexInstanceID meshVertInstID = meshDesc.CreateVertexInstance(meshVertID);
+
+				const FVector texU_XYZ = FVector(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2]);
+				const float texU_W = bspTexInfo.m_TextureVecs[0][3];
+				const FVector texV_XYZ = FVector(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2]);
+				const float texV_W = bspTexInfo.m_TextureVecs[1][3];
+				vertexInstanceAttrUV.Set(meshVertInstID, 0, FVector2D(
+					(FVector::DotProduct(texU_XYZ, basePos) + texU_W) / bspTexData.m_Width,
+					(FVector::DotProduct(texV_XYZ, basePos) + texV_W) / bspTexData.m_Height
+				));
+
+				FVector4 col;
+				col.X = FMath::Clamp(bspVert.m_Alpha / 255.0f, 0.0f, 1.0f);
+				col.Y = 1.0f - col.X;
+				col.Z = 0.0f;
+				col.W = 1.0f;
+				vertexInstanceAttrCol[meshVertInstID] = col;
+
+				dispVertices[idx] = meshVertInstID;
+			}
+		}
+
+		// Create a unique poly group for us
+		const FPolygonGroupID polyGroupID = meshDesc.CreatePolygonGroup();
+		polyGroupMaterial[polyGroupID] = material;
+
+		// Create all polys
+		TArray<FVertexInstanceID> polyPoints;
+		TArray<FEdgeID> polyEdgeIDs;
+		for (int x = 0; x < dispRes; ++x)
+		{
+			for (int y = 0; y < dispRes; ++y)
+			{
+				const int idxA = x * (dispRes + 1) + y;
+				const int idxB = (x + 1) * (dispRes + 1) + y;
+				const int idxC = (x + 1) * (dispRes + 1) + (y + 1);
+				const int idxD = x * (dispRes + 1) + (y + 1);
+
+				polyPoints.Empty(4);
+				polyPoints.Add(dispVertices[idxA]);
+				polyPoints.Add(dispVertices[idxB]);
+				polyPoints.Add(dispVertices[idxC]);
+				polyPoints.Add(dispVertices[idxD]);
+
+				const FPolygonID& polyID = meshDesc.CreatePolygon(polyGroupID, polyPoints);
+				polyEdgeIDs.Empty(4);
+				meshDesc.GetPolygonEdges(polyID, polyEdgeIDs);
+				for (const FEdgeID& edgeID : polyEdgeIDs)
+				{
+					edgeAttrIsHard[edgeID] = false;
+					edgeCreaseSharpness[edgeID] = 0.0f;
+				}
+			}
+		}
+	}
 }
 
 FString FBSPImporter::ParseMaterialName(const char* bspMaterialName)
@@ -525,6 +707,7 @@ FString FBSPImporter::ParseMaterialName(const char* bspMaterialName)
 	// But it might also be like "maps/<mapname>/brick/brick06c_x_y_z" which is not fine
 	// We need to identify the latter and convert it to the former
 	FString bspMaterialNameAsStr(bspMaterialName);
+	bspMaterialNameAsStr.ReplaceCharInline('\\', '/');
 	const static FRegexPattern patternCubemappedMaterial(TEXT("^maps[\\\\\\/]\\w+[\\\\\\/](.+)(?:_-?(?:\\d*\\.)?\\d+){3}$"));
 	FRegexMatcher matchCubemappedMaterial(patternCubemappedMaterial, bspMaterialNameAsStr);
 	if (matchCubemappedMaterial.FindNext())

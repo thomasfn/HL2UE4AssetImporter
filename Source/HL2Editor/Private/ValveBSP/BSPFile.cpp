@@ -45,6 +45,7 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
         }
 
         parse_lump_data( bsp_binary, LUMP_FACES, m_Surfaces );
+		parse_lump_data( bsp_binary, LUMP_ORIGINALFACES, m_OrigSurfaces );
         parse_lump_data( bsp_binary, LUMP_TEXINFO, m_Texinfos );
 		parse_lump_data( bsp_binary, LUMP_TEXDATA, m_Texdatas );
 		parse_lump_data( bsp_binary, LUMP_TEXDATA_STRING_TABLE, m_TexdataStringTable );
@@ -57,6 +58,10 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
             || !parse_polygons() ) {
             return false;
         }
+
+		parse_lump_data(bsp_binary, LUMP_DISPINFO, m_Dispinfos);
+		parse_lump_data(bsp_binary, LUMP_DISP_VERTS, m_Dispverts);
+		parse_lump_data(bsp_binary, LUMP_DISP_TRIS, m_Disptris);
     }
     catch( const std::exception& e ) {
         print_exception( "parse", e );

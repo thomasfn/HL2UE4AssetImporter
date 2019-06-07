@@ -43,9 +43,10 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 
 	// Special case: identify translucency
 	const bool translucent = GetVMTKeyAsBool(groupNode, "$translucent");
+	const bool alphatest = GetVMTKeyAsBool(groupNode, "$alphatest");
 
 	// Try resolve shader
-	Parent = hl2Editor.TryResolveHL2Shader(groupNode.GetName(), translucent);
+	Parent = hl2Editor.TryResolveHL2Shader(groupNode.GetName(), alphatest ? EHL2BlendMode::AlphaTest : translucent ? EHL2BlendMode::Translucent : EHL2BlendMode::Opaque);
 	if (Parent == nullptr)
 	{
 		UE_LOG(LogHL2Editor, Error, TEXT("Shader '%s' not found"), groupNode.GetName());

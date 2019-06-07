@@ -7,6 +7,14 @@ DECLARE_LOG_CATEGORY_EXTERN(LogHL2Editor, Log, All);
 class UTexture;
 class UVMTMaterial;
 
+UENUM()
+enum class EHL2BlendMode : uint8
+{
+	Opaque,
+	AlphaTest,
+	Translucent
+};
+
 class IHL2Editor : public IModuleInterface
 {
 public:
@@ -34,11 +42,11 @@ public:
 
 	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const = 0;
 	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const = 0;
-	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool translucent = false) const = 0;
+	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL2BlendMode blendMode = EHL2BlendMode::Opaque) const = 0;
 
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const = 0;
 	virtual UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath) const = 0;
-	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, bool translucent = false) const = 0;
+	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode = EHL2BlendMode::Opaque) const = 0;
 
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const = 0;
 	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const = 0;

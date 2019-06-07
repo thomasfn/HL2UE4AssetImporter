@@ -705,14 +705,25 @@ FString FBSPImporter::ParseMaterialName(const char* bspMaterialName)
 {
 	// It might be something like "brick/brick06c" which is fine
 	// But it might also be like "maps/<mapname>/brick/brick06c_x_y_z" which is not fine
+	// Also "nature/red_grass_wvt_patch" -> "nature/red_grass"
 	// We need to identify the latter and convert it to the former
 	FString bspMaterialNameAsStr(bspMaterialName);
 	bspMaterialNameAsStr.ReplaceCharInline('\\', '/');
-	const static FRegexPattern patternCubemappedMaterial(TEXT("^maps[\\\\\\/]\\w+[\\\\\\/](.+)(?:_-?(?:\\d*\\.)?\\d+){3}$"));
-	FRegexMatcher matchCubemappedMaterial(patternCubemappedMaterial, bspMaterialNameAsStr);
-	if (matchCubemappedMaterial.FindNext())
 	{
-		bspMaterialNameAsStr = matchCubemappedMaterial.GetCaptureGroup(1);
+		const static FRegexPattern patternCubemappedMaterial(TEXT("^maps[\\\\\\/]\\w+[\\\\\\/](.+)(?:_-?(?:\\d*\\.)?\\d+){3}$"));
+		FRegexMatcher matchCubemappedMaterial(patternCubemappedMaterial, bspMaterialNameAsStr);
+		if (matchCubemappedMaterial.FindNext())
+		{
+			bspMaterialNameAsStr = matchCubemappedMaterial.GetCaptureGroup(1);
+		}
+	}
+	{
+		const static FRegexPattern patternWVTMaterial(TEXT("^maps[\\\\\\/]\\w+[\\\\\\/](.+)_wvt_patch$"));
+		FRegexMatcher matchWVTMaterial(patternWVTMaterial, bspMaterialNameAsStr);
+		if (matchWVTMaterial.FindNext())
+		{
+			bspMaterialNameAsStr = matchWVTMaterial.GetCaptureGroup(1);
+		}
 	}
 	return bspMaterialNameAsStr;
 }

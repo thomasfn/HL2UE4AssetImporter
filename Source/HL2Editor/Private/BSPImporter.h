@@ -41,15 +41,9 @@ private:
 
 	FPlane ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
 
-	void RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* world, TArray<AStaticMeshActor*>& out, uint32 nodeIndex, TArray<uint16>& faceIndices);
-
 	void RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* world, TArray<AStaticMeshActor*>& out, uint32 nodeIndex);
 
-	AStaticMeshActor* RenderNodeToActor(const Valve::BSPFile& bspFile, UWorld* world, uint16 nodeIndex, TSet<int16>* clusterFilter = nullptr);
-
-	AStaticMeshActor* RenderFacesToActor(const Valve::BSPFile& bspFile, UWorld* world, const TArray<uint16>& faceIndices);
-
-	void RenderNodeToMesh(const Valve::BSPFile& bspFile, uint32 nodeIndex, FMeshDescription& meshDesc, TSet<int16>* clusterFilter = nullptr);
+	AStaticMeshActor* RenderMeshToActor(UWorld* world, const FMeshDescription& meshDesc);
 
 	void RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc);
 

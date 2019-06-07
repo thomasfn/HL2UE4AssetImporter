@@ -8,10 +8,12 @@
 #include "EditorActorFolders.h"
 #include "Engine/World.h"
 #include "Engine/Brush.h"
+#include "Builders/CubeBuilder.h"
 #include "Engine/Polys.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/Selection.h"
+#include "Lightmass/LightmassImportanceVolume.h"
 #include "Builders/EditorBrushBuilder.h"
 #include "Components/BrushComponent.h"
 #include "VBSPBrushBuilder.h"
@@ -105,123 +107,87 @@ bool FBSPImporter::ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	const Valve::BSP::dmodel_t& bspWorldModel = bspFile.m_Models[0];
 
 	TArray<AStaticMeshActor*> staticMeshes;
-	//RenderTreeToActors(bspFile, world, staticMeshes, bspWorldModel.m_Headnode);
-	staticMeshes.Add(RenderNodeToActor(bspFile, world, bspWorldModel.m_Headnode));
+	RenderTreeToActors(bspFile, world, staticMeshes, bspWorldModel.m_Headnode);
 	for (AStaticMeshActor* actor : staticMeshes)
 	{
 		GEditor->SelectActor(actor, true, false, true, false);
 		folders.SetSelectedFolderPath(geometryFolder);
 	}
 
+	FVector mins(bspWorldModel.m_Mins(0, 0), bspWorldModel.m_Mins(0, 1), bspWorldModel.m_Mins(0, 2));
+	FVector maxs(bspWorldModel.m_Maxs(0, 0), bspWorldModel.m_Maxs(0, 1), bspWorldModel.m_Maxs(0, 2));
+	ALightmassImportanceVolume* lightmassImportanceVolume = world->SpawnActor<ALightmassImportanceVolume>();
+	lightmassImportanceVolume->Brush = NewObject<UModel>(lightmassImportanceVolume, NAME_None, RF_Transactional);
+	lightmassImportanceVolume->Brush->Initialize(nullptr, true);
+	lightmassImportanceVolume->Brush->Polys = NewObject<UPolys>(lightmassImportanceVolume->Brush, NAME_None, RF_Transactional);
+	lightmassImportanceVolume->GetBrushComponent()->Brush = lightmassImportanceVolume->Brush;
+	lightmassImportanceVolume->SetActorLocation(FMath::Lerp(mins, maxs, 0.5f) * FVector(1.0f, -1.0f, 1.0f));
+	UCubeBuilder* brushBuilder = NewObject<UCubeBuilder>(lightmassImportanceVolume);
+	brushBuilder->X = maxs.X - mins.X;
+	brushBuilder->Y = maxs.Y - mins.Y;
+	brushBuilder->Z = maxs.Z - mins.Z;
+	brushBuilder->Build(world, lightmassImportanceVolume);
+
 	return true;
-}
-
-void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* world, TArray<AStaticMeshActor*>& out, uint32 nodeIndex, TArray<uint16>& faceIndices)
-{
-	//TArray<int16> allClusters;
-	//GatherClusters(bspFile, nodeIndex, allClusters);
-	//TSet<int16> clusterFilter;
-	/*for (const int16 clusterIndex : allClusters)
-	{
-		if (clusterIndex >= 0)
-		{
-			clusterFilter.Empty(1);
-			clusterFilter.Add(clusterIndex);
-			out.Add(RenderNodeToActor(bspFile, world, nodeIndex, &clusterFilter));
-		}
-	}*/
-
-	const Valve::BSP::snode_t& node = bspFile.m_Nodes[nodeIndex];
-	if (node.m_Children[0] < 0)
-	{
-		const Valve::BSP::dleaf_t& leaf = bspFile.m_Leaves[-1 - node.m_Children[0]];
-		for (uint32 i = 0; i < leaf.m_Numleaffaces; ++i)
-		{
-			const uint16 faceIndex = bspFile.m_Leaffaces[leaf.m_Firstleafface + i];
-			if (!faceDedup.Contains(faceIndex))
-			{
-				faceIndices.Add(faceIndex);
-				faceDedup.Add(faceIndex);
-			}
-		}
-	}
-	else
-	{
-		RenderTreeToActors(bspFile, world, out, node.m_Children[0], faceIndices);
-	}
-	if (node.m_Children[1] < 0)
-	{
-		const Valve::BSP::dleaf_t& leaf = bspFile.m_Leaves[-1 - node.m_Children[1]];
-		for (uint32 i = 0; i < leaf.m_Numleaffaces; ++i)
-		{
-			const uint16 faceIndex = bspFile.m_Leaffaces[leaf.m_Firstleafface + i];
-			if (!faceDedup.Contains(faceIndex))
-			{
-				faceIndices.Add(faceIndex);
-				faceDedup.Add(faceIndex);
-			}
-		}
-	}
-	else
-	{
-		RenderTreeToActors(bspFile, world, out, node.m_Children[1], faceIndices);
-	}
-
-	if (faceIndices.Num() >= 500)
-	{
-		out.Add(RenderFacesToActor(bspFile, world, faceIndices));
-		faceIndices.Empty();
-	}
-
-	//const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[nodeIndex];
-
-	//// If we've reached maximum depth or either of this node's children is a leaf, stop here and render the rest of the tree to a single mesh
-	//if (maxDepth == 0 || bspNode.m_Children[0] < 0 || bspNode.m_Children[1] < 0)
-	//{
-	//	out.Add(RenderNodeToActor(bspFile, world, nodeIndex));
-	//	return;
-	//}
-	//
-	//// Travel down both sides
-	//RenderTreeToActors(bspFile, world, out, bspNode.m_Children[0], maxDepth - 1);
-	//RenderTreeToActors(bspFile, world, out, bspNode.m_Children[1], maxDepth - 1);
 }
 
 void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* world, TArray<AStaticMeshActor*>& out, uint32 nodeIndex)
 {
-	faceDedup.Empty();
-	TArray<uint16> faceIndices;
-	RenderTreeToActors(bspFile, world, out, nodeIndex, faceIndices);
-	if (faceIndices.Num() > 0)
-	{
-		out.Add(RenderFacesToActor(bspFile, world, faceIndices));
-	}
-}
+	const static bool useCells = true;
+	const static float cellSize = 1024.0f;
 
-AStaticMeshActor* FBSPImporter::RenderNodeToActor(const Valve::BSPFile& bspFile, UWorld* world, uint16 nodeIndex, TSet<int16>* clusterFilter)
-{
-	// Gather all faces to render out
-	TArray<uint16> faceIndices;
-	GatherFaces(bspFile, nodeIndex, faceIndices, clusterFilter);
-	AStaticMeshActor* staticMeshActor = RenderFacesToActor(bspFile, world, faceIndices);
-	if (clusterFilter != nullptr)
+	// Gather all faces from tree
+	TArray<uint16> faces;
+	GatherFaces(bspFile, nodeIndex, faces);
+
+	// Render whole tree to a single mesh
+	FMeshDescription meshDesc;
+	UStaticMesh::RegisterMeshAttributes(meshDesc);
+	RenderFacesToMesh(bspFile, faces, meshDesc);
+
+	// Early out if we're not using cells
+	if (!useCells)
 	{
-		TArray<FString> clusterNames;
-		for (const int16 clusterIndex : *clusterFilter)
+		out.Add(RenderMeshToActor(world, meshDesc));
+		return;
+	}
+
+	// Determine cell mins and maxs
+	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[nodeIndex];
+	const int cellMinX = FMath::FloorToInt(bspNode.m_Mins[0] / cellSize);
+	const int cellMaxX = FMath::CeilToInt(bspNode.m_Maxs[0] / cellSize);
+	const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
+	const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
+
+	// Iterate each cell
+	for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
+	{
+		for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
 		{
-			clusterNames.Add(FString::FromInt(clusterIndex));
+			// Establish bounding planes for cell
+			TArray<FPlane> boundingPlanes;
+			boundingPlanes.Add(FPlane(FVector(cellX * cellSize), FVector::ForwardVector));
+			boundingPlanes.Add(FPlane(FVector((cellX + 1) * cellSize), FVector::BackwardVector));
+			boundingPlanes.Add(FPlane(FVector(cellY * cellSize), FVector::RightVector));
+			boundingPlanes.Add(FPlane(FVector((cellY + 1) * cellSize), FVector::LeftVector));
+
+			// Clip the mesh by the planes into a new one
+			FMeshDescription cellMeshDesc = meshDesc;
+			FMeshSplitter::Clip(cellMeshDesc, boundingPlanes);
+
+			// Check if it has anything
+			if (cellMeshDesc.Polygons().Num() > 0)
+			{
+				// Create a static mesh for it
+				AStaticMeshActor* staticMeshActor = RenderMeshToActor(world, cellMeshDesc);
+				staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
+				out.Add(staticMeshActor);
+			}
 		}
-		FString clusterGroupName = FString::Join(clusterNames, TEXT(","));
-		staticMeshActor->SetActorLabel(FString::Printf(TEXT("VBSPNode_%d_Cluster_%s"), nodeIndex, *clusterGroupName));
 	}
-	else
-	{
-		staticMeshActor->SetActorLabel(FString::Printf(TEXT("VBSPNode_%d"), nodeIndex));
-	}
-	return staticMeshActor;
 }
 
-AStaticMeshActor* FBSPImporter::RenderFacesToActor(const Valve::BSPFile& bspFile, UWorld* world, const TArray<uint16>& faceIndices)
+AStaticMeshActor* FBSPImporter::RenderMeshToActor(UWorld* world, const FMeshDescription& meshDesc)
 {
 	UStaticMesh* staticMesh = NewObject<UStaticMesh>(world);
 	FStaticMeshSourceModel& staticMeshSourceModel = staticMesh->AddSourceModel();
@@ -234,11 +200,9 @@ AStaticMeshActor* FBSPImporter::RenderFacesToActor(const Valve::BSPFile& bspFile
 	settings.bRemoveDegenerates = false;
 	settings.bUseFullPrecisionUVs = true;
 	settings.MinLightmapResolution = 128;
-	staticMesh->LightMapCoordinateIndex = 1;
 	staticMesh->LightMapResolution = 128;
 	FMeshDescription* worldModelMesh = staticMesh->CreateMeshDescription(0);
-	staticMesh->RegisterMeshAttributes(*worldModelMesh);
-	RenderFacesToMesh(bspFile, faceIndices, *worldModelMesh);
+	*worldModelMesh = meshDesc;
 	const auto& importedMaterialSlotNameAttr = worldModelMesh->PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
 	for (const FPolygonGroupID& polyGroupID : worldModelMesh->PolygonGroups().GetElementIDs())
 	{
@@ -248,6 +212,7 @@ AStaticMeshActor* FBSPImporter::RenderFacesToActor(const Valve::BSPFile& bspFile
 		staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Editor::Get().TryResolveHL2Material(material.ToString())));
 	}
 	staticMesh->CommitMeshDescription(0);
+	staticMesh->LightMapCoordinateIndex = 1;
 	staticMesh->Build();
 
 	FTransform transform = FTransform::Identity;
@@ -404,14 +369,6 @@ void FBSPImporter::GatherClusters(const Valve::BSPFile& bspFile, uint32 nodeInde
 FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 {
 	return FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
-}
-
-void FBSPImporter::RenderNodeToMesh(const Valve::BSPFile& bspFile, uint32 nodeIndex, FMeshDescription& meshDesc, TSet<int16>* clusterFilter)
-{
-	// Gather all faces to render out
-	TArray<uint16> faceIndices;
-	GatherFaces(bspFile, nodeIndex, faceIndices, clusterFilter);
-	RenderFacesToMesh(bspFile, faceIndices, meshDesc);
 }
 
 void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc)

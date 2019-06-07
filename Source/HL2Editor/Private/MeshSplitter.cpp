@@ -11,21 +11,24 @@ FMeshSplitter::FMeshSplitter() { }
  * Any polygons intersecting a plane will be cut.
  * Normals, tangents and texture coordinates will be preserved.
  */
-void FMeshSplitter::Clip(const FMeshDescription& inMesh, FMeshDescription& outMesh, const TArray<FPlane>& clipPlanes)
+void FMeshSplitter::Clip(FMeshDescription& meshDesc, const TArray<FPlane>& clipPlanes)
 {
-	outMesh = inMesh;
-
 	// Get attributes
-	const TAttributesSet<FVertexID>& inVertexAttr = inMesh.VertexAttributes();
-	TMeshAttributesConstRef<FVertexID, FVector> inVertexAttrPosition = inVertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+	const TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
+	TMeshAttributesConstRef<FVertexID, FVector> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
 
 	TArray<FVertexInstanceID> arr1, arr2;
 
 	// Iterate all polys
-	for (const FPolygonID& polyID : inMesh.Polygons().GetElementIDs())
+	TArray<FPolygonID> allPolyIDs;
+	for (const FPolygonID& polyID : meshDesc.Polygons().GetElementIDs())
 	{
-		FMeshPolygon poly = inMesh.GetPolygon(polyID);
-		const FPolygonGroupID& polyGroupID = inMesh.GetPolygonPolygonGroup(polyID);
+		allPolyIDs.Add(polyID);
+	}
+	for (const FPolygonID& polyID : allPolyIDs)
+	{
+		FMeshPolygon poly = meshDesc.GetPolygon(polyID);
+		const FPolygonGroupID& polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
 		TArray<FVertexInstanceID>* oldPoly = &arr1;
 		TArray<FVertexInstanceID>* newPoly = &arr2;
 
@@ -47,8 +50,8 @@ void FMeshSplitter::Clip(const FMeshDescription& inMesh, FMeshDescription& outMe
 				const bool last = i == l;
 				const FVertexInstanceID& vertInstID = (*oldPoly)[i % l];
 
-				const FVertexID& vertID = inMesh.GetVertexInstanceVertex(vertInstID);
-				const FVector vertPos = inVertexAttrPosition[vertID];
+				const FVertexID& vertID = meshDesc.GetVertexInstanceVertex(vertInstID);
+				const FVector vertPos = vertexAttrPosition[vertID];
 
 				const bool isClipped = plane.PlaneDot(vertPos) < 0.0f;
 				if (isClipped) { changesMade = true; }
@@ -60,7 +63,7 @@ void FMeshSplitter::Clip(const FMeshDescription& inMesh, FMeshDescription& outMe
 				{
 					if (isClipped != lastWasClipped)
 					{
-						newPoly->Add(ClipEdge(outMesh, lastVertInstID, vertInstID, plane));
+						newPoly->Add(ClipEdge(meshDesc, lastVertInstID, vertInstID, plane));
 					}
 				}
 				if (!isClipped && !last)
@@ -78,28 +81,18 @@ void FMeshSplitter::Clip(const FMeshDescription& inMesh, FMeshDescription& outMe
 		// If there's no a poly left, delete it
 		if (newPoly->Num() < 3)
 		{
-			outMesh.DeletePolygon(polyID);
+			meshDesc.DeletePolygon(polyID);
 		}
 		// If some form of clipping happened, replace it
 		else if (changesMade)
 		{
-			outMesh.DeletePolygon(polyID);
-			outMesh.CreatePolygonWithID(polyID, polyGroupID, *newPoly);
+			meshDesc.DeletePolygon(polyID);
+			meshDesc.CreatePolygon(polyGroupID, *newPoly);
 		}
 	}
 
-	// Delete all empty poly groups
-	for (const FPolygonGroupID& polyGroupID : inMesh.PolygonGroups().GetElementIDs())
-	{
-		if (outMesh.GetPolygonGroup(polyGroupID).Polygons.Num() == 0)
-		{
-			outMesh.DeletePolygonGroup(polyGroupID);
-		}
-	}
-
-	// Clean up
-	FElementIDRemappings remappings;
-	outMesh.Compact(remappings);
+	// Clean up after ourselves
+	CleanMesh(meshDesc);
 }
 
 FVertexInstanceID FMeshSplitter::ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& vertAInstID, const FVertexInstanceID& vertBInstID, const FPlane& clipPlane)
@@ -138,4 +131,91 @@ FVertexInstanceID FMeshSplitter::ClipEdge(FMeshDescription& meshDesc, const FVer
 	vertexInstAttrUV0[newVertInstID] = FMath::Lerp(vertexInstAttrUV0[vertAInstID], vertexInstAttrUV0[vertBInstID], mu);
 
 	return newVertInstID;
+}
+
+void FMeshSplitter::CleanMesh(FMeshDescription& meshDesc)
+{
+	// Delete degenerate polygons
+	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
+	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+	for (const FPolygonID& polyID : meshDesc.Polygons().GetElementIDs())
+	{
+		FMeshPolygon& poly = meshDesc.GetPolygon(polyID);
+		const int numVerts = poly.PerimeterContour.VertexInstanceIDs.Num();
+		TArray<FVertexInstanceID> toDelete;
+		for (int i = 0; i < numVerts; ++i)
+		{
+			const FVertexInstanceID& vertAinstID = poly.PerimeterContour.VertexInstanceIDs[i];
+			const FVertexID& vertAID = meshDesc.GetVertexInstanceVertex(vertAinstID);
+			const FVector& vertAPos = vertexAttrPosition[vertAID];
+			for (int j = i + 1; j < numVerts; ++j)
+			{
+				const FVertexInstanceID& vertBinstID = poly.PerimeterContour.VertexInstanceIDs[j];
+				const FVertexID& vertBID = meshDesc.GetVertexInstanceVertex(vertBinstID);
+				const FVector& vertBPos = vertexAttrPosition[vertBID];
+				if (vertAPos.Equals(vertBPos, 0.00001f))
+				{
+					toDelete.AddUnique(vertBinstID);
+				}
+			}
+		}
+		if (numVerts - toDelete.Num() < 3)
+		{
+			meshDesc.DeletePolygon(polyID);
+		}
+		else if (toDelete.Num() > 0)
+		{
+			TArray<FVertexInstanceID> newPerimeterContour = poly.PerimeterContour.VertexInstanceIDs;
+			for (const FVertexInstanceID& vertInstID : toDelete)
+			{
+				newPerimeterContour.Remove(vertInstID);
+			}
+			const FPolygonGroupID polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
+			meshDesc.DeletePolygon(polyID);
+			meshDesc.CreatePolygonWithID(polyID, polyGroupID, newPerimeterContour);
+		}
+	}
+
+	// Delete unused edges
+	for (const FEdgeID& edgeID : meshDesc.Edges().GetElementIDs())
+	{
+		if (meshDesc.GetEdge(edgeID).ConnectedPolygons.Num() == 0)
+		{
+			meshDesc.DeleteEdge(edgeID);
+		}
+	}
+
+	//// Delete unused vertex instances
+	for (const FVertexInstanceID& vertInstID : meshDesc.VertexInstances().GetElementIDs())
+	{
+		if (meshDesc.GetVertexInstance(vertInstID).ConnectedPolygons.Num() == 0)
+		{
+			meshDesc.DeleteVertexInstance(vertInstID);
+		}
+	}
+
+	//// Delete unused vertices
+	for (const FVertexID& vertID : meshDesc.Vertices().GetElementIDs())
+	{
+		if (meshDesc.GetVertex(vertID).VertexInstanceIDs.Num() == 0)
+		{
+			meshDesc.DeleteVertex(vertID);
+		}
+	}
+
+	//// Delete any empty polygon groups
+	for (const FPolygonGroupID& polyGroupID : meshDesc.PolygonGroups().GetElementIDs())
+	{
+		if (meshDesc.GetPolygonGroup(polyGroupID).Polygons.Num() == 0)
+		{
+			meshDesc.DeletePolygonGroup(polyGroupID);
+		}
+	}
+
+	// Remap element IDs
+	FElementIDRemappings remappings;
+	meshDesc.Compact(remappings);
+
+	// Retriangulate mesh
+	meshDesc.TriangulateMesh();
 }

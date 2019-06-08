@@ -19,6 +19,8 @@
 #include "Internationalization/Regex.h"
 #include "MeshAttributes.h"
 #include "MeshSplitter.h"
+#include "UObject/ConstructorHelpers.h"
+#include "AssetRegistryModule.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -132,10 +134,10 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	const auto entityStrRaw = StringCast<TCHAR, ANSICHAR>(&bspFile.m_Entities[0], bspFile.m_Entities.size());
 	FString entityStr(entityStrRaw.Get());
 
-	TArray<FHL2Entity> entityDatas;
+	TArray<FHL2EntityData> entityDatas;
 	if (!FEntityParser::ParseEntities(entityStr, entityDatas)) { return false; }
 
-	for (const FHL2Entity& entityData : entityDatas)
+	for (const FHL2EntityData& entityData : entityDatas)
 	{
 		AActor* actor = ImportEntityToWorld(world, entityData);
 		if (actor != nullptr)
@@ -755,7 +757,23 @@ bool FBSPImporter::SharesSmoothingGroup(uint16 groupA, uint16 groupB)
 	return false;
 }
 
-AActor* FBSPImporter::ImportEntityToWorld(UWorld* world, const FHL2Entity& entityData)
+ABaseEntity* FBSPImporter::ImportEntityToWorld(UWorld* world, const FHL2EntityData& entityData)
 {
-	return nullptr;
+	const FString assetPath = IHL2Runtime::Get().GetHL2EntityBasePath() + entityData.Classname.ToString() + TEXT(".") + entityData.Classname.ToString();
+	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
+	FAssetData assetData = assetRegistry.GetAssetByObjectPath(FName(*assetPath));
+	if (!assetData.IsValid()) { return false; }
+	UBlueprint* blueprint = CastChecked<UBlueprint>(assetData.GetAsset());
+	FTransform transform = FTransform::Identity;
+	transform.SetLocation(entityData.Origin);
+	FRotator rotator = FRotator::ZeroRotator;
+	static const FName kRotator(TEXT("angles"));
+	entityData.TryGetRotator(kRotator, rotator);
+	transform.SetRotation(rotator.Quaternion());
+	ABaseEntity* entity = world->SpawnActor<ABaseEntity>(blueprint->GeneratedClass, transform);
+	if (entity == nullptr) { return nullptr; }
+	entity->EntityData = entityData;
+	entity->InitialiseEntity();
+	return entity;
 }

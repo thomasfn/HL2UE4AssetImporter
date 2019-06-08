@@ -26,6 +26,7 @@ private:
 	const FString hl2TextureBasePath = hl2BasePath + "textures/";
 	const FString hl2MaterialBasePath = hl2BasePath + "materials/";
 	const FString hl2ShaderBasePath = pluginBasePath + "Shaders/";
+	const FString hl2EntityBasePath = pluginBasePath + "Entities/";
 
 public:
 
@@ -37,6 +38,7 @@ public:
 	virtual FString GetHL2TextureBasePath() const override { return hl2TextureBasePath; }
 	virtual FString GetHL2MaterialBasePath() const override { return hl2MaterialBasePath; }
 	virtual FString GetHL2ShaderBasePath() const override { return hl2ShaderBasePath; }
+	virtual FString GetHL2EntityBasePath() const override { return hl2EntityBasePath; }
 
 	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const override;
 	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const override;

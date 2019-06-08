@@ -3,7 +3,9 @@
 #include "CoreMinimal.h"
 #include "ValveBSP/BSPFile.hpp"
 #include "MeshDescription.h"
+#include "HL2EntityData.h"
 #include "EntityParser.h"
+#include "BaseEntity.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogHL2BSPImporter, Log, All);
 
@@ -49,6 +51,6 @@ private:
 	 
 	static bool SharesSmoothingGroup(uint16 groupA, uint16 groupB);
 	 
-	static AActor* ImportEntityToWorld(UWorld* world, const FHL2Entity& entityData);
+	static ABaseEntity* ImportEntityToWorld(UWorld* world, const FHL2EntityData& entityData);
 
 };

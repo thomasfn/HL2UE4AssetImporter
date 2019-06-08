@@ -6,103 +6,6 @@
 
 DEFINE_LOG_CATEGORY(LogHL2EntityParser);
 
-#pragma region FHL2Entity
-
-FString FHL2Entity::GetString(FName key) const
-{
-	FString tmp;
-	TryGetString(key, tmp);
-	return tmp;
-}
-
-bool FHL2Entity::TryGetString(FName key, FString& out) const
-{
-	if (!KeyValues.Contains(key)) { return false; }
-	out = KeyValues[key];
-	return true;
-}
-
-int FHL2Entity::GetInt(FName key) const
-{
-	int tmp;
-	TryGetInt(key, tmp);
-	return tmp;
-}
-
-bool FHL2Entity::TryGetInt(FName key, int& out) const
-{
-	FString value;
-	if (!TryGetString(key, value)) { return false; }
-	out = FCString::Atoi(*value);
-	return true;
-}
-
-bool FHL2Entity::GetBool(FName key) const
-{
-	bool tmp;
-	TryGetBool(key, tmp);
-	return tmp;
-}
-
-bool FHL2Entity::TryGetBool(FName key, bool& out) const
-{
-	FString value;
-	if (!TryGetString(key, value)) { return false; }
-	out = value.ToBool();
-	return true;
-}
-
-float FHL2Entity::GetFloat(FName key) const
-{
-	float tmp;
-	TryGetFloat(key, tmp);
-	return tmp;
-}
-
-bool FHL2Entity::TryGetFloat(FName key, float& out) const
-{
-	FString value;
-	if (!TryGetString(key, value)) { return false; }
-	out = FCString::Atof(*value);
-	return true;
-}
-
-FVector FHL2Entity::GetVector(FName key) const
-{
-	FVector tmp;
-	TryGetVector(key, tmp);
-	return tmp;
-}
-
-bool FHL2Entity::TryGetVector(FName key, FVector& out) const
-{
-	FString value;
-	if (!TryGetString(key, value)) { return false; }
-	TArray<FString> segments;
-	if (value.ParseIntoArray(segments, TEXT(" "), true) < 3) { return false; }
-	out.X = FCString::Atof(*segments[0]);
-	out.Y = FCString::Atof(*segments[1]);
-	out.Z = FCString::Atof(*segments[2]);
-	return true;
-}
-
-FRotator FHL2Entity::GetRotator(FName key) const
-{
-	FRotator tmp;
-	TryGetRotator(key, tmp);
-	return tmp;
-}
-
-bool FHL2Entity::TryGetRotator(FName key, FRotator& out) const
-{
-	FVector value;
-	if (!TryGetVector(key, value)) { return false; }
-	out = FRotator::MakeFromEuler(value);
-	return true;
-}
-
-#pragma endregion
-
 const FString FEntityParser::entityParserTokenTypeNames[] =
 {
 	TEXT("Whitespace"),
@@ -199,7 +102,7 @@ bool FEntityParser::ParseGroup(const FString& src, const TArray<FEntityParserTok
 	return true;
 }
 
-bool FEntityParser::ParseEntities(const FString& src, TArray<FHL2Entity>& out)
+bool FEntityParser::ParseEntities(const FString& src, TArray<FHL2EntityData>& out)
 {
 	TArray<FEntityParserToken> tokens;
 	if (!Tokenise(src, tokens))
@@ -215,7 +118,7 @@ bool FEntityParser::ParseEntities(const FString& src, TArray<FHL2Entity>& out)
 		if (ParseGroup(src, tokens, tmp, keyValues))
 		{
 			nextToken = tmp;
-			FHL2Entity entity;
+			FHL2EntityData entity;
 			entity.KeyValues = keyValues;
 			ParseCommonKeys(entity);
 			out.Add(entity);
@@ -231,7 +134,7 @@ bool FEntityParser::ParseEntities(const FString& src, TArray<FHL2Entity>& out)
 	return true;
 }
 
-inline void FEntityParser::ParseCommonKeys(FHL2Entity& entity)
+inline void FEntityParser::ParseCommonKeys(FHL2EntityData& entity)
 {
 	const static FName kClassname(TEXT("classname"));
 	const static FName kTargetname(TEXT("targetname"));

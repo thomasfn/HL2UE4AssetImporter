@@ -43,6 +43,7 @@ public:
 	virtual FString GetHL2TextureBasePath() const = 0;
 	virtual FString GetHL2MaterialBasePath() const = 0;
 	virtual FString GetHL2ShaderBasePath() const = 0;
+	virtual FString GetHL2EntityBasePath() const = 0;
 
 	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const = 0;
 	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const = 0;

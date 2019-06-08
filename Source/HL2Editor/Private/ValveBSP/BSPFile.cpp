@@ -32,6 +32,8 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
             return false;
         }
 
+		parse_lump_data( bsp_binary, LUMP_ENTITIES, m_Entities );
+
         parse_lump_data( bsp_binary, LUMP_VERTEXES, m_Vertexes );
         if( !parse_planes( bsp_binary ) ) {
             return false;

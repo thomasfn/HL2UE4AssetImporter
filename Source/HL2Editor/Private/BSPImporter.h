@@ -3,6 +3,7 @@
 #include "UnrealString.h"
 #include "ValveBSP/BSPFile.hpp"
 #include "MeshDescription.h"
+#include "EntityParser.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogHL2BSPImporter, Log, All);
 
@@ -22,6 +23,8 @@ public:
 	bool ImportBrushesToWorld(const Valve::BSPFile& bspFile, UWorld* world);
 
 	bool ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* world);
+
+	bool ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* world);
 
 #endif
 
@@ -54,6 +57,8 @@ private:
 	FString ParseMaterialName(const char* bspMaterialName);
 
 	static bool SharesSmoothingGroup(uint16 groupA, uint16 groupB);
+
+	AActor* ImportEntityToWorld(UWorld* world, const FHL2Entity& entityData);
 
 #endif
 

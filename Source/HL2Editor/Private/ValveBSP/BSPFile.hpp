@@ -126,6 +126,7 @@ namespace Valve {
     public:
         std::string                      m_FileName;
         BSP::dheader_t                   m_BSPHeader;
+		std::vector< char >			     m_Entities;
         std::vector< BSP::mvertex_t >    m_Vertexes;
         std::vector< BSP::cplane_t >     m_Planes;
         std::vector< BSP::dedge_t >      m_Edges;

@@ -55,8 +55,9 @@ bool FBSPImporter::ImportToCurrentLevel(const FString& fileName)
 
 bool FBSPImporter::ImportToWorld(const Valve::BSPFile& bspFile, UWorld* world)
 {
+	if (!ImportEntitiesToWorld(bspFile, world)) { return false; }
 	//if (!ImportBrushesToWorld(bspFile, world)) { return false; }
-	if (!ImportGeometryToWorld(bspFile, world)) { return false; }
+	//if (!ImportGeometryToWorld(bspFile, world)) { return false; }
 	return true;
 }
 
@@ -127,6 +128,32 @@ bool FBSPImporter::ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	brushBuilder->Y = maxs.Y - mins.Y;
 	brushBuilder->Z = maxs.Z - mins.Z;
 	brushBuilder->Build(world, lightmassImportanceVolume);
+
+	return true;
+}
+
+bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* world)
+{
+	const FName entitiesFolder = TEXT("HL2Entities");
+	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing entities..."));
+	FActorFolders& folders = FActorFolders::Get();
+	folders.CreateFolder(*world, entitiesFolder);
+
+	const auto entityStrRaw = StringCast<TCHAR, ANSICHAR>(&bspFile.m_Entities[0], bspFile.m_Entities.size());
+	FString entityStr(entityStrRaw.Get());
+
+	TArray<FHL2Entity> entityDatas;
+	if (!FEntityParser::ParseEntities(entityStr, entityDatas)) { return false; }
+
+	for (const FHL2Entity& entityData : entityDatas)
+	{
+		AActor* actor = ImportEntityToWorld(world, entityData);
+		if (actor != nullptr)
+		{
+			GEditor->SelectActor(actor, true, false, true, false);
+			folders.SetSelectedFolderPath(entitiesFolder);
+		}
+	}
 
 	return true;
 }
@@ -736,6 +763,11 @@ bool FBSPImporter::SharesSmoothingGroup(uint16 groupA, uint16 groupB)
 		if ((groupA & mask) && (groupB & mask)) { return true; }
 	}
 	return false;
+}
+
+AActor* FBSPImporter::ImportEntityToWorld(UWorld* world, const FHL2Entity& entityData)
+{
+	return nullptr;
 }
 
 #endif

@@ -1,6 +1,5 @@
 #include "HL2EditorPrivatePCH.h"
 
-#include "IHL2Editor.h"
 #include "ReimportVMTFactory.h"
 #include "EditorFramework/AssetImportData.h"
 

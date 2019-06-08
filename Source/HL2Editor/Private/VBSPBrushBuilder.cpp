@@ -1,4 +1,4 @@
-#pragma once
+#include "HL2EditorPrivatePCH.h"
 
 #include "VBSPBrushBuilder.h"
 #include "Engine/World.h"
@@ -10,7 +10,7 @@
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Vector2D.h"
-#include "IHL2Editor.h"
+#include "IHL2Runtime.h"
 
 DEFINE_LOG_CATEGORY(LogVBSPBrushBuilder);
 

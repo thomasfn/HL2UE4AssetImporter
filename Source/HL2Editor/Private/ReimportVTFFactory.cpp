@@ -1,6 +1,5 @@
 #include "HL2EditorPrivatePCH.h"
 
-#include "IHL2Editor.h"
 #include "ReimportVTFFactory.h"
 
 #include "Runtime/Core/Public/Misc/FeedbackContext.h"

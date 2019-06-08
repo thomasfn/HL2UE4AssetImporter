@@ -1,7 +1,7 @@
 #include "HL2EditorPrivatePCH.h"
 
 #include "VMTFactory.h"
-
+#include "MaterialUtils.h"
 #include "Runtime/Core/Public/Misc/FeedbackContext.h"
 
 #include "VTFLib/VTFLib.h"
@@ -110,7 +110,7 @@ UVMTMaterial* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FNam
 	UVMTMaterial* material = CreateMaterial(InParent, Name, Flags);
 
 	// Attempt to import it
-	material->SetFromVMT(*vmtFile.GetRoot());
+	FMaterialUtils::SetFromVMT(material, *vmtFile.GetRoot());
 
 	return material;
 }

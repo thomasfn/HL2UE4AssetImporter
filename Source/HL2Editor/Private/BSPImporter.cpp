@@ -1,10 +1,8 @@
 #pragma once
 
 #include "BSPImporter.h"
+#include "IHL2Runtime.h"
 #include "Paths.h"
-#include "IHL2Editor.h"
-
-#ifdef WITH_EDITOR
 #include "EditorActorFolders.h"
 #include "Engine/World.h"
 #include "Engine/Brush.h"
@@ -21,7 +19,6 @@
 #include "Internationalization/Regex.h"
 #include "MeshAttributes.h"
 #include "MeshSplitter.h"
-#endif
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -29,13 +26,6 @@ FBSPImporter::FBSPImporter()
 {
 
 }
-
-FBSPImporter::~FBSPImporter()
-{
-
-}
-
-#ifdef WITH_EDITOR
 
 bool FBSPImporter::ImportToCurrentLevel(const FString& fileName)
 {
@@ -57,7 +47,7 @@ bool FBSPImporter::ImportToWorld(const Valve::BSPFile& bspFile, UWorld* world)
 {
 	if (!ImportEntitiesToWorld(bspFile, world)) { return false; }
 	//if (!ImportBrushesToWorld(bspFile, world)) { return false; }
-	//if (!ImportGeometryToWorld(bspFile, world)) { return false; }
+	if (!ImportGeometryToWorld(bspFile, world)) { return false; }
 	return true;
 }
 
@@ -250,7 +240,7 @@ AStaticMeshActor* FBSPImporter::RenderMeshToActor(UWorld* world, const FMeshDesc
 		FName material = importedMaterialSlotNameAttr[polyGroupID];
 		const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
 		staticMesh->SectionInfoMap.Set(0, meshSlot, FMeshSectionInfo(meshSlot));
-		staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Editor::Get().TryResolveHL2Material(material.ToString())));
+		staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
 	}
 	staticMesh->CommitMeshDescription(0);
 	staticMesh->LightMapCoordinateIndex = 1;
@@ -769,5 +759,3 @@ AActor* FBSPImporter::ImportEntityToWorld(UWorld* world, const FHL2Entity& entit
 {
 	return nullptr;
 }
-
-#endif

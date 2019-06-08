@@ -2,18 +2,15 @@
 
 #include "ModuleManager.h"
 #include "AssetRegistryModule.h"
-
-#ifdef WITH_EDITOR
 #include "LevelEditor.h"
-#endif
 
-#include "IHL2Editor.h"
+DECLARE_LOG_CATEGORY_EXTERN(LogHL2Editor, Log, All);
 
 class UTexture;
 class UVMTMaterial;
 class UMaterial;
 
-class HL2EditorImpl : public IHL2Editor
+class HL2EditorImpl : public IModuleInterface
 {
 public:
 
@@ -24,15 +21,6 @@ public:
 
 private:
 
-	const FString hl2BasePath = "/Game/hl2/";
-	const FString pluginBasePath = "/HL2AssetImporter/";
-
-	const FString hl2TextureBasePath = hl2BasePath + "textures/";
-	const FString hl2MaterialBasePath = hl2BasePath + "materials/";
-	const FString hl2ShaderBasePath = pluginBasePath + "Shaders/";
-
-#ifdef WITH_EDITOR
-
 	bool isLoading;
 
 	TSharedPtr<FUICommandList> utilMenuCommandList;
@@ -41,24 +29,7 @@ private:
 	FDelegateHandle handleFilesLoaded;
 	FDelegateHandle handleAssetAdded;
 
-#endif
-
-public:
-
-	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const override;
-	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const override;
-	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL2BlendMode blendMode = EHL2BlendMode::Opaque) const override;
-	
-	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const override;
-	virtual UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath) const override;
-	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode = EHL2BlendMode::Opaque) const override;
-	
-	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const override;
-	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const override;
-
 private:
-
-#ifdef WITH_EDITOR
 
 	void AddToolbarExtension(FToolBarBuilder& builder);
 	static TSharedRef<SWidget> GenerateUtilityMenu(TSharedRef<FUICommandList> InCommandList);
@@ -71,7 +42,5 @@ private:
 	void ImportBSPClicked();
 
 	static void GroupFileListByDirectory(const TArray<FString>& files, TMap<FString, TArray<FString>>& outMap);
-
-#endif
 
 };

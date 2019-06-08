@@ -1,28 +1,23 @@
 #include "HL2EditorPrivatePCH.h"
 
-#include "IHL2Editor.h"
 #include "HL2Editor.h"
 
-#include "Misc/Paths.h"
+#include "IHL2Runtime.h"
 #include "Engine/Texture.h"
-#include "VMTMaterial.h"
 #include "BSPImporter.h"
-
-#ifdef WITH_EDITOR
 #include "Framework/SlateDelegates.h"
 #include "UtilMenuCommands.h"
 #include "UtilMenuStyle.h"
 #include "DesktopPlatformModule.h"
 #include "AssetToolsModule.h"
 #include "PlatformFilemanager.h"
-#endif
+#include "VMTMaterial.h"
+#include "MaterialUtils.h"
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
 
 void HL2EditorImpl::StartupModule()
 {
-#ifdef WITH_EDITOR
-
 	isLoading = true;
 
 	FUtilMenuStyle::Initialize();
@@ -56,14 +51,10 @@ void HL2EditorImpl::StartupModule()
 
 	FLevelEditorModule& levelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
 	levelEditorModule.GetToolBarExtensibilityManager()->AddExtender(myExtender);
-
-#endif
 }
 
 void HL2EditorImpl::ShutdownModule()
 {
-#ifdef WITH_EDITOR
-
 	handleAssetAdded.Reset();
 	handleFilesLoaded.Reset();
 
@@ -73,11 +64,7 @@ void HL2EditorImpl::ShutdownModule()
 	FUtilMenuCommands::Unregister();
 
 	FUtilMenuStyle::Shutdown();
-
-#endif
 }
-
-#ifdef WITH_EDITOR
 
 void HL2EditorImpl::HandleFilesLoaded()
 {
@@ -91,10 +78,10 @@ void HL2EditorImpl::HandleAssetAdded(const FAssetData& assetData)
 	if (Cast<UTexture>(assetData.GetAsset()))
 	{
 		TArray<UVMTMaterial*> materials;
-		FindAllMaterialsThatReferenceTexture(assetData.ObjectPath, materials);
+		IHL2Runtime::Get().FindAllMaterialsThatReferenceTexture(assetData.ObjectPath, materials);
 		for (UVMTMaterial* material : materials)
 		{
-			material->TryResolveTextures();
+			FMaterialUtils::TryResolveTextures(material);
 			material->PostEditChange();
 			material->MarkPackageDirty();
 			UE_LOG(LogHL2Editor, Log, TEXT("Trying to resolve textures on '%s' as '%s' now exists"), *material->GetName(), *assetData.AssetName.ToString());
@@ -162,7 +149,7 @@ void HL2EditorImpl::BulkImportTexturesClicked()
 		FString dir = pair.Key;
 		if (FPaths::MakePathRelativeTo(dir, *rootPath))
 		{
-			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, hl2TextureBasePath / dir);
+			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2TextureBasePath() / dir);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}
@@ -191,7 +178,7 @@ void HL2EditorImpl::BulkImportMaterialsClicked()
 		FString dir = pair.Key;
 		if (FPaths::MakePathRelativeTo(dir, *rootPath))
 		{
-			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, hl2MaterialBasePath / dir);
+			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2MaterialBasePath() / dir);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}
@@ -207,97 +194,9 @@ void HL2EditorImpl::ImportBSPClicked()
 	const FString& fileName = selectedFilenames[0];
 
 	// Run import
-	FBSPImporter bspImporter;
-	if (!bspImporter.ImportToCurrentLevel(fileName))
+	if (!FBSPImporter::ImportToCurrentLevel(fileName))
 	{
 		return;
-	}
-}
-
-#endif
-
-FName HL2EditorImpl::HL2TexturePathToAssetPath(const FString& hl2TexturePath) const
-{
-	// e.g. "Brick/brickfloor001a" -> "/Content/hl2/materials/Brick/brickfloor001a.brickfloor001a"
-	FString tmp = hl2TexturePath;
-	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2TextureBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
-}
-
-FName HL2EditorImpl::HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const
-{
-	// e.g. "Brick/brickfloor001a" -> "/Content/hl2/materials/Brick/brickfloor001a_vmt.brickfloor001a_vmt"
-	FString tmp = hl2MaterialPath;
-	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2MaterialBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
-}
-
-FName HL2EditorImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL2BlendMode blendMode) const
-{
-	// e.g. "VertexLitGeneric" -> "/HL2Editor/Shaders/VertexLitGeneric.VertexLitGeneric"
-	FString tmp = hl2ShaderPath;
-	tmp.ReplaceCharInline('\\', '/');
-	switch (blendMode)
-	{
-		case EHL2BlendMode::Translucent: tmp = tmp.Append("_translucent"); break;
-		case EHL2BlendMode::AlphaTest: tmp = tmp.Append("_alphatest"); break;
-	}
-	return FName(*(hl2ShaderBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
-}
-
-UTexture* HL2EditorImpl::TryResolveHL2Texture(const FString& hl2TexturePath) const
-{
-	FName assetPath = HL2TexturePathToAssetPath(hl2TexturePath);
-	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
-	if (!assetData.IsValid()) { return nullptr; }
-	return CastChecked<UTexture>(assetData.GetAsset());
-}
-
-UVMTMaterial* HL2EditorImpl::TryResolveHL2Material(const FString& hl2MaterialPath) const
-{
-	FName assetPath = HL2MaterialPathToAssetPath(hl2MaterialPath);
-	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
-	if (!assetData.IsValid()) { return nullptr; }
-	return CastChecked<UVMTMaterial>(assetData.GetAsset());
-}
-
-UMaterial* HL2EditorImpl::TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode) const
-{
-	FName assetPath = HL2ShaderPathToAssetPath(hl2ShaderPath, blendMode);
-	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
-	if (!assetData.IsValid())
-	{
-		// Fall back to opaque
-		if (blendMode == EHL2BlendMode::Opaque) { return nullptr; }
-		return TryResolveHL2Shader(hl2ShaderBasePath);
-	}
-	return CastChecked<UMaterial>(assetData.GetAsset());
-}
-
-void HL2EditorImpl::FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const
-{
-	FindAllMaterialsThatReferenceTexture(HL2TexturePathToAssetPath(hl2TexturePath), out);
-}
-
-void HL2EditorImpl::FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const
-{
-	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	TArray<FAssetData> assets;
-	assetRegistry.GetAssetsByClass(UVMTMaterial::StaticClass()->GetFName(), assets);
-	for (const FAssetData& assetData : assets)
-	{
-		UVMTMaterial* material = Cast<UVMTMaterial>(assetData.GetAsset());
-		if (material && material->DoesReferenceTexture(assetPath))
-		{
-			out.Add(material);
-		}
 	}
 }
 

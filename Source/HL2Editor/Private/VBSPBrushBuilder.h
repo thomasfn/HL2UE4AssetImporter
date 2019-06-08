@@ -1,8 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/ObjectMacros.h"
-#include "UObject/UObjectGlobals.h"
 #include "Engine/BrushBuilder.h"
 #include "Materials/MaterialInterface.h"
 #include "VBSPBrushBuilder.generated.h"

@@ -1,53 +1,18 @@
 #include "HL2EditorPrivatePCH.h"
 
-#include "HL2Editor.h"
-#include "VMTMaterial.h"
-#include "EditorFramework/AssetImportData.h"
+#include "MaterialUtils.h"
 
-void UVMTMaterial::PostInitProperties()
+bool FMaterialUtils::SetFromVMT(UVMTMaterial* mtl, const VTFLib::Nodes::CVMTGroupNode& groupNode)
 {
-#if WITH_EDITORONLY_DATA
-	if (!HasAnyFlags(RF_ClassDefaultObject))
-	{
-		AssetImportData = NewObject<UAssetImportData>(this, TEXT("AssetImportData"));
-	}
-#endif
-	Super::PostInitProperties();
-}
-
-#if WITH_EDITORONLY_DATA
-void UVMTMaterial::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
-{
-	if (AssetImportData)
-	{
-		OutTags.Add(FAssetRegistryTag(SourceFileTagName(), AssetImportData->GetSourceData().ToJson(), FAssetRegistryTag::TT_Hidden));
-	}
-
-	Super::GetAssetRegistryTags(OutTags);
-}
-void UVMTMaterial::Serialize(FArchive& Ar)
-{
-	Super::Serialize(Ar);
-
-	if (Ar.IsLoading() && Ar.UE4Ver() < VER_UE4_ASSET_IMPORT_DATA_AS_JSON && !AssetImportData)
-	{
-		// AssetImportData should always be valid
-		AssetImportData = NewObject<UAssetImportData>(this, TEXT("AssetImportData"));
-	}
-}
-#endif
-
-bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
-{
-	IHL2Editor& hl2Editor = IHL2Editor::Get();
+	IHL2Runtime& hl2Runtime = IHL2Runtime::Get();
 
 	// Special case: identify translucency
 	const bool translucent = GetVMTKeyAsBool(groupNode, "$translucent");
 	const bool alphatest = GetVMTKeyAsBool(groupNode, "$alphatest");
 
 	// Try resolve shader
-	Parent = hl2Editor.TryResolveHL2Shader(groupNode.GetName(), alphatest ? EHL2BlendMode::AlphaTest : translucent ? EHL2BlendMode::Translucent : EHL2BlendMode::Opaque);
-	if (Parent == nullptr)
+	mtl->Parent = hl2Runtime.TryResolveHL2Shader(groupNode.GetName(), alphatest ? EHL2BlendMode::AlphaTest : translucent ? EHL2BlendMode::Translucent : EHL2BlendMode::Opaque);
+	if (mtl->Parent == nullptr)
 	{
 		UE_LOG(LogHL2Editor, Error, TEXT("Shader '%s' not found"), groupNode.GetName());
 		return false;
@@ -56,10 +21,10 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 	// Cache all material parameters from the shader
 	TArray<FMaterialParameterInfo> textureParams, scalarParams, vectorParams, staticSwitchParams;
 	TArray<FGuid> textureParamIDs, scalarParamIDs, vectorParamIDs, staticSwitchParamIDs;
-	Parent->GetAllTextureParameterInfo(textureParams, textureParamIDs);
-	Parent->GetAllScalarParameterInfo(scalarParams, scalarParamIDs);
-	Parent->GetAllVectorParameterInfo(vectorParams, vectorParamIDs);
-	Parent->GetAllStaticSwitchParameterInfo(staticSwitchParams, staticSwitchParamIDs);
+	mtl->Parent->GetAllTextureParameterInfo(textureParams, textureParamIDs);
+	mtl->Parent->GetAllScalarParameterInfo(scalarParams, scalarParamIDs);
+	mtl->Parent->GetAllVectorParameterInfo(vectorParams, vectorParamIDs);
+	mtl->Parent->GetAllStaticSwitchParameterInfo(staticSwitchParams, staticSwitchParamIDs);
 	FStaticParameterSet staticParamSet;
 
 	// Iterate all vmt params and try to push them to the material
@@ -77,7 +42,7 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 				// Scalar
 				if (GetMaterialParameterByKey(scalarParams, key, info))
 				{
-					SetScalarParameterValueEditorOnly(info, (float)value);
+					mtl->SetScalarParameterValueEditorOnly(info, (float)value);
 				}
 				// Static switch
 				else if (GetMaterialParameterByKey(staticSwitchParams, key, info))
@@ -94,7 +59,7 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 					FLinearColor tmp;
 					tmp.R = tmp.G = tmp.G = value / 255.0f;
 					tmp.A = 1.0f;
-					SetVectorParameterValueEditorOnly(info, tmp);
+					mtl->SetVectorParameterValueEditorOnly(info, tmp);
 				}
 				break;
 			}
@@ -105,12 +70,12 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 				// Scalar
 				if (GetMaterialParameterByKey(scalarParams, key, info))
 				{
-					SetScalarParameterValueEditorOnly(info, FCString::Atof(*value));
+					mtl->SetScalarParameterValueEditorOnly(info, FCString::Atof(*value));
 				}
 				// Texture
 				else if (GetMaterialParameterByKey(textureParams, key, info))
 				{
-					vmtTextures.Add(info.Name, hl2Editor.HL2TexturePathToAssetPath(value));
+					mtl->vmtTextures.Add(info.Name, hl2Runtime.HL2TexturePathToAssetPath(value));
 					if (GetMaterialParameterByKey(staticSwitchParams, GetVMTKeyAsParameterName(node->GetName(), "_present"), info))
 					{
 						FStaticSwitchParameter staticSwitchParam;
@@ -135,7 +100,7 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 					FLinearColor tmp;
 					if (ParseFloatVec3(value, tmp) || ParseIntVec3(value, tmp))
 					{
-						SetVectorParameterValueEditorOnly(info, tmp);
+						mtl->SetVectorParameterValueEditorOnly(info, tmp);
 					}
 					else
 					{
@@ -148,11 +113,11 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 					FMatrix tmp;
 					if (ParseTransform(value, tmp))
 					{
-						SetVectorParameterValueEditorOnly(info, tmp.GetScaledAxis(EAxis::X));
+						mtl->SetVectorParameterValueEditorOnly(info, tmp.GetScaledAxis(EAxis::X));
 						GetMaterialParameterByKey(vectorParams, GetVMTKeyAsParameterName(node->GetName(), "_v1"), info);
-						SetVectorParameterValueEditorOnly(info, tmp.GetScaledAxis(EAxis::Y));
+						mtl->SetVectorParameterValueEditorOnly(info, tmp.GetScaledAxis(EAxis::Y));
 						GetMaterialParameterByKey(vectorParams, GetVMTKeyAsParameterName(node->GetName(), "_v2"), info);
-						SetVectorParameterValueEditorOnly(info, tmp.GetOrigin());
+						mtl->SetVectorParameterValueEditorOnly(info, tmp.GetOrigin());
 					}
 					else
 					{
@@ -168,7 +133,7 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 				// Scalar
 				if (GetMaterialParameterByKey(scalarParams, node->GetName(), info))
 				{
-					SetScalarParameterValueEditorOnly(info, value);
+					mtl->SetScalarParameterValueEditorOnly(info, value);
 				}
 				// Vector
 				else if (GetMaterialParameterByKey(staticSwitchParams, key, info))
@@ -176,7 +141,7 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 					FLinearColor tmp;
 					tmp.R = tmp.G = tmp.G = value;
 					tmp.A = 1.0f;
-					SetVectorParameterValueEditorOnly(info, tmp);
+					mtl->SetVectorParameterValueEditorOnly(info, tmp);
 				}
 				break;
 			}
@@ -184,7 +149,7 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 	}
 
 	// Read keywords
-	vmtKeywords.Empty();
+	mtl->vmtKeywords.Empty();
 	const auto keywordsNode = groupNode.GetNode("$keywords");
 	if (keywordsNode != nullptr)
 	{
@@ -195,8 +160,8 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 		else
 		{
 			FString value = ((VTFLib::Nodes::CVMTStringNode*)keywordsNode)->GetValue();
-			value.ParseIntoArray(vmtKeywords, TEXT(","), true);
-			for (FString& str : vmtKeywords)
+			value.ParseIntoArray(mtl->vmtKeywords, TEXT(","), true);
+			for (FString& str : mtl->vmtKeywords)
 			{
 				str.TrimStartAndEndInline();
 			}
@@ -204,7 +169,7 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 	}
 
 	// Read surface prop
-	vmtSurfaceProp.Empty();
+	mtl->vmtSurfaceProp.Empty();
 	const auto surfacePropNode = groupNode.GetNode("$surfaceprop");
 	if (surfacePropNode != nullptr)
 	{
@@ -214,39 +179,29 @@ bool UVMTMaterial::SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode)
 		}
 		else
 		{
-			vmtSurfaceProp = ((VTFLib::Nodes::CVMTStringNode*)surfacePropNode)->GetValue();
+			mtl->vmtSurfaceProp = ((VTFLib::Nodes::CVMTStringNode*)surfacePropNode)->GetValue();
 		}
 	}
 
 	// Update textures
-	TryResolveTextures();
+	TryResolveTextures(mtl);
 
 	// Update static parameters
-	UpdateStaticPermutation(staticParamSet);
+	mtl->UpdateStaticPermutation(staticParamSet);
 
 	// Shader found
 	return true;
 }
 
-bool UVMTMaterial::DoesReferenceTexture(FName assetPath) const
+void FMaterialUtils::TryResolveTextures(UVMTMaterial* mtl)
 {
-	IHL2Editor& hl2Editor = IHL2Editor::Get();
-	for (const auto pair : vmtTextures)
-	{
-		if (pair.Value == assetPath) { return true; }
-	}
-	return false;
-}
-
-void UVMTMaterial::TryResolveTextures()
-{
-	if (Parent == nullptr) { return; }
+	if (mtl->Parent == nullptr) { return; }
 	TArray<FMaterialParameterInfo> materialParams;
 	TArray<FGuid> materialIDs;
-	Parent->GetAllTextureParameterInfo(materialParams, materialIDs);
+	mtl->Parent->GetAllTextureParameterInfo(materialParams, materialIDs);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	for (const auto pair : vmtTextures)
+	for (const auto pair : mtl->vmtTextures)
 	{
 		FAssetData assetData = assetRegistry.GetAssetByObjectPath(pair.Value);
 		FMaterialParameterInfo info;
@@ -259,21 +214,21 @@ void UVMTMaterial::TryResolveTextures()
 			}
 			if (texture == nullptr)
 			{
-				GetTextureParameterDefaultValue(info, texture);
+				mtl->GetTextureParameterDefaultValue(info, texture);
 			}
-			SetTextureParameterValueEditorOnly(info, texture);
+			mtl->SetTextureParameterValueEditorOnly(info, texture);
 		}
 	}
 }
 
-FName UVMTMaterial::GetVMTKeyAsParameterName(const char* key)
+FName FMaterialUtils::GetVMTKeyAsParameterName(const char* key)
 {
 	FString keyAsString(key);
 	keyAsString.RemoveFromStart("$");
 	return FName(*keyAsString);
 }
 
-FName UVMTMaterial::GetVMTKeyAsParameterName(const char* key, const FString& postfix)
+FName FMaterialUtils::GetVMTKeyAsParameterName(const char* key, const FString& postfix)
 {
 	FString keyAsString(key);
 	keyAsString.RemoveFromStart("$");
@@ -281,12 +236,12 @@ FName UVMTMaterial::GetVMTKeyAsParameterName(const char* key, const FString& pos
 	return FName(*keyAsString);
 }
 
-bool UVMTMaterial::GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParams, const char* key, FMaterialParameterInfo& out)
+bool FMaterialUtils::GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParams, const char* key, FMaterialParameterInfo& out)
 {
 	return GetMaterialParameterByKey(materialParams, GetVMTKeyAsParameterName(key), out);
 }
 
-bool UVMTMaterial::GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParams, FName key, FMaterialParameterInfo& out)
+bool FMaterialUtils::GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParams, FName key, FMaterialParameterInfo& out)
 {
 	for (const FMaterialParameterInfo& info : materialParams)
 	{
@@ -299,7 +254,7 @@ bool UVMTMaterial::GetMaterialParameterByKey(const TArray<FMaterialParameterInfo
 	return false;
 }
 
-bool UVMTMaterial::GetVMTKeyAsBool(const VTFLib::Nodes::CVMTGroupNode& groupNode, const char* key, bool defaultValue)
+bool FMaterialUtils::GetVMTKeyAsBool(const VTFLib::Nodes::CVMTGroupNode& groupNode, const char* key, bool defaultValue)
 {
 	const auto node = groupNode.GetNode(key);
 	if (node != nullptr)
@@ -325,7 +280,7 @@ bool UVMTMaterial::GetVMTKeyAsBool(const VTFLib::Nodes::CVMTGroupNode& groupNode
 	}
 }
 
-bool UVMTMaterial::ParseFloatVec3(const FString& value, FVector& out)
+bool FMaterialUtils::ParseFloatVec3(const FString& value, FVector& out)
 {
 	const static FRegexPattern patternFloatVector(TEXT("^\\s*\\[\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s*\\]\\s*$"));
 	FRegexMatcher matchFloatVector(patternFloatVector, value);
@@ -342,7 +297,7 @@ bool UVMTMaterial::ParseFloatVec3(const FString& value, FVector& out)
 	}
 }
 
-bool UVMTMaterial::ParseFloatVec3(const FString& value, FLinearColor& out)
+bool FMaterialUtils::ParseFloatVec3(const FString& value, FLinearColor& out)
 {
 	FVector tmp;
 	if (!ParseFloatVec3(value, tmp)) { return false; }
@@ -353,7 +308,7 @@ bool UVMTMaterial::ParseFloatVec3(const FString& value, FLinearColor& out)
 	return true;
 }
 
-bool UVMTMaterial::ParseIntVec3(const FString& value, FIntVector& out)
+bool FMaterialUtils::ParseIntVec3(const FString& value, FIntVector& out)
 {
 	const static FRegexPattern patternIntVector(TEXT("^\\s*\\{\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s*\\}\\s*$"));
 	FRegexMatcher matchIntVector(patternIntVector, value);
@@ -370,7 +325,7 @@ bool UVMTMaterial::ParseIntVec3(const FString& value, FIntVector& out)
 	}
 }
 
-bool UVMTMaterial::ParseIntVec3(const FString& value, FVector& out)
+bool FMaterialUtils::ParseIntVec3(const FString& value, FVector& out)
 {
 	FIntVector tmp;
 	if (!ParseIntVec3(value, tmp)) { return false; }
@@ -380,7 +335,7 @@ bool UVMTMaterial::ParseIntVec3(const FString& value, FVector& out)
 	return true;
 }
 
-bool UVMTMaterial::ParseIntVec3(const FString& value, FLinearColor& out)
+bool FMaterialUtils::ParseIntVec3(const FString& value, FLinearColor& out)
 {
 	FIntVector tmp;
 	if (!ParseIntVec3(value, tmp)) { return false; }
@@ -391,7 +346,7 @@ bool UVMTMaterial::ParseIntVec3(const FString& value, FLinearColor& out)
 	return true;
 }
 
-bool UVMTMaterial::ParseTransform(const FString& value, FMatrix& out)
+bool FMaterialUtils::ParseTransform(const FString& value, FMatrix& out)
 {
 	const static FRegexPattern patternCenter(TEXT("center\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)"));
 	const static FRegexPattern patternScale(TEXT("scale\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)"));

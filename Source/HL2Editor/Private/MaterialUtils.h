@@ -1,42 +1,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/ObjectMacros.h"
-#include "UObject/UObjectGlobals.h"
-#include "Engine/Classes/Materials/MaterialInstanceConstant.h"
-#include "VTFLib/VTFLib.h"
-#include "Internationalization/Regex.h"
+#include "VMTMaterial.h"
+#include "VTFLib/VMTGroupNode.h"
 
-#include "VMTMaterial.generated.h"
-
-UCLASS()
-class UVMTMaterial : public UMaterialInstanceConstant
+class FMaterialUtils
 {
-	GENERATED_BODY()
+private:
+
+	FMaterialUtils();
 
 public:
 	
-	bool SetFromVMT(const VTFLib::Nodes::CVMTGroupNode& groupNode);
-	bool DoesReferenceTexture(FName assetPath) const;
-	void TryResolveTextures();
+	static bool SetFromVMT(UVMTMaterial* mtl, const VTFLib::Nodes::CVMTGroupNode& groupNode);
 
-	virtual void PostInitProperties() override;
-
-#if WITH_EDITORONLY_DATA
-	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
-	virtual void Serialize(FArchive& Ar) override;
-#endif
+	static void TryResolveTextures(UVMTMaterial* mtl);
 
 private:
-
-	UPROPERTY()
-	TMap<FName, FName> vmtTextures;
-
-	UPROPERTY()
-	TArray<FString> vmtKeywords;
-
-	UPROPERTY()
-	FString vmtSurfaceProp;
 
 	static FName GetVMTKeyAsParameterName(const char* key);
 	static FName GetVMTKeyAsParameterName(const char* key, const FString& postfix);

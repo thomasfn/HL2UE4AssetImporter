@@ -1,11 +1,8 @@
 #pragma once
 
 #include "ModuleManager.h"
-
-DECLARE_LOG_CATEGORY_EXTERN(LogHL2Editor, Log, All);
-
-class UTexture;
-class UVMTMaterial;
+#include "VMTMaterial.h"
+#include "Engine/Texture.h"
 
 UENUM()
 enum class EHL2BlendMode : uint8
@@ -15,7 +12,7 @@ enum class EHL2BlendMode : uint8
 	Translucent
 };
 
-class IHL2Editor : public IModuleInterface
+class HL2RUNTIME_API IHL2Runtime : public IModuleInterface
 {
 public:
 
@@ -25,9 +22,9 @@ public:
 	*
 	* @return Returns singleton instance, loading the module on demand if needed
 	*/
-	static inline IHL2Editor& Get()
+	static inline IHL2Runtime& Get()
 	{
-		return FModuleManager::LoadModuleChecked<IHL2Editor>("HL2Editor");
+		return FModuleManager::LoadModuleChecked<IHL2Runtime>("HL2Runtime");
 	}
 
 	/**
@@ -37,8 +34,15 @@ public:
 	*/
 	static inline bool IsAvailable()
 	{
-		return FModuleManager::Get().IsModuleLoaded("HL2Editor");
+		return FModuleManager::Get().IsModuleLoaded("HL2Runtime");
 	}
+
+	virtual FString GetHL2BasePath() const = 0;
+	virtual FString GetPluginBasePath() const = 0;
+	
+	virtual FString GetHL2TextureBasePath() const = 0;
+	virtual FString GetHL2MaterialBasePath() const = 0;
+	virtual FString GetHL2ShaderBasePath() const = 0;
 
 	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const = 0;
 	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const = 0;

@@ -40,7 +40,9 @@ private:
 	static FPlane ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
 	 
 	static void RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* world, TArray<AStaticMeshActor*>& out, uint32 nodeIndex);
-	 
+	
+	static UStaticMesh* RenderMeshToStaticMesh(UWorld* world, const FMeshDescription& meshDesc);
+
 	static AStaticMeshActor* RenderMeshToActor(UWorld* world, const FMeshDescription& meshDesc);
 	 
 	static void RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter);
@@ -51,6 +53,6 @@ private:
 	 
 	static bool SharesSmoothingGroup(uint16 groupA, uint16 groupB);
 	 
-	static ABaseEntity* ImportEntityToWorld(UWorld* world, const FHL2EntityData& entityData);
+	static ABaseEntity* ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, const FHL2EntityData& entityData);
 
 };

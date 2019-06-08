@@ -49,8 +49,8 @@ public:
 
 	bool TryGetVector(FName key, FVector& out) const;
 
-	FRotator GetRotator(FName key) const;
+	FVector4 GetVector4(FName key) const;
 
-	bool TryGetRotator(FName key, FRotator& out) const;
+	bool TryGetVector4(FName key, FVector4& out) const;
 
 };

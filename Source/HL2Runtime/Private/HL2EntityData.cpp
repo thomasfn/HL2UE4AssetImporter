@@ -80,17 +80,22 @@ bool FHL2EntityData::TryGetVector(FName key, FVector& out) const
 	return true;
 }
 
-FRotator FHL2EntityData::GetRotator(FName key) const
+FVector4 FHL2EntityData::GetVector4(FName key) const
 {
-	FRotator tmp;
-	TryGetRotator(key, tmp);
+	FVector4 tmp;
+	TryGetVector4(key, tmp);
 	return tmp;
 }
 
-bool FHL2EntityData::TryGetRotator(FName key, FRotator& out) const
+bool FHL2EntityData::TryGetVector4(FName key, FVector4& out) const
 {
-	FVector value;
-	if (!TryGetVector(key, value)) { return false; }
-	out = FRotator::MakeFromEuler(value);
+	FString value;
+	if (!TryGetString(key, value)) { return false; }
+	TArray<FString> segments;
+	if (value.ParseIntoArray(segments, TEXT(" "), true) < 3) { return false; }
+	out.X = FCString::Atof(*segments[0]);
+	out.Y = FCString::Atof(*segments[1]);
+	out.Z = FCString::Atof(*segments[2]);
+	out.W = FCString::Atof(*segments[3]);
 	return true;
 }

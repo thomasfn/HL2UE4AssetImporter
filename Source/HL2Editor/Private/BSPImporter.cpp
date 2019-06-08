@@ -21,6 +21,7 @@
 #include "MeshSplitter.h"
 #include "UObject/ConstructorHelpers.h"
 #include "AssetRegistryModule.h"
+#include "Internationalization/Regex.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -101,11 +102,13 @@ bool FBSPImporter::ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* 
 
 	TArray<AStaticMeshActor*> staticMeshes;
 	RenderTreeToActors(bspFile, world, staticMeshes, bspWorldModel.m_Headnode);
+	GEditor->SelectNone(false, true, false);
 	for (AStaticMeshActor* actor : staticMeshes)
 	{
 		GEditor->SelectActor(actor, true, false, true, false);
-		folders.SetSelectedFolderPath(geometryFolder);
 	}
+	folders.SetSelectedFolderPath(geometryFolder);
+	GEditor->SelectNone(false, true, false);
 
 	FVector mins(bspWorldModel.m_Mins(0, 0), bspWorldModel.m_Mins(0, 1), bspWorldModel.m_Mins(0, 2));
 	FVector maxs(bspWorldModel.m_Maxs(0, 0), bspWorldModel.m_Maxs(0, 1), bspWorldModel.m_Maxs(0, 2));
@@ -137,15 +140,17 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	TArray<FHL2EntityData> entityDatas;
 	if (!FEntityParser::ParseEntities(entityStr, entityDatas)) { return false; }
 
+	GEditor->SelectNone(false, true, false);
 	for (const FHL2EntityData& entityData : entityDatas)
 	{
-		AActor* actor = ImportEntityToWorld(world, entityData);
+		AActor* actor = ImportEntityToWorld(bspFile, world, entityData);
 		if (actor != nullptr)
 		{
 			GEditor->SelectActor(actor, true, false, true, false);
-			folders.SetSelectedFolderPath(entitiesFolder);
 		}
 	}
+	folders.SetSelectedFolderPath(entitiesFolder);
+	GEditor->SelectNone(false, true, false);
 
 	return true;
 }
@@ -220,7 +225,7 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 	}
 }
 
-AStaticMeshActor* FBSPImporter::RenderMeshToActor(UWorld* world, const FMeshDescription& meshDesc)
+UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(UWorld* world, const FMeshDescription& meshDesc)
 {
 	UStaticMesh* staticMesh = NewObject<UStaticMesh>(world);
 	FStaticMeshSourceModel& staticMeshSourceModel = staticMesh->AddSourceModel();
@@ -247,6 +252,12 @@ AStaticMeshActor* FBSPImporter::RenderMeshToActor(UWorld* world, const FMeshDesc
 	staticMesh->CommitMeshDescription(0);
 	staticMesh->LightMapCoordinateIndex = 1;
 	staticMesh->Build();
+	return staticMesh;
+}
+
+AStaticMeshActor* FBSPImporter::RenderMeshToActor(UWorld* world, const FMeshDescription& meshDesc)
+{
+	UStaticMesh* staticMesh = RenderMeshToStaticMesh(world, meshDesc);
 
 	FTransform transform = FTransform::Identity;
 	transform.SetScale3D(FVector(1.0f, -1.0f, 1.0f));
@@ -757,7 +768,7 @@ bool FBSPImporter::SharesSmoothingGroup(uint16 groupA, uint16 groupB)
 	return false;
 }
 
-ABaseEntity* FBSPImporter::ImportEntityToWorld(UWorld* world, const FHL2EntityData& entityData)
+ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, const FHL2EntityData& entityData)
 {
 	const FString assetPath = IHL2Runtime::Get().GetHL2EntityBasePath() + entityData.Classname.ToString() + TEXT(".") + entityData.Classname.ToString();
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -765,15 +776,37 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(UWorld* world, const FHL2EntityDa
 	FAssetData assetData = assetRegistry.GetAssetByObjectPath(FName(*assetPath));
 	if (!assetData.IsValid()) { return false; }
 	UBlueprint* blueprint = CastChecked<UBlueprint>(assetData.GetAsset());
+
 	FTransform transform = FTransform::Identity;
 	transform.SetLocation(entityData.Origin);
-	FRotator rotator = FRotator::ZeroRotator;
-	static const FName kRotator(TEXT("angles"));
-	entityData.TryGetRotator(kRotator, rotator);
-	transform.SetRotation(rotator.Quaternion());
+
 	ABaseEntity* entity = world->SpawnActor<ABaseEntity>(blueprint->GeneratedClass, transform);
 	if (entity == nullptr) { return nullptr; }
+
+	static const FName kModel(TEXT("model"));
+	FString model;
+	if (entityData.TryGetString(kModel, model))
+	{
+		static const FRegexPattern patternWorldModel(TEXT("^\\*([0-9]+)$"));
+		FRegexMatcher matchWorldModel(patternWorldModel, model);
+		if (matchWorldModel.FindNext())
+		{
+			int modelIndex = FCString::Atoi(*matchWorldModel.GetCaptureGroup(1));
+			const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[modelIndex];
+			TArray<uint16> faces;
+			GatherFaces(bspFile, bspModel.m_Headnode, faces);
+			FMeshDescription meshDesc;
+			UStaticMesh::RegisterMeshAttributes(meshDesc);
+			RenderFacesToMesh(bspFile, faces, meshDesc, false);
+			meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
+			meshDesc.TriangulateMesh();
+			UStaticMesh* staticMesh = RenderMeshToStaticMesh(world, meshDesc);
+			entity->WorldModel = staticMesh;
+		}
+	}
+
 	entity->EntityData = entityData;
 	entity->InitialiseEntity();
+
 	return entity;
 }

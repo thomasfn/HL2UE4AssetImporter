@@ -49,9 +49,24 @@ public:
 	static bool TryGetVector(const FHL2EntityData& entityData, FName key, FVector& out);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure)
+	static FVector4 GetVector4(const FHL2EntityData& entityData, FName key);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure)
+	static bool TryGetVector4(const FHL2EntityData& entityData, FName key, FVector4& out);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure)
 	static FRotator GetRotator(const FHL2EntityData& entityData, FName key);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure)
 	static bool TryGetRotator(const FHL2EntityData& entityData, FName key, FRotator& out);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure)
+	static FLinearColor GetColor(const FHL2EntityData& entityData, FName key);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure)
+	static bool TryGetColor(const FHL2EntityData& entityData, FName key, FLinearColor& out);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure)
+	static bool TryGetColorAndAlpha(const FHL2EntityData& entityData, FName key, FLinearColor& out, float& outAlpha);
 	
 };

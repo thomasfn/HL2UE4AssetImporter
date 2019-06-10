@@ -18,7 +18,7 @@
 #include "MeshAttributes.h"
 #include "Internationalization/Regex.h"
 #include "MeshAttributes.h"
-#include "MeshSplitter.h"
+#include "MeshUtils.h"
 #include "UObject/ConstructorHelpers.h"
 #include "AssetRegistryModule.h"
 #include "Internationalization/Regex.h"
@@ -194,7 +194,7 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 
 				// Clip the mesh by the planes into a new one
 				FMeshDescription cellMeshDesc = meshDesc;
-				FMeshSplitter::Clip(cellMeshDesc, boundingPlanes);
+				FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
 
 				// Check if it has anything
 				if (cellMeshDesc.Polygons().Num() > 0)

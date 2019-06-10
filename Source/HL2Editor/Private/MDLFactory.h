@@ -7,6 +7,10 @@
 #include "Animation/Skeleton.h"
 #include "Animation/AnimSequence.h"
 
+#include "studiomdl/studiomdl.h"
+#include "studiomdl/valvemeshstrip.h"
+#include "studiomdl/valvevertexdata.h"
+
 #include "MDLFactory.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMDLFactory, Log, All);
@@ -73,4 +77,5 @@ private:
 
 	FImportedMDL ImportStudioModel(UClass* inClass, UObject* inParent, FName inName, EObjectFlags flags, const TCHAR* type, const uint8*& buffer, const uint8* bufferEnd, const FString& path, FFeedbackContext* warn);
 
+	UStaticMesh* ImportStaticMesh(UObject* inParent, FName inName, EObjectFlags flags, const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, FFeedbackContext* warn);
 };

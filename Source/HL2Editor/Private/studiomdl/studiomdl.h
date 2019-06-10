@@ -1,11 +1,16 @@
 #pragma once;
 
 #include "CoreMinimal.h"
+#include "utils.h"
+
+//#pragma pack(1)
 
 namespace Valve
 {
 	namespace MDL
 	{
+		constexpr int MAX_NUM_LODS = 8;
+
 		enum class studiohdr_flag : int
 		{
 			// This flag is set if no hitbox information was specified
@@ -46,6 +51,134 @@ namespace Valve
 			CAST_TEXTURE_SHADOWS = 1 << 18
 		};
 
+		struct mstudiobone_t
+		{
+			int					sznameindex;
+			int		 			parent;		// parent bone
+			int					bonecontroller[6];	// bone controller index, -1 == none
+
+			// default values
+			FVector				pos;
+			FQuat			quat;
+			FVector			rot;
+			// compression scale
+			FVector				posscale;
+			FVector				rotscale;
+
+			float			poseToBone[12]; // 3x4 matrix
+			FQuat			qAlignment;
+			int					flags;
+			int					proctype;
+			int					procindex;		// procedural rule
+			int					physicsbone;	// index into physically simulated bone
+			int					surfacepropidx;	// index into string tablefor property name
+			int					contents;		// See BSPFlags.h for the contents flags
+
+			int					unused[8];		// remove as appropriate
+		};
+
+		struct mstudiotexture_t
+		{
+			// Number of bytes past the beginning of this structure
+			// where the first character of the texture name can be found.
+			int		name_offset; 	// Offset for null-terminated string
+			FString GetName() const { return ReadString(this, name_offset); }
+
+			int		flags;
+			int		used; 		// ??
+
+			int		unused0; 	// ??
+
+			int	material;		// Placeholder for IMaterial
+			int	client_material;	// Placeholder for void*
+
+			int		unused1[10];
+		};
+
+		struct mstudio_modelvertexdata_t
+		{
+			// base of external vertex data stores
+			int pVertexData;
+			int pTangentData;
+		};
+
+		struct mstudio_meshvertexdata_t
+		{
+			// indirection to this mesh's model's vertex data
+			int modelvertexdata;
+
+			// used for fixup calcs when culling top level lods
+			// expected number of mesh verts at desired lod
+			int					numLODVertexes[MAX_NUM_LODS];
+		};
+
+		struct mstudiomesh_t
+		{
+			int					material;
+
+			int					modelindex;
+
+			int					numvertices;		// number of unique vertices/normals/texcoords
+			int					vertexoffset;		// vertex mstudiovertex_t
+
+			int					numflexes;			// vertex animation
+			int					flexindex;
+			// inline mstudioflex_t* pFlex(int i) const { return (mstudioflex_t*)(((byte*)this) + flexindex) + i; };
+
+			// special codes for material operations
+			int					materialtype;
+			int					materialparam;
+
+			// a unique ordinal for this mesh
+			int					meshid;
+
+			FVector				center;
+
+			mstudio_meshvertexdata_t vertexdata;
+
+			int					unused[8]; // remove as appropriate
+		};
+
+		struct mstudiomodel_t
+		{
+			char				name[64];
+			FString GetName() const { return ReadString(this, 0); }
+
+			int					type;
+
+			float				boundingradius;
+
+			int					nummeshes;
+			int					meshindex;
+			void GetMeshes(TArray<const mstudiomesh_t*>& out) const { return ReadArray<mstudiomesh_t>(this, meshindex, nummeshes, out); }
+
+			// cache purposes
+			int					numvertices;		// number of unique vertices/normals/texcoords
+			int					vertexindex;		// vertex Vector
+			int					tangentsindex;		// tangents Vector
+
+			int					numattachments;
+			int					attachmentindex;
+
+			int					numeyeballs;
+			int					eyeballindex;
+			// inline  mstudioeyeball_t* pEyeball(int i) { return (mstudioeyeball_t*)(((byte*)this) + eyeballindex) + i; };
+
+			mstudio_modelvertexdata_t vertexdata;
+
+			int					unused[8];		// remove as appropriate
+		};
+
+		struct mstudiobodyparts_t
+		{
+			int					sznameindex;
+			FString GetName() const { return ReadString(this, sznameindex); }
+			int					nummodels;
+			int					base;
+			int					modelindex; // index into models array
+			void GetModels(TArray<const mstudiomodel_t*>& out) const { return ReadArray<mstudiomodel_t>(this, modelindex, nummodels, out); }
+		};
+
 		struct studiohdr_t
 		{
 			int		id;		// Model format ID, such as "IDST" (0x49 0x44 0x53 0x54)
@@ -66,6 +199,7 @@ namespace Valve
 			int		flags;		// Binary flags in little-endian order. 
 							// ex (00000001,00000000,00000000,11000000) means flags for position 0, 30, and 31 are set. 
 							// Set model flags section for more information
+			bool HasFlag(studiohdr_flag flag) const { return (flags & (int)flag) != 0; }
 
 			/*
 			 * After this point, the header contains many references to offsets
@@ -79,6 +213,7 @@ namespace Valve
 			 // mstudiobone_t
 			int		bone_count;	// Number of data sections (of type mstudiobone_t)
 			int		bone_offset;	// Offset of first data section
+			void GetBones(TArray<mstudiobone_t>& out) const { ReadArray(this, bone_offset, bone_count, out); }
 
 			// mstudiobonecontroller_t
 			int		bonecontroller_count;
@@ -103,12 +238,23 @@ namespace Valve
 			// mstudiotexture_t
 			int		texture_count;
 			int		texture_offset;
+			void GetTextures(TArray<const mstudiotexture_t*>& out) const { ReadArray<mstudiotexture_t>(this, texture_offset, texture_count, out); }
 
 			// This offset points to a series of ints.
 				// Each int value, in turn, is an offset relative to the start of this header/the-file,
 				// At which there is a null-terminated string.
 			int		texturedir_count;
 			int		texturedir_offset;
+			void GetTextureDirs(TArray<FString>& out) const
+			{
+				TArray<int> offsets;
+				ReadArray(this, texturedir_offset, texturedir_count, offsets);
+				out.Reserve(offsets.Num());
+				for (const int offset : offsets)
+				{
+					out.Add(ReadString(this, offset));
+				}
+			}
 
 			// Each skin-family assigns a texture-id to a skin location
 			int		skinreference_count;
@@ -118,6 +264,7 @@ namespace Valve
 			// mstudiobodyparts_t
 			int		bodypart_count;
 			int		bodypart_offset;
+			void GetBodyParts(TArray<const mstudiobodyparts_t*>& out) const { ReadArray<mstudiobodyparts_t>(this, bodypart_offset, bodypart_count, out); }
 
 			// Local attachment points		
 		// mstudioattachment_t
@@ -164,12 +311,14 @@ namespace Valve
 
 			 // Surface property value (single null-terminated string)
 			int		surfaceprop_index;
+			FString GetSurfaceProp() const { return ReadString(this, surfaceprop_index); }
 
 			// Unusual: In this one index comes first, then count.
 			// Key-value data is a series of strings. If you can't find
 			// what you're interested in, check the associated PHY file as well.
 			int		keyvalue_index;
 			int		keyvalue_count;
+			void GetKeyValues(TArray<FString>& out) const { ReadArray(this, keyvalue_index, keyvalue_count, out); }
 
 			// More inverse-kinematics
 			// mstudioiklock_t
@@ -230,10 +379,6 @@ namespace Valve
 			/**
 			 * As of this writing, the header is 408 bytes long in total
 			 */
-
-			void GetKeyValues(TArray<FString>& keyValues) const;
-
-			bool HasFlag(studiohdr_flag flag) const;
 		};
 
 		struct studiohdr2_t
@@ -251,21 +396,7 @@ namespace Valve
 
 			int 	unknown[64];
 		};
-
-		struct mstudiotexture_t
-		{
-			// Number of bytes past the beginning of this structure
-			// where the first character of the texture name can be found.
-			int		name_offset; 	// Offset for null-terminated string
-			int		flags;
-			int		used; 		// ??
-
-			int		unused0; 	// ??
-
-			int	material;		// Placeholder for IMaterial
-			int	client_material;	// Placeholder for void*
-
-			int		unused1[10];
-		};
 	}
 }
+
+//#pragma pack()

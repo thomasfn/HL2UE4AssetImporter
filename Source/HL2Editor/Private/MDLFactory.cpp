@@ -5,10 +5,8 @@
 #include "Misc/FeedbackContext.h"
 #include "AssetImportTask.h"
 #include "FileHelper.h"
-
-#include "studiomdl/studiomdl.h"
-#include "studiomdl/valvemeshstrip.h"
-#include "studiomdl/valvevertexdata.h"
+#include "IHL2Runtime.h"
+#include "MeshUtils.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -197,39 +195,305 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	// Version
 	if (header.version != 44)
 	{
-		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Header has invalid version (expecting 44, got %d)"), header.version);
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: MDL Header has invalid version (expecting 44, got %d)"), header.version);
 		return result;
 	}
 
-	const bool isStaticMesh = header.HasFlag(Valve::MDL::studiohdr_flag::STATIC_PROP);
-	TArray<FString> keyValues;
-	header.GetKeyValues(keyValues);
-
 	// Load vtx
+	FString baseFileName = FPaths::GetBaseFilename(FString(header.name));
 	TArray<uint8> vtxData;
+	if (!FFileHelper::LoadFileToArray(vtxData, *(path / baseFileName + TEXT(".vtx"))))
 	{
-		if (!FFileHelper::LoadFileToArray(vtxData, *(path / keyValues[8] + TEXT(".vtx"))))
+		if (!FFileHelper::LoadFileToArray(vtxData, *(path / baseFileName + TEXT(".dx90.vtx"))))
 		{
-			if (!FFileHelper::LoadFileToArray(vtxData, *(path / keyValues[8] + TEXT(".dx90.vtx"))))
+			if (!FFileHelper::LoadFileToArray(vtxData, *(path / baseFileName + TEXT(".dx80.vtx"))))
 			{
-				if (!FFileHelper::LoadFileToArray(vtxData, *(path / keyValues[8] + TEXT(".dx80.vtx"))))
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Could not find vtx file"));
+				return result;
+			}
+		}
+	}
+	const Valve::VTX::FileHeader_t& vtxHeader = *((Valve::VTX::FileHeader_t*)&vtxData[0]);
+	if (vtxHeader.version != 7)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: VTX Header has invalid version (expecting 7, got %d)"), vtxHeader.version);
+		return result;
+	}
+	if (vtxHeader.checkSum != header.checksum)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: VTX Header has invalid checksum (expecting %d, got %d)"), header.checksum, vtxHeader.checkSum);
+		return result;
+	}
+
+	// Load vvd
+	TArray<uint8> vvdData;
+	if (!FFileHelper::LoadFileToArray(vvdData, *(path / baseFileName + TEXT(".vvd"))))
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Could not find vvd file"));
+		return result;
+	}
+	const Valve::VVD::vertexFileHeader_t& vvdHeader = *((Valve::VVD::vertexFileHeader_t*)&vvdData[0]);
+	if (vvdHeader.version != 4)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: VVD Header has invalid version (expecting 4, got %d)"), vvdHeader.version);
+		return result;
+	}
+	if (vvdHeader.checksum != header.checksum)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: VVD Header has invalid checksum (expecting %d, got %d)"), header.checksum, vvdHeader.checksum);
+		return result;
+	}
+
+	// Static mesh
+	if (header.HasFlag(Valve::MDL::studiohdr_flag::STATIC_PROP))
+	{
+		result.StaticMesh = ImportStaticMesh(inParent, inName, flags, header, vtxHeader, vvdHeader, warn);
+		return result;
+	}
+
+	warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Animated models not yet supported"));
+
+	return result;
+}
+
+UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObjectFlags flags, const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, FFeedbackContext* warn)
+{
+	UStaticMesh* staticMesh = CreateStaticMesh(inParent, inName, flags);
+	if (staticMesh == nullptr) { return nullptr;  }
+
+	FStaticMeshSourceModel& sourceModel = staticMesh->AddSourceModel();
+
+	FMeshBuildSettings& settings = sourceModel.BuildSettings;
+	settings.bRecomputeNormals = false;
+	settings.bRecomputeTangents = false;
+	settings.bGenerateLightmapUVs = true;
+	settings.SrcLightmapIndex = 0;
+	settings.DstLightmapIndex = 1;
+	settings.bRemoveDegenerates = false;
+	settings.bUseFullPrecisionUVs = true;
+	settings.MinLightmapResolution = 128;
+	staticMesh->LightMapResolution = 128;
+
+	// Read and validate body parts
+	TArray<const Valve::MDL::mstudiobodyparts_t*> bodyParts;
+	header.GetBodyParts(bodyParts);
+	TArray<const Valve::VTX::BodyPartHeader_t*> vtxBodyParts;
+	vtxHeader.GetBodyParts(vtxBodyParts);
+	if (bodyParts.Num() != vtxBodyParts.Num())
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Body parts in vtx didn't match body parts in mdl"));
+		return nullptr;
+	}
+
+	// Create all mesh descriptions
+	struct LocalMeshData
+	{
+		FMeshDescription meshDescription;
+		TMap<FVector, FVertexID> vertexMap;
+		TMap<uint16, FVertexInstanceID> vertexInstanceMap;
+
+		TPolygonGroupAttributesRef<FName> polyGroupMaterial;
+		TVertexAttributesRef<FVector> vertPos;
+		TVertexInstanceAttributesRef<FVector> vertInstNormal;
+		TVertexInstanceAttributesRef<FVector> vertInstTangent;
+		TVertexInstanceAttributesRef<FVector2D> vertInstUV0;
+
+		LocalMeshData()
+		{
+			UStaticMesh::RegisterMeshAttributes(meshDescription);
+			polyGroupMaterial = meshDescription.PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
+			vertPos = meshDescription.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+			vertInstNormal = meshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
+			vertInstTangent = meshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Tangent);
+			vertInstUV0 = meshDescription.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
+		}
+	};
+	TArray<LocalMeshData> localMeshDatas;
+	localMeshDatas.AddDefaulted(vtxHeader.numLODs);
+
+	// Read textures
+	TArray<FString> textureDirs;
+	header.GetTextureDirs(textureDirs);
+	TArray<const Valve::MDL::mstudiotexture_t*> textures;
+	header.GetTextures(textures);
+	if (textureDirs.Num() < 1)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: No texture dirs present (%d)"), textures.Num(), textureDirs.Num());
+		return nullptr;
+	}
+	TArray<FName> materials;
+	materials.Reserve(textures.Num());
+	for (int textureIndex = 0; textureIndex < textures.Num(); ++textureIndex)
+	{
+		FString materialPath = (textureIndex >= textureDirs.Num() ? textureDirs.Top() : textureDirs[textureIndex]) / textures[textureIndex]->GetName();
+		materialPath.ReplaceCharInline('\\', '/');
+		materials.Add(FName(*materialPath));
+	}
+
+	// Iterate all body parts
+	for (int bodyPartIndex = 0; bodyPartIndex < bodyParts.Num(); ++bodyPartIndex)
+	{
+		const Valve::MDL::mstudiobodyparts_t& bodyPart = *bodyParts[bodyPartIndex];
+		const Valve::VTX::BodyPartHeader_t& vtxBodyPart = *vtxBodyParts[bodyPartIndex];
+
+		// Read and validate models
+		TArray<const Valve::MDL::mstudiomodel_t*> models;
+		bodyPart.GetModels(models);
+		TArray<const Valve::VTX::ModelHeader_t*> vtxModels;
+		vtxBodyPart.GetModels(vtxModels);
+		if (models.Num() != vtxModels.Num())
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Models in vtx didn't match models in mdl for body part %d"), bodyPartIndex);
+			return nullptr;
+		}
+
+		// Iterate all models
+		for (int modelIndex = 0; modelIndex < models.Num(); ++modelIndex)
+		{
+			const Valve::MDL::mstudiomodel_t& model = *models[modelIndex];
+			const Valve::VTX::ModelHeader_t& vtxModel = *vtxModels[modelIndex];
+
+			// Read and validate meshes & lods
+			TArray<const Valve::MDL::mstudiomesh_t*> meshes;
+			model.GetMeshes(meshes);
+			TArray<const Valve::VTX::ModelLODHeader_t*> lods;
+			vtxModel.GetLODs(lods);
+			if (lods.Num() != vtxHeader.numLODs)
+			{
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Model %d in vtx didn't have correct lod count for body part %d"), modelIndex, bodyPartIndex);
+				return nullptr;
+			}
+
+			// Iterate all lods
+			for (int lodIndex = 0; lodIndex < lods.Num(); ++lodIndex)
+			{
+				const Valve::VTX::ModelLODHeader_t& lod = *lods[lodIndex];
+
+				// Fetch the local mesh data for this lod
+				LocalMeshData& localMeshData = localMeshDatas[lodIndex];
+
+				// Iterate all vertices in the vvd for this lod and insert them
+				for (uint16 i = 0; i < (uint16)vvdHeader.numLODVertexes[lodIndex]; ++i)
 				{
-					warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Could not find vtx file"), header.version);
-					return result;
+					Valve::VVD::mstudiovertex_t vertex;
+					FVector4 tangent;
+					vvdHeader.GetVertex(i, vertex, tangent);
+					FVertexID vertID;
+					//if (localMeshData.vertexMap.Contains(vertex.m_vecPosition))
+					//{
+						//vertID = localMeshData.vertexMap[vertex.m_vecPosition];
+					//}
+					//else
+					{
+						vertID = localMeshData.meshDescription.CreateVertex();
+						localMeshData.vertPos[vertID] = vertex.m_vecPosition;
+						//localMeshData.vertexMap.Add(vertex.m_vecPosition, vertID);
+					}
+					FVertexInstanceID vertInstID = localMeshData.meshDescription.CreateVertexInstance(vertID);
+					localMeshData.vertInstNormal[vertInstID] = vertex.m_vecNormal;
+					localMeshData.vertInstTangent[vertInstID] = FVector(tangent.X, tangent.Y, tangent.Z);
+					localMeshData.vertInstUV0[vertInstID] = vertex.m_vecTexCoord;
+					localMeshData.vertexInstanceMap.Add(i, vertInstID);
+				}
+
+				// Fetch and iterate all meshes
+				TArray<const Valve::VTX::MeshHeader_t*> vtxMeshes;
+				lod.GetMeshes(vtxMeshes);
+				uint16 accumIndex = 0;
+				for (int meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
+				{
+					const Valve::MDL::mstudiomesh_t& mesh = *meshes[meshIndex];
+					const Valve::VTX::MeshHeader_t& vtxMesh = *vtxMeshes[meshIndex];
+
+					// Fetch and validate material
+					if (!materials.IsValidIndex(mesh.material))
+					{
+						warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Mesh %d in model %d had invalid material index %d (%d materials available)"), meshIndex, modelIndex, mesh.material, materials.Num());
+						return nullptr;
+					}
+					
+					// Create poly group
+					const FPolygonGroupID polyGroupID = localMeshData.meshDescription.CreatePolygonGroup();
+					localMeshData.polyGroupMaterial[polyGroupID] = materials[mesh.material];
+
+					// Fetch and iterate all strip groups
+					TArray<const Valve::VTX::StripGroupHeader_t*> stripGroups;
+					vtxMesh.GetStripGroups(stripGroups);
+					for (int stripGroupIndex = 0; stripGroupIndex < stripGroups.Num(); ++stripGroupIndex)
+					{
+						const Valve::VTX::StripGroupHeader_t& stripGroup = *stripGroups[stripGroupIndex];
+
+						TArray<uint16> indices;
+						stripGroup.GetIndices(indices);
+
+						TArray<Valve::VTX::Vertex_t> vertices;
+						stripGroup.GetVertices(vertices);
+
+						TArray<const Valve::VTX::StripHeader_t*> strips;
+						stripGroup.GetStrips(strips);
+
+						TArray<FVertexInstanceID> tmpVertInstIDs;
+						for (int stripIndex = 0; stripIndex < strips.Num(); ++stripIndex)
+						{
+							const Valve::VTX::StripHeader_t& strip = *strips[stripIndex];
+
+							for (int i = 0; i < strip.numIndices; i += 3)
+							{
+								tmpVertInstIDs.Empty(3);
+
+								const uint16 idx0 = indices[strip.indexOffset + i];
+								const uint16 idx1 = indices[strip.indexOffset + i + 1];
+								const uint16 idx2 = indices[strip.indexOffset + i + 2];
+
+								const Valve::VTX::Vertex_t& vert0 = vertices[idx0];
+								const Valve::VTX::Vertex_t& vert1 = vertices[idx1];
+								const Valve::VTX::Vertex_t& vert2 = vertices[idx2];
+
+								const uint16 baseIdx0 = accumIndex + vert0.origMeshVertID;
+								const uint16 baseIdx1 = accumIndex + vert1.origMeshVertID;
+								const uint16 baseIdx2 = accumIndex + vert2.origMeshVertID;
+
+								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx0]);
+								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx1]);
+								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx2]);
+
+								FPolygonID polyID = localMeshData.meshDescription.CreatePolygon(polyGroupID, tmpVertInstIDs);
+							}
+						}
+
+						accumIndex += vertices.Num();
+					}
 				}
 			}
 		}
 	}
 
-	// Load vvd
-	TArray<uint8> vvdData;
+	// Write all lods to the static mesh
+	for (int lodIndex = 0; lodIndex < vtxHeader.numLODs; ++lodIndex)
 	{
-		if (!FFileHelper::LoadFileToArray(vvdData, *(path / keyValues[8] + TEXT(".vvd"))))
-		{
-			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Could not find vvd file"), header.version);
-			return result;
-		}
+		// Fetch and prepare our mesh description
+		FMeshDescription& localMeshDescription = localMeshDatas[lodIndex].meshDescription;
+		FMeshUtils::Clean(localMeshDescription);
+
+		// Copy to static mesh
+		FMeshDescription* meshDescription = staticMesh->CreateMeshDescription(lodIndex);
+		*meshDescription = localMeshDescription;
+		staticMesh->CommitMeshDescription(lodIndex);
+
+		// TODO: Figure out how to increase lod count on the model
+		break; 
 	}
 
-	return result;
+	// Assign materials
+	for (const FName material : materials)
+	{
+		const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
+		staticMesh->SectionInfoMap.Set(0, meshSlot, FMeshSectionInfo(meshSlot));
+		staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
+	}
+
+	staticMesh->LightMapCoordinateIndex = 1;
+	staticMesh->Build();
+
+	return staticMesh;
 }

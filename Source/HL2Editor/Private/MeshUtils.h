@@ -3,11 +3,11 @@
 #include "CoreMinimal.h"
 #include "MeshDescription.h"
 
-class FMeshSplitter
+class FMeshUtils
 {
 private:
 
-	FMeshSplitter();
+	FMeshUtils();
 	
 public:
 
@@ -18,9 +18,14 @@ public:
 	 */
 	static void Clip(FMeshDescription& meshDesc, const TArray<FPlane>& clipPlanes);
 
+	/**
+	 * Cleans a mesh, removing degenerate edges and polys, and removing unused elements.
+	 */
+	static void Clean(FMeshDescription& meshDesc);
+
 private:
 
 	static FVertexInstanceID ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& a, const FVertexInstanceID& b, const FPlane& clipPlane);
 
-	static void CleanMesh(FMeshDescription& meshDesc);
+	
 };

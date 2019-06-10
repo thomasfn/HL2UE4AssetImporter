@@ -1,17 +1,16 @@
 #pragma once
 
-#include "MeshSplitter.h"
-
+#include "MeshUtils.h"
 #include "MeshAttributes.h"
 
-FMeshSplitter::FMeshSplitter() { }
+FMeshUtils::FMeshUtils() { }
 
 /**
  * Clips a mesh and removes all geometry behind the specified planes.
  * Any polygons intersecting a plane will be cut.
  * Normals, tangents and texture coordinates will be preserved.
  */
-void FMeshSplitter::Clip(FMeshDescription& meshDesc, const TArray<FPlane>& clipPlanes)
+void FMeshUtils::Clip(FMeshDescription& meshDesc, const TArray<FPlane>& clipPlanes)
 {
 	// Get attributes
 	const TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
@@ -92,10 +91,10 @@ void FMeshSplitter::Clip(FMeshDescription& meshDesc, const TArray<FPlane>& clipP
 	}
 
 	// Clean up after ourselves
-	CleanMesh(meshDesc);
+	Clean(meshDesc);
 }
 
-FVertexInstanceID FMeshSplitter::ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& vertAInstID, const FVertexInstanceID& vertBInstID, const FPlane& clipPlane)
+FVertexInstanceID FMeshUtils::ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& vertAInstID, const FVertexInstanceID& vertBInstID, const FPlane& clipPlane)
 {
 	// Lookup base vertices
 	const FVertexID& vertAID = meshDesc.GetVertexInstanceVertex(vertAInstID);
@@ -135,7 +134,7 @@ FVertexInstanceID FMeshSplitter::ClipEdge(FMeshDescription& meshDesc, const FVer
 	return newVertInstID;
 }
 
-void FMeshSplitter::CleanMesh(FMeshDescription& meshDesc)
+void FMeshUtils::Clean(FMeshDescription& meshDesc)
 {
 	// Delete degenerate polygons
 	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();

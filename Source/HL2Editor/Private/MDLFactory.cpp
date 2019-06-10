@@ -258,22 +258,6 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 
 UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObjectFlags flags, const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, FFeedbackContext* warn)
 {
-	UStaticMesh* staticMesh = CreateStaticMesh(inParent, inName, flags);
-	if (staticMesh == nullptr) { return nullptr;  }
-
-	FStaticMeshSourceModel& sourceModel = staticMesh->AddSourceModel();
-
-	FMeshBuildSettings& settings = sourceModel.BuildSettings;
-	settings.bRecomputeNormals = false;
-	settings.bRecomputeTangents = false;
-	settings.bGenerateLightmapUVs = true;
-	settings.SrcLightmapIndex = 0;
-	settings.DstLightmapIndex = 1;
-	settings.bRemoveDegenerates = false;
-	settings.bUseFullPrecisionUVs = true;
-	settings.MinLightmapResolution = 128;
-	staticMesh->LightMapResolution = 128;
-
 	// Read and validate body parts
 	TArray<const Valve::MDL::mstudiobodyparts_t*> bodyParts;
 	header.GetBodyParts(bodyParts);
@@ -331,6 +315,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObj
 	}
 
 	// Iterate all body parts
+	uint16 accumIndex = 0;
 	for (int bodyPartIndex = 0; bodyPartIndex < bodyParts.Num(); ++bodyPartIndex)
 	{
 		const Valve::MDL::mstudiobodyparts_t& bodyPart = *bodyParts[bodyPartIndex];
@@ -373,33 +358,73 @@ UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObj
 				LocalMeshData& localMeshData = localMeshDatas[lodIndex];
 
 				// Iterate all vertices in the vvd for this lod and insert them
-				for (uint16 i = 0; i < (uint16)vvdHeader.numLODVertexes[lodIndex]; ++i)
 				{
-					Valve::VVD::mstudiovertex_t vertex;
-					FVector4 tangent;
-					vvdHeader.GetVertex(i, vertex, tangent);
-					FVertexID vertID;
-					//if (localMeshData.vertexMap.Contains(vertex.m_vecPosition))
-					//{
-						//vertID = localMeshData.vertexMap[vertex.m_vecPosition];
-					//}
-					//else
+					const uint16 vertCount = (uint16)vvdHeader.numLODVertexes[0];
+					TArray<Valve::VVD::mstudiovertex_t> vertices;
+					vertices.Reserve(vertCount);
+					TArray<FVector4> tangents;
+					tangents.Reserve(vertCount);
+
+					if (vvdHeader.numFixups > 0)
 					{
-						vertID = localMeshData.meshDescription.CreateVertex();
-						localMeshData.vertPos[vertID] = vertex.m_vecPosition;
-						//localMeshData.vertexMap.Add(vertex.m_vecPosition, vertID);
+						TArray<Valve::VVD::mstudiovertex_t> fixupVertices;
+						TArray<FVector4> fixupTangents;
+						TArray<Valve::VVD::vertexFileFixup_t> fixups;
+						vvdHeader.GetFixups(fixups);
+						for (const Valve::VVD::vertexFileFixup_t& fixup : fixups)
+						{
+							//if (fixup.lod >= lodIndex)
+							{
+								for (int i = 0; i < fixup.numVertexes; ++i)
+								{
+									Valve::VVD::mstudiovertex_t vertex;
+									FVector4 tangent;
+									vvdHeader.GetVertex(fixup.sourceVertexID + i, vertex, tangent);
+									vertices.Add(vertex);
+									tangents.Add(tangent);
+								}
+							}
+						}
 					}
-					FVertexInstanceID vertInstID = localMeshData.meshDescription.CreateVertexInstance(vertID);
-					localMeshData.vertInstNormal[vertInstID] = vertex.m_vecNormal;
-					localMeshData.vertInstTangent[vertInstID] = FVector(tangent.X, tangent.Y, tangent.Z);
-					localMeshData.vertInstUV0[vertInstID] = vertex.m_vecTexCoord;
-					localMeshData.vertexInstanceMap.Add(i, vertInstID);
+					else
+					{
+						for (uint16 i = 0; i < vertCount; ++i)
+						{
+							Valve::VVD::mstudiovertex_t vertex;
+							FVector4 tangent;
+							vvdHeader.GetVertex(i, vertex, tangent);
+							vertices.Add(vertex);
+							tangents.Add(tangent);
+						}
+					}
+
+					// Write to mesh and store in map
+					for (uint16 i = 0; i < vertCount; ++i)
+					{
+						const Valve::VVD::mstudiovertex_t& vertex = vertices[i];
+						const FVector4& tangent = tangents[i];
+						FVertexID vertID;
+						if (localMeshData.vertexMap.Contains(vertex.m_vecPosition))
+						{
+							vertID = localMeshData.vertexMap[vertex.m_vecPosition];
+						}
+						else
+						{
+							vertID = localMeshData.meshDescription.CreateVertex();
+							localMeshData.vertPos[vertID] = vertex.m_vecPosition;
+							localMeshData.vertexMap.Add(vertex.m_vecPosition, vertID);
+						}
+						FVertexInstanceID vertInstID = localMeshData.meshDescription.CreateVertexInstance(vertID);
+						localMeshData.vertInstNormal[vertInstID] = vertex.m_vecNormal;
+						localMeshData.vertInstTangent[vertInstID] = FVector(tangent.X, tangent.Y, tangent.Z);
+						localMeshData.vertInstUV0[vertInstID] = vertex.m_vecTexCoord;
+						localMeshData.vertexInstanceMap.Add(i, vertInstID);
+					}
 				}
 
 				// Fetch and iterate all meshes
 				TArray<const Valve::VTX::MeshHeader_t*> vtxMeshes;
 				lod.GetMeshes(vtxMeshes);
-				uint16 accumIndex = 0;
 				for (int meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
 				{
 					const Valve::MDL::mstudiomesh_t& mesh = *meshes[meshIndex];
@@ -449,9 +474,9 @@ UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObj
 								const Valve::VTX::Vertex_t& vert1 = vertices[idx1];
 								const Valve::VTX::Vertex_t& vert2 = vertices[idx2];
 
-								const uint16 baseIdx0 = accumIndex + vert0.origMeshVertID;
-								const uint16 baseIdx1 = accumIndex + vert1.origMeshVertID;
-								const uint16 baseIdx2 = accumIndex + vert2.origMeshVertID;
+								const uint16 baseIdx0 = accumIndex + mesh.vertexoffset + vert0.origMeshVertID;
+								const uint16 baseIdx1 = accumIndex + mesh.vertexoffset + vert1.origMeshVertID;
+								const uint16 baseIdx2 = accumIndex + mesh.vertexoffset + vert2.origMeshVertID;
 
 								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx0]);
 								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx1]);
@@ -460,17 +485,35 @@ UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObj
 								FPolygonID polyID = localMeshData.meshDescription.CreatePolygon(polyGroupID, tmpVertInstIDs);
 							}
 						}
-
-						accumIndex += vertices.Num();
 					}
 				}
 			}
+
+			accumIndex += model.numvertices;
 		}
 	}
+
+	// Construct static mesh
+	UStaticMesh* staticMesh = CreateStaticMesh(inParent, inName, flags);
+	if (staticMesh == nullptr) { return nullptr; }
+	staticMesh->LightMapResolution = 64;
 
 	// Write all lods to the static mesh
 	for (int lodIndex = 0; lodIndex < vtxHeader.numLODs; ++lodIndex)
 	{
+		// Setup source model
+		FStaticMeshSourceModel& sourceModel = staticMesh->AddSourceModel();
+		FMeshBuildSettings& settings = sourceModel.BuildSettings;
+		settings.bRecomputeNormals = false;
+		settings.bRecomputeTangents = false;
+		settings.bGenerateLightmapUVs = true;
+		settings.SrcLightmapIndex = 0;
+		settings.DstLightmapIndex = 1;
+		settings.bRemoveDegenerates = false;
+		settings.bUseFullPrecisionUVs = true;
+		settings.MinLightmapResolution = 64;
+		sourceModel.ScreenSize.Default = FMath::Pow(0.5f, lodIndex + 1.0f);
+
 		// Fetch and prepare our mesh description
 		FMeshDescription& localMeshDescription = localMeshDatas[lodIndex].meshDescription;
 		FMeshUtils::Clean(localMeshDescription);
@@ -480,16 +523,13 @@ UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObj
 		*meshDescription = localMeshDescription;
 		staticMesh->CommitMeshDescription(lodIndex);
 
-		// TODO: Figure out how to increase lod count on the model
-		break; 
-	}
-
-	// Assign materials
-	for (const FName material : materials)
-	{
-		const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
-		staticMesh->SectionInfoMap.Set(0, meshSlot, FMeshSectionInfo(meshSlot));
-		staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
+		// Assign materials
+		for (const FName material : materials)
+		{
+			const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
+			staticMesh->SectionInfoMap.Set(lodIndex, meshSlot, FMeshSectionInfo(meshSlot));
+			staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
+		}
 	}
 
 	staticMesh->LightMapCoordinateIndex = 1;

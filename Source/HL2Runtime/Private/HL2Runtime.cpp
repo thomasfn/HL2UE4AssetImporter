@@ -32,6 +32,20 @@ FName HL2RuntimeImpl::HL2MaterialPathToAssetPath(const FString& hl2MaterialPath)
 	return FName(*(hl2MaterialBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
 }
 
+FName HL2RuntimeImpl::HL2ModelPathToAssetPath(const FString& hl2ModelPath) const
+{
+	// e.g. "props_borealis/mooring_cleat01" -> "/Content/hl2/models/props_borealis/mooring_cleat01.mooring_cleat01"
+	FString tmp = hl2ModelPath;
+	tmp.ReplaceCharInline('\\', '/');
+	return FName(*(hl2ModelPath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
+}
+
+FName HL2RuntimeImpl::HL2SurfacePropToAssetPath(const FName& surfaceProp) const
+{
+	// e.g. "metal" -> "/Content/hl2/surfaceprops/metal.metal"
+	return FName(*(hl2SurfacePropBasePath + surfaceProp.ToString() + '.' + surfaceProp.ToString()));
+}
+
 FName HL2RuntimeImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL2BlendMode blendMode) const
 {
 	// e.g. "VertexLitGeneric" -> "/HL2Editor/Shaders/VertexLitGeneric.VertexLitGeneric"
@@ -63,6 +77,27 @@ UVMTMaterial* HL2RuntimeImpl::TryResolveHL2Material(const FString& hl2MaterialPa
 	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return nullptr; }
 	return CastChecked<UVMTMaterial>(assetData.GetAsset());
+}
+
+UStaticMesh* HL2RuntimeImpl::TryResolveHL2StaticProp(const FString& hl2ModelPath) const
+{
+	FName assetPath = HL2ModelPathToAssetPath(hl2ModelPath);
+	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
+	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	if (!assetData.IsValid()) { return nullptr; }
+	// It might not be a UStaticMesh if the model is animated, so let Cast just return nullptr in this case
+	return Cast<UStaticMesh>(assetData.GetAsset());
+}
+
+USurfaceProp* HL2RuntimeImpl::TryResolveHL2SurfaceProp(const FName& surfaceProp) const
+{
+	FName assetPath = HL2SurfacePropToAssetPath(surfaceProp);
+	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
+	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	if (!assetData.IsValid()) { return nullptr; }
+	return Cast<USurfaceProp>(assetData.GetAsset());
 }
 
 UMaterial* HL2RuntimeImpl::TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode) const

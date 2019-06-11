@@ -25,6 +25,8 @@ private:
 
 	const FString hl2TextureBasePath = hl2BasePath + "textures/";
 	const FString hl2MaterialBasePath = hl2BasePath + "materials/";
+	const FString hl2ModelBasePath = hl2BasePath + "models/";
+	const FString hl2SurfacePropBasePath = hl2BasePath + "surfaceprops/";
 	const FString hl2ShaderBasePath = pluginBasePath + "Shaders/";
 	const FString hl2EntityBasePath = pluginBasePath + "Entities/";
 
@@ -37,15 +39,21 @@ public:
 
 	virtual FString GetHL2TextureBasePath() const override { return hl2TextureBasePath; }
 	virtual FString GetHL2MaterialBasePath() const override { return hl2MaterialBasePath; }
+	virtual FString GetHL2ModelBasePath() const override { return hl2ModelBasePath; }
+	virtual FString GetHL2SurfacePropBasePath() const override { return hl2SurfacePropBasePath; }
 	virtual FString GetHL2ShaderBasePath() const override { return hl2ShaderBasePath; }
 	virtual FString GetHL2EntityBasePath() const override { return hl2EntityBasePath; }
 
 	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const override;
 	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const override;
+	virtual FName HL2ModelPathToAssetPath(const FString& hl2ModelPath) const override;
+	virtual FName HL2SurfacePropToAssetPath(const FName& surfaceProp) const override;
 	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL2BlendMode blendMode = EHL2BlendMode::Opaque) const override;
 	
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const override;
 	virtual UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath) const override;
+	virtual UStaticMesh* TryResolveHL2StaticProp(const FString& hl2ModelPath) const override;
+	virtual USurfaceProp* TryResolveHL2SurfaceProp(const FName& surfaceProp) const override;
 	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode = EHL2BlendMode::Opaque) const override;
 	
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const override;

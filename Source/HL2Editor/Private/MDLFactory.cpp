@@ -583,8 +583,9 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			TArray<FPHYSection> sections;
 			ReadPHYSolid(curPtr, sections);
 
-			for (const FPHYSection& section : sections)
+			for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
 			{
+				const FPHYSection& section = sections[sectionIndex];
 				// Filter out any section attached to a bone, as we're a static mesh
 				if (section.BoneIndex == 0)
 				{
@@ -592,23 +593,23 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 					{
 						// Create poly group
 						const FPolygonGroupID polyGroupID = debugPhysMeshData.meshDescription.CreatePolygonGroup();
-						debugPhysMeshData.polyGroupMaterial[polyGroupID] = FName(*FString::Printf(TEXT("Solid%d"), i));
+						debugPhysMeshData.polyGroupMaterial[polyGroupID] = FName(*FString::Printf(TEXT("Solid%dSection%d"), i, sectionIndex));
 
 						// Write to debug mesh
 						TArray<FVertexID> vertIDs;
 						vertIDs.Reserve(section.Vertices.Num());
-						for (int i = 0; i < section.Vertices.Num(); ++i)
+						for (int j = 0; j < section.Vertices.Num(); ++j)
 						{
 							const FVertexID vertID = debugPhysMeshData.meshDescription.CreateVertex();
-							debugPhysMeshData.vertPos[vertID] = section.Vertices[i];
+							debugPhysMeshData.vertPos[vertID] = section.Vertices[j];
 							vertIDs.Add(vertID);
 						}
 						TArray<FVertexInstanceID> verts;
-						for (int i = 0; i < section.FaceIndices.Num(); i += 3)
+						for (int j = 0; j < section.FaceIndices.Num(); j += 3)
 						{
-							const int i0 = section.FaceIndices[i];
-							const int i1 = section.FaceIndices[i + 1];
-							const int i2 = section.FaceIndices[i + 2];
+							const int i0 = section.FaceIndices[j];
+							const int i1 = section.FaceIndices[j + 1];
+							const int i2 = section.FaceIndices[j + 2];
 							const FVertexID v0 = vertIDs[i0];
 							const FVertexID v1 = vertIDs[i1];
 							const FVertexID v2 = vertIDs[i2];

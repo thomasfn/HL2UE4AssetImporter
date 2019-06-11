@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "MeshDescription.h"
 
+#include "PhysicsEngine/BodySetup.h"
+
 class FMeshUtils
 {
 private:
@@ -22,6 +24,11 @@ public:
 	 * Cleans a mesh, removing degenerate edges and polys, and removing unused elements.
 	 */
 	static void Clean(FMeshDescription& meshDesc);
+
+	/**
+	 * Decomposes a UCX mesh into a body setup.
+	 */
+	static void DecomposeUCXMesh(const TArray<FVector>& CollisionVertices, const TArray<int32>& CollisionFaceIdx, UBodySetup* BodySetup);
 
 private:
 

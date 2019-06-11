@@ -7,6 +7,7 @@
 #include "FileHelper.h"
 #include "IHL2Runtime.h"
 #include "MeshUtils.h"
+#include "PhysicsEngine/BodySetup.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -244,10 +245,28 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 		return result;
 	}
 
+	// Load phy
+	TArray<uint8> phyData;
+	Valve::PHY::phyheader_t* phyHeader;
+	if (FFileHelper::LoadFileToArray(phyData, *(path / baseFileName + TEXT(".phy"))))
+	{
+		phyHeader = (Valve::PHY::phyheader_t*)&phyData[0];
+		if (phyHeader->checkSum != header.checksum)
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: VVD Header has invalid checksum (expecting %d, got %d)"), header.checksum, vvdHeader.checksum);
+			return result;
+		}
+	}
+	else
+	{
+		phyHeader = nullptr;
+	}
+	
+
 	// Static mesh
 	if (header.HasFlag(Valve::MDL::studiohdr_flag::STATIC_PROP))
 	{
-		result.StaticMesh = ImportStaticMesh(inParent, inName, flags, header, vtxHeader, vvdHeader, warn);
+		result.StaticMesh = ImportStaticMesh(inParent, inName, flags, header, vtxHeader, vvdHeader, phyHeader, warn);
 		return result;
 	}
 
@@ -256,7 +275,12 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	return result;
 }
 
-UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObjectFlags flags, const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, FFeedbackContext* warn)
+UStaticMesh* UMDLFactory::ImportStaticMesh
+(
+	UObject* inParent, FName inName, EObjectFlags flags,
+	const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, const Valve::PHY::phyheader_t* phyHeader,
+	FFeedbackContext* warn
+)
 {
 	// Read and validate body parts
 	TArray<const Valve::MDL::mstudiobodyparts_t*> bodyParts;
@@ -498,37 +522,138 @@ UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObj
 	if (staticMesh == nullptr) { return nullptr; }
 	staticMesh->LightMapResolution = 64;
 
+	constexpr bool debugPhysics = false; // if true, the physics mesh is rendered instead
+
 	// Write all lods to the static mesh
-	for (int lodIndex = 0; lodIndex < vtxHeader.numLODs; ++lodIndex)
+	if (!debugPhysics || phyHeader == nullptr)
 	{
-		// Setup source model
-		FStaticMeshSourceModel& sourceModel = staticMesh->AddSourceModel();
-		FMeshBuildSettings& settings = sourceModel.BuildSettings;
-		settings.bRecomputeNormals = false;
-		settings.bRecomputeTangents = false;
-		settings.bGenerateLightmapUVs = true;
-		settings.SrcLightmapIndex = 0;
-		settings.DstLightmapIndex = 1;
-		settings.bRemoveDegenerates = false;
-		settings.bUseFullPrecisionUVs = true;
-		settings.MinLightmapResolution = 64;
-		sourceModel.ScreenSize.Default = FMath::Pow(0.5f, lodIndex + 1.0f);
-
-		// Fetch and prepare our mesh description
-		FMeshDescription& localMeshDescription = localMeshDatas[lodIndex].meshDescription;
-		FMeshUtils::Clean(localMeshDescription);
-
-		// Copy to static mesh
-		FMeshDescription* meshDescription = staticMesh->CreateMeshDescription(lodIndex);
-		*meshDescription = localMeshDescription;
-		staticMesh->CommitMeshDescription(lodIndex);
-
-		// Assign materials
+		TMap<FName, int> materialSlots;
 		for (const FName material : materials)
 		{
-			const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
-			staticMesh->SectionInfoMap.Set(lodIndex, meshSlot, FMeshSectionInfo(meshSlot));
-			staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
+			materialSlots.Add(material, staticMesh->StaticMaterials.Emplace(nullptr, material, material));
+		}
+		for (int lodIndex = 0; lodIndex < vtxHeader.numLODs; ++lodIndex)
+		{
+			// Setup source model
+			FStaticMeshSourceModel& sourceModel = staticMesh->AddSourceModel();
+			FMeshBuildSettings& settings = sourceModel.BuildSettings;
+			settings.bRecomputeNormals = false;
+			settings.bRecomputeTangents = false;
+			settings.bGenerateLightmapUVs = true;
+			settings.SrcLightmapIndex = 0;
+			settings.DstLightmapIndex = 1;
+			settings.bRemoveDegenerates = false;
+			settings.bUseFullPrecisionUVs = true;
+			settings.MinLightmapResolution = 64;
+			sourceModel.ScreenSize.Default = FMath::Pow(0.5f, lodIndex + 1.0f);
+
+			// Fetch and prepare our mesh description
+			FMeshDescription& localMeshDescription = localMeshDatas[lodIndex].meshDescription;
+			FMeshUtils::Clean(localMeshDescription);
+
+			// Copy to static mesh
+			FMeshDescription* meshDescription = staticMesh->CreateMeshDescription(lodIndex);
+			*meshDescription = localMeshDescription;
+			staticMesh->CommitMeshDescription(lodIndex);
+
+			// Assign materials
+			for (const FName material : materials)
+			{
+				const int32 meshSlot = materialSlots[material];
+				staticMesh->SectionInfoMap.Set(lodIndex, meshSlot, FMeshSectionInfo(meshSlot));
+				staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
+			}
+		}
+	}
+
+	// Identify physics
+	if (phyHeader != nullptr)
+	{
+		if (!debugPhysics)
+		{
+			staticMesh->bCustomizedCollision = true;
+			staticMesh->CreateBodySetup();
+		}
+
+		LocalMeshData debugPhysMeshData;
+		
+		uint8* curPtr = ((uint8*)phyHeader) + phyHeader->size;
+		for (int i = 0; i < phyHeader->solidCount; ++i)
+		{
+			TArray<FPHYSection> sections;
+			ReadPHYSolid(curPtr, sections);
+
+			for (const FPHYSection& section : sections)
+			{
+				// Filter out any section attached to a bone, as we're a static mesh
+				if (section.BoneIndex == 0)
+				{
+					if (debugPhysics)
+					{
+						// Create poly group
+						const FPolygonGroupID polyGroupID = debugPhysMeshData.meshDescription.CreatePolygonGroup();
+						debugPhysMeshData.polyGroupMaterial[polyGroupID] = FName(*FString::Printf(TEXT("Solid%d"), i));
+
+						// Write to debug mesh
+						TArray<FVertexID> vertIDs;
+						vertIDs.Reserve(section.Vertices.Num());
+						for (int i = 0; i < section.Vertices.Num(); ++i)
+						{
+							const FVertexID vertID = debugPhysMeshData.meshDescription.CreateVertex();
+							debugPhysMeshData.vertPos[vertID] = section.Vertices[i];
+							vertIDs.Add(vertID);
+						}
+						TArray<FVertexInstanceID> verts;
+						for (int i = 0; i < section.FaceIndices.Num(); i += 3)
+						{
+							const int i0 = section.FaceIndices[i];
+							const int i1 = section.FaceIndices[i + 1];
+							const int i2 = section.FaceIndices[i + 2];
+							const FVertexID v0 = vertIDs[i0];
+							const FVertexID v1 = vertIDs[i1];
+							const FVertexID v2 = vertIDs[i2];
+							const FVertexInstanceID vi0 = debugPhysMeshData.meshDescription.CreateVertexInstance(v0);
+							debugPhysMeshData.vertInstUV0[vi0] = FVector2D();
+							const FVertexInstanceID vi1 = debugPhysMeshData.meshDescription.CreateVertexInstance(v1);
+							debugPhysMeshData.vertInstUV0[vi1] = FVector2D();
+							const FVertexInstanceID vi2 = debugPhysMeshData.meshDescription.CreateVertexInstance(v2);
+							debugPhysMeshData.vertInstUV0[vi2] = FVector2D();
+
+							verts.Empty(3);
+							verts.Add(vi0);
+							verts.Add(vi1);
+							verts.Add(vi2);
+
+							debugPhysMeshData.meshDescription.CreatePolygon(polyGroupID, verts);
+						}
+					}
+					else
+					{
+						// Create primitive
+						FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, staticMesh->BodySetup);
+					}
+				}
+			}
+		}
+
+		if (debugPhysics)
+		{
+			FStaticMeshSourceModel& sourceModel = staticMesh->AddSourceModel();
+			FMeshBuildSettings& settings = sourceModel.BuildSettings;
+			settings.bRecomputeNormals = false;
+			settings.bRecomputeTangents = false;
+			settings.bGenerateLightmapUVs = false;
+			settings.bRemoveDegenerates = false;
+			FMeshDescription* meshDescription = staticMesh->CreateMeshDescription(0);
+			FMeshUtils::Clean(debugPhysMeshData.meshDescription);
+			*meshDescription = debugPhysMeshData.meshDescription;
+			staticMesh->CommitMeshDescription(0);
+			for (int i = 0; i < phyHeader->solidCount; ++i)
+			{
+				FName material(*FString::Printf(TEXT("Solid%d"), i));
+				const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
+				staticMesh->SectionInfoMap.Set(0, meshSlot, FMeshSectionInfo(meshSlot));
+			}
 		}
 	}
 
@@ -536,4 +661,87 @@ UStaticMesh* UMDLFactory::ImportStaticMesh(UObject* inParent, FName inName, EObj
 	staticMesh->Build();
 
 	return staticMesh;
+}
+
+void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
+{
+	const Valve::PHY::compactsurfaceheader_t& newSolid = *((Valve::PHY::compactsurfaceheader_t*)basePtr);
+	uint8* endPtr;
+	if (newSolid.vphysicsID != *(int*)"VPHY")
+	{
+		const Valve::PHY::legacysurfaceheader_t& oldSolid = *((Valve::PHY::legacysurfaceheader_t*)basePtr);
+		endPtr = basePtr + oldSolid.size + sizeof(int);
+		basePtr += sizeof(Valve::PHY::legacysurfaceheader_t);
+	}
+	else
+	{
+		endPtr = basePtr + newSolid.size + sizeof(int);
+		basePtr += sizeof(Valve::PHY::compactsurfaceheader_t);
+	}
+	uint8* vertPtr = endPtr;
+
+	TSet<uint16> uniqueVerts;
+
+	// Read all triangles
+	while (basePtr < vertPtr)
+	{
+		// Read header and advance pointer past it
+		const Valve::PHY::sectionheader_t& sectionHeader = *((Valve::PHY::sectionheader_t*)basePtr);
+		vertPtr = basePtr + sectionHeader.vertexDataOffset;
+		basePtr += sizeof(Valve::PHY::sectionheader_t);
+
+		// Read triangles and advance pointer past them
+		TArray<Valve::PHY::triangle_t> triangles;
+		basePtr += sectionHeader.GetTriangles(triangles);
+
+		// Start a new section
+		FPHYSection section;
+		section.BoneIndex = sectionHeader.boneIndex;
+		section.FaceIndices.Reserve(triangles.Num() * 3);
+
+		// Iterate all triangles, gather new unique verts and face indices
+		for (const Valve::PHY::triangle_t& triangle : triangles)
+		{
+			uniqueVerts.Add(triangle.vertices[0].index);
+			uniqueVerts.Add(triangle.vertices[2].index);
+			uniqueVerts.Add(triangle.vertices[1].index);
+			section.FaceIndices.Add(triangle.vertices[0].index);
+			section.FaceIndices.Add(triangle.vertices[2].index);
+			section.FaceIndices.Add(triangle.vertices[1].index);
+		}
+
+		// Store section
+		out.Add(section);
+	}
+
+	// Read all vertices
+	check(basePtr == vertPtr);
+	TArray<FVector> vertices;
+	for (int j = 0; j < uniqueVerts.Num(); ++j)
+	{
+		const FVector4 vertex = *((FVector4*)basePtr); basePtr += sizeof(FVector4);
+		FVector tmp;
+		tmp.X = 1.0f / 0.0254f * vertex.X;
+		tmp.Y = 1.0f / 0.0254f * vertex.Z;
+		tmp.Z = 1.0f / 0.0254f * -vertex.Y;
+		vertices.Add(tmp);
+	}
+
+	// There is sometimes trailing data, skip it
+	check(basePtr <= endPtr);
+	basePtr = endPtr;
+
+	// Go back through sections and fix them up
+	for (FPHYSection& section : out)
+	{
+		for (int i = 0; i < section.FaceIndices.Num(); ++i)
+		{
+			// Lookup face index and vertex
+			const int idx = section.FaceIndices[i];
+			const FVector vert = vertices[idx];
+
+			// Store the vertex uniquely to the section and rewire the face index to point at it
+			section.FaceIndices[i] = section.Vertices.AddUnique(vert);
+		}
+	}
 }

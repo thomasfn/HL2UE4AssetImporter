@@ -2,6 +2,9 @@
 
 #include "MeshUtils.h"
 #include "MeshAttributes.h"
+#include "Model.h"
+#include "Engine/Polys.h"
+#include "BSPOps.h"
 
 FMeshUtils::FMeshUtils() { }
 
@@ -219,4 +222,256 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc)
 
 	// Retriangulate mesh
 	meshDesc.TriangulateMesh();
+}
+
+struct FMeshConnectivityVertex
+{
+	FVector				Position;
+	TArray<int32>		Triangles;
+
+	/** Constructor */
+	FMeshConnectivityVertex(const FVector& v)
+		: Position(v)
+	{
+	}
+
+	/** Check if this vertex is in the same place as given point */
+	FORCEINLINE bool IsSame(const FVector& v)
+	{
+		const float eps = 0.01f;
+		return v.Equals(Position, eps);
+	}
+
+	/** Add link to triangle */
+	FORCEINLINE void AddTriangleLink(int32 Triangle)
+	{
+		Triangles.Add(Triangle);
+	}
+};
+
+struct FMeshConnectivityTriangle
+{
+	int32				Vertices[3];
+	int32				Group;
+
+	/** Constructor */
+	FMeshConnectivityTriangle(int32 a, int32 b, int32 c)
+		: Group(INDEX_NONE)
+	{
+		Vertices[0] = a;
+		Vertices[1] = b;
+		Vertices[2] = c;
+	}
+};
+
+struct FMeshConnectivityGroup
+{
+	TArray<int32>		Triangles;
+};
+
+class FMeshConnectivityBuilder
+{
+public:
+	TArray<FMeshConnectivityVertex>		Vertices;
+	TArray<FMeshConnectivityTriangle>	Triangles;
+	TArray<FMeshConnectivityGroup>		Groups;
+
+public:
+	/** Add vertex to connectivity information */
+	int32 AddVertex(const FVector& v)
+	{
+		// Try to find existing vertex
+		// TODO: should use hash map
+		for (int32 i = 0; i < Vertices.Num(); ++i)
+		{
+			if (Vertices[i].IsSame(v))
+			{
+				return i;
+			}
+		}
+
+		// Add new vertex
+		new (Vertices) FMeshConnectivityVertex(v);
+		return Vertices.Num() - 1;
+	}
+
+	/** Add triangle to connectivity information */
+	int32 AddTriangle(const FVector& a, const FVector& b, const FVector& c)
+	{
+		// Map vertices
+		int32 VertexA = AddVertex(a);
+		int32 VertexB = AddVertex(b);
+		int32 VertexC = AddVertex(c);
+
+		// Make sure triangle is not degenerated
+		if (VertexA != VertexB && VertexB != VertexC && VertexC != VertexA)
+		{
+			// Setup connectivity info
+			int32 TriangleIndex = Triangles.Num();
+			Vertices[VertexA].AddTriangleLink(TriangleIndex);
+			Vertices[VertexB].AddTriangleLink(TriangleIndex);
+			Vertices[VertexC].AddTriangleLink(TriangleIndex);
+
+			// Create triangle
+			new (Triangles) FMeshConnectivityTriangle(VertexA, VertexB, VertexC);
+			return TriangleIndex;
+		}
+		else
+		{
+			// Degenerated triangle
+			return INDEX_NONE;
+		}
+	}
+
+	/** Create connectivity groups */
+	void CreateConnectivityGroups()
+	{
+		// Delete group list
+		Groups.Empty();
+
+		// Reset group assignments
+		for (int32 i = 0; i < Triangles.Num(); i++)
+		{
+			Triangles[i].Group = INDEX_NONE;
+		}
+
+		// Flood fill using connectivity info
+		for (;; )
+		{
+			// Find first triangle without group assignment
+			int32 InitialTriangle = INDEX_NONE;
+			for (int32 i = 0; i < Triangles.Num(); i++)
+			{
+				if (Triangles[i].Group == INDEX_NONE)
+				{
+					InitialTriangle = i;
+					break;
+				}
+			}
+
+			// No more unassigned triangles, flood fill is done
+			if (InitialTriangle == INDEX_NONE)
+			{
+				break;
+			}
+
+			// Create group
+			int32 GroupIndex = Groups.AddZeroed(1);
+
+			// Start flood fill using connectivity information
+			FloodFillTriangleGroups(InitialTriangle, GroupIndex);
+		}
+	}
+
+private:
+	/** FloodFill core */
+	void FloodFillTriangleGroups(int32 InitialTriangleIndex, int32 GroupIndex)
+	{
+		TArray<int32> TriangleStack;
+
+		// Start with given triangle
+		TriangleStack.Add(InitialTriangleIndex);
+
+		// Set the group for our first triangle
+		Triangles[InitialTriangleIndex].Group = GroupIndex;
+
+		// Process until we have triangles in stack
+		while (TriangleStack.Num())
+		{
+			// Pop triangle index from stack
+			int32 TriangleIndex = TriangleStack.Pop();
+
+			FMeshConnectivityTriangle& Triangle = Triangles[TriangleIndex];
+
+			// All triangles should already have a group before we start processing neighbors
+			checkSlow(Triangle.Group == GroupIndex);
+
+			// Add to list of triangles in group
+			Groups[GroupIndex].Triangles.Add(TriangleIndex);
+
+			// Recurse to all other triangles connected with this one
+			for (int32 i = 0; i < 3; i++)
+			{
+				int32 VertexIndex = Triangle.Vertices[i];
+				const FMeshConnectivityVertex& Vertex = Vertices[VertexIndex];
+
+				for (int32 j = 0; j < Vertex.Triangles.Num(); j++)
+				{
+					int32 OtherTriangleIndex = Vertex.Triangles[j];
+					FMeshConnectivityTriangle& OtherTriangle = Triangles[OtherTriangleIndex];
+
+					// Only recurse if triangle was not already assigned to a group
+					if (OtherTriangle.Group == INDEX_NONE)
+					{
+						// OK, the other triangle now belongs to our group!
+						OtherTriangle.Group = GroupIndex;
+
+						// Add the other triangle to the stack to be processed
+						TriangleStack.Add(OtherTriangleIndex);
+					}
+				}
+			}
+		}
+	}
+};
+
+void FMeshUtils::DecomposeUCXMesh(const TArray<FVector>& CollisionVertices, const TArray<int32>& CollisionFaceIdx, UBodySetup* BodySetup)
+{
+	// We keep no ref to this Model, so it will be GC'd at some point after the import.
+	auto TempModel = NewObject<UModel>();
+	TempModel->Initialize(nullptr, 1);
+
+	FMeshConnectivityBuilder ConnectivityBuilder;
+
+	// Send triangles to connectivity builder
+	for (int32 x = 0; x < CollisionFaceIdx.Num(); x += 3)
+	{
+		const FVector& VertexA = CollisionVertices[CollisionFaceIdx[x + 2]];
+		const FVector& VertexB = CollisionVertices[CollisionFaceIdx[x + 1]];
+		const FVector& VertexC = CollisionVertices[CollisionFaceIdx[x + 0]];
+		ConnectivityBuilder.AddTriangle(VertexA, VertexB, VertexC);
+	}
+
+	ConnectivityBuilder.CreateConnectivityGroups();
+
+	// For each valid group build BSP and extract convex hulls
+	for (int32 i = 0; i < ConnectivityBuilder.Groups.Num(); i++)
+	{
+		const FMeshConnectivityGroup& Group = ConnectivityBuilder.Groups[i];
+
+		// TODO: add some BSP friendly checks here
+		// e.g. if group triangles form a closed mesh
+
+		// Generate polygons from group triangles
+		TempModel->Polys->Element.Empty();
+
+		for (int32 j = 0; j < Group.Triangles.Num(); j++)
+		{
+			const FMeshConnectivityTriangle& Triangle = ConnectivityBuilder.Triangles[Group.Triangles[j]];
+
+			FPoly* Poly = new(TempModel->Polys->Element) FPoly();
+			Poly->Init();
+			Poly->iLink = j / 3;
+
+			// Add vertices
+			new(Poly->Vertices) FVector(ConnectivityBuilder.Vertices[Triangle.Vertices[0]].Position);
+			new(Poly->Vertices) FVector(ConnectivityBuilder.Vertices[Triangle.Vertices[1]].Position);
+			new(Poly->Vertices) FVector(ConnectivityBuilder.Vertices[Triangle.Vertices[2]].Position);
+
+			// Update polygon normal
+			Poly->CalcNormal(1);
+		}
+
+		// Build bounding box.
+		TempModel->BuildBound();
+
+		// Build BSP for the brush.
+		FBSPOps::bspBuild(TempModel, FBSPOps::BSP_Good, 15, 70, 1, 0);
+		FBSPOps::bspRefresh(TempModel, 1);
+		FBSPOps::bspBuildBounds(TempModel);
+
+		// Convert collision model into a collection of convex hulls.
+		// Generated convex hulls will be added to existing ones
+		BodySetup->CreateFromModel(TempModel, false);
+	}
 }

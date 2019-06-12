@@ -22,8 +22,11 @@
 #include "UObject/ConstructorHelpers.h"
 #include "AssetRegistryModule.h"
 #include "Internationalization/Regex.h"
+#include "Misc/ScopedSlowTask.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
+
+#define LOCTEXT_NAMESPACE ""
 
 FBSPImporter::FBSPImporter()
 {
@@ -48,9 +51,18 @@ bool FBSPImporter::ImportToCurrentLevel(const FString& fileName)
 
 bool FBSPImporter::ImportToWorld(const Valve::BSPFile& bspFile, UWorld* world)
 {
+	FScopedSlowTask loopProgress(2, LOCTEXT("MapImporting", "Importing map..."));
+	loopProgress.MakeDialog();
+
+	loopProgress.EnterProgressFrame(1.0f);
 	if (!ImportEntitiesToWorld(bspFile, world)) { return false; }
-	//if (!ImportBrushesToWorld(bspFile, world)) { return false; }
+
+	loopProgress.EnterProgressFrame(1.0f);
 	if (!ImportGeometryToWorld(bspFile, world)) { return false; }
+
+	//loopProgress.EnterProgressFrame(1.0f);
+	//if (!ImportBrushesToWorld(bspFile, world)) { return false; }
+
 	return true;
 }
 
@@ -180,11 +192,16 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 		const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
 		const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
 
+		FScopedSlowTask loopProgress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1), LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
+		loopProgress.MakeDialog();
+
 		// Iterate each cell
 		for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
 		{
 			for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
 			{
+				loopProgress.EnterProgressFrame(1.0f, FText::Format(LOCTEXT("MapGeometryImporting_CELL", "Importing cell %d x %d..."), cellX, cellY));
+
 				// Establish bounding planes for cell
 				TArray<FPlane> boundingPlanes;
 				boundingPlanes.Add(FPlane(FVector(cellX * cellSize), FVector::ForwardVector));
@@ -252,6 +269,8 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(UWorld* world, const FMeshDesc
 	staticMesh->CommitMeshDescription(0);
 	staticMesh->LightMapCoordinateIndex = 1;
 	staticMesh->Build();
+	staticMesh->CreateBodySetup();
+	staticMesh->BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseComplexAsSimple;
 	return staticMesh;
 }
 
@@ -767,6 +786,8 @@ bool FBSPImporter::SharesSmoothingGroup(uint16 groupA, uint16 groupB)
 	}
 	return false;
 }
+
+#undef LOCTEXT_NAMESPACE
 
 ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, const FHL2EntityData& entityData)
 {

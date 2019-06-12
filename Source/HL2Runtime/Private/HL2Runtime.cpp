@@ -21,7 +21,7 @@ FName HL2RuntimeImpl::HL2TexturePathToAssetPath(const FString& hl2TexturePath) c
 	// e.g. "Brick/brickfloor001a" -> "/Content/hl2/materials/Brick/brickfloor001a.brickfloor001a"
 	FString tmp = hl2TexturePath;
 	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2TextureBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
+	return FName(*(hl2TextureBasePath + tmp + '.' + FPaths::GetBaseFilename(tmp)));
 }
 
 FName HL2RuntimeImpl::HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const
@@ -29,15 +29,16 @@ FName HL2RuntimeImpl::HL2MaterialPathToAssetPath(const FString& hl2MaterialPath)
 	// e.g. "Brick/brickfloor001a" -> "/Content/hl2/materials/Brick/brickfloor001a_vmt.brickfloor001a_vmt"
 	FString tmp = hl2MaterialPath;
 	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2MaterialBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
+	return FName(*(hl2MaterialBasePath + tmp + '.' + FPaths::GetBaseFilename(tmp)));
 }
 
 FName HL2RuntimeImpl::HL2ModelPathToAssetPath(const FString& hl2ModelPath) const
 {
-	// e.g. "props_borealis/mooring_cleat01" -> "/Content/hl2/models/props_borealis/mooring_cleat01.mooring_cleat01"
+	// e.g. "models/props_borealis/mooring_cleat01.mdl" -> "/Content/hl2/models/props_borealis/mooring_cleat01.mooring_cleat01"
 	FString tmp = hl2ModelPath;
 	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2ModelPath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
+	FPaths::MakePathRelativeTo(tmp, TEXT("models/"));
+	return FName(*(hl2ModelBasePath / FPaths::GetPath(tmp) / FPaths::GetBaseFilename(tmp) + '.' + FPaths::GetBaseFilename(tmp)));
 }
 
 FName HL2RuntimeImpl::HL2SurfacePropToAssetPath(const FName& surfaceProp) const
@@ -56,7 +57,7 @@ FName HL2RuntimeImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL
 		case EHL2BlendMode::Translucent: tmp = tmp.Append("_translucent"); break;
 		case EHL2BlendMode::AlphaTest: tmp = tmp.Append("_alphatest"); break;
 	}
-	return FName(*(hl2ShaderBasePath + tmp + '.' + FPaths::GetCleanFilename(tmp)));
+	return FName(*(hl2ShaderBasePath + tmp + '.' + FPaths::GetBaseFilename(tmp)));
 }
 
 UTexture* HL2RuntimeImpl::TryResolveHL2Texture(const FString& hl2TexturePath) const

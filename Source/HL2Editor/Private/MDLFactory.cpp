@@ -506,6 +506,12 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx1]);
 								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx2]);
 
+								// Sanity check: if one or more vertex instances share the same base vertex, this poly is degenerate so reject it
+								const FVertexID baseVert0ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[0]);
+								const FVertexID baseVert1ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[1]);
+								const FVertexID baseVert2ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[2]);
+								if (baseVert0ID == baseVert1ID || baseVert0ID == baseVert2ID || baseVert1ID == baseVert2ID) { continue; }
+
 								FPolygonID polyID = localMeshData.meshDescription.CreatePolygon(polyGroupID, tmpVertInstIDs);
 							}
 						}

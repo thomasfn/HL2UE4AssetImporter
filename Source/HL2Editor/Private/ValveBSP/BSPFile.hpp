@@ -102,6 +102,27 @@ namespace Valve {
          * @return     False if an exception got throwed, True otherwise.
          */
         bool parse_polygons( void );
+
+		/**
+		 * @brief      Parse map game lumps.
+		 *
+		 * @return     False if an exception got throwed, True otherwise.
+		 */
+		bool parse_gamelumps( std::ifstream& bsp_binary );
+
+		/**
+		 * @brief      Retrieve game lump by ID.
+		 *
+		 * @return     The game lump.
+		 */
+		BSP::dgamelump_t get_game_lump( const BSP::eGamelumpIndex gamelump_index ) const;
+
+		/**
+		 * @brief      Parse map static prop lumps.
+		 *
+		 * @return     False if an exception got throwed, True otherwise.
+		 */
+		bool parse_staticprops( std::ifstream& bsp_binary );
         
         /**
          * @brief      Print function specific exception.
@@ -147,7 +168,13 @@ namespace Valve {
 		std::vector< BSP::ddispinfo_t >  m_Dispinfos;
 		std::vector< BSP::ddispvert_t >  m_Dispverts;
 		std::vector< BSP::ddisptri_t >   m_Disptris;
+		std::vector< BSP::dcubemapsample_t >   m_Cubemaps;
         std::vector< BSP::Polygon >      m_Polygons;
+		std::vector< BSP::dgamelump_t >  m_Gamelumps;
+		std::vector< BSP::StaticPropName_t >	m_StaticpropStringTable;
+		std::vector< BSP::StaticProp_v4_t >		m_Staticprops_v4;
+		std::vector< BSP::StaticProp_v5_t >		m_Staticprops_v5;
+		std::vector< BSP::StaticProp_v6_t >		m_Staticprops_v6;
     };
 
     template< typename T >

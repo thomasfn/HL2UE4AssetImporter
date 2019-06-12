@@ -64,6 +64,14 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
 		parse_lump_data(bsp_binary, LUMP_DISPINFO, m_Dispinfos);
 		parse_lump_data(bsp_binary, LUMP_DISP_VERTS, m_Dispverts);
 		parse_lump_data(bsp_binary, LUMP_DISP_TRIS, m_Disptris);
+
+		parse_lump_data(bsp_binary, LUMP_CUBEMAPS, m_Cubemaps);
+
+		if ( !parse_gamelumps( bsp_binary )
+			|| !parse_staticprops( bsp_binary ) ) {
+			return false;
+		}
+
     }
     catch( const std::exception& e ) {
         print_exception( "parse", e );
@@ -227,6 +235,101 @@ bool BSPFile::parse_polygons( void )
         return false;
     }
     return true;
+}
+
+BSP::dgamelump_t BSPFile::get_game_lump( const BSP::eGamelumpIndex gamelump_index ) const
+{
+	for ( auto& gamelump : m_Gamelumps ) {
+		if ( gamelump.m_ID == gamelump_index ) {
+			return gamelump;
+		}
+	}
+	BSP::dgamelump_t invalid;
+	invalid.m_ID = -1;
+	return invalid;
+}
+
+bool BSPFile::parse_gamelumps( std::ifstream& bsp_binary )
+{
+	try {
+		
+		auto& lump = m_BSPHeader.m_Lumps.at(static_cast<size_t>(LUMP_GAME_LUMP));
+		const auto lump_size = lump.m_Filelen;
+		if (!lump_size) {
+			return true;
+		}
+
+		int numGameLumps;
+		bsp_binary.seekg( lump.m_Fileofs );
+		bsp_binary.read( (char*)&numGameLumps, sizeof(int) );
+
+		m_Gamelumps = std::vector< dgamelump_t >( numGameLumps );
+		bsp_binary.read( reinterpret_cast< char* >( m_Gamelumps.data() ), sizeof( dgamelump_t ) * numGameLumps );
+		
+	}
+	catch (const std::exception& e) {
+		print_exception("parse_gamelumps", e);
+		return false;
+	}
+	return true;
+}
+
+bool BSPFile::parse_staticprops( std::ifstream& bsp_binary )
+{
+	try {
+
+		auto lump = get_game_lump( GAMELUMP_STATICPROPS );
+		if ( lump.m_ID != GAMELUMP_STATICPROPS ) {
+			return false;
+		}
+		const auto lump_size = lump.m_Filelen;
+		if (!lump_size) {
+			return true;
+		}
+
+		int numDictEntries;
+		bsp_binary.seekg( lump.m_Fileofs );
+		bsp_binary.read( (char*)& numDictEntries, sizeof(int) );
+
+		m_StaticpropStringTable = std::vector< StaticPropName_t >( numDictEntries );
+		bsp_binary.read( reinterpret_cast<char*>( m_StaticpropStringTable.data() ), sizeof( StaticPropName_t ) * numDictEntries );
+
+		int numLeafEntries;
+		bsp_binary.read( (char*)& numLeafEntries, sizeof( int ) );
+
+		bsp_binary.seekg( sizeof( unsigned short ) * numLeafEntries, bsp_binary.cur );
+
+		int numStaticProps;
+		bsp_binary.read( (char*)& numStaticProps, sizeof( int ) );
+
+		switch ( lump.m_Version ) {
+			case 4:
+
+				m_Staticprops_v4 = std::vector< StaticProp_v4_t >( numStaticProps );
+				bsp_binary.read( reinterpret_cast<char*>( m_Staticprops_v4.data() ), sizeof( StaticProp_v4_t ) * numStaticProps );
+
+				break;
+			case 5:
+
+				m_Staticprops_v5 = std::vector< StaticProp_v5_t >( numStaticProps );
+				bsp_binary.read( reinterpret_cast<char*>( m_Staticprops_v5.data() ), sizeof( StaticProp_v5_t ) * numStaticProps );
+
+				break;
+			case 6:
+
+				m_Staticprops_v6 = std::vector< StaticProp_v6_t >( numStaticProps );
+				bsp_binary.read( reinterpret_cast<char*>( m_Staticprops_v6.data() ), sizeof( StaticProp_v6_t ) * numStaticProps );
+
+				break;
+			default:
+				throw std::exception("Unsupported static prop lump version");
+		}
+	}
+	catch (const std::exception& e) {
+		print_exception("parse_gamelumps", e);
+		return false;
+	}
+	return true;
 }
 
 void BSPFile::print_exception( const std::string& function_name, const std::exception& e ) const

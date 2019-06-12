@@ -13,8 +13,8 @@ class HL2RUNTIME_API ABaseEntity : public AActor
 {
 	GENERATED_BODY()
 	
-public:	
-	
+public:
+
 	/** The raw entity data straight from the vbsp entities lump. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
 	FHL2EntityData EntityData;
@@ -24,10 +24,10 @@ public:
 	UStaticMesh* WorldModel;
 
 	/* Initialises the entity from entity data. This is called once in the editor context when the entity is imported from the vbsp. */
-	UFUNCTION(BlueprintNativeEvent, CallInEditor, Category = "HL2")
-	void InitialiseEntity();
+	//UFUNCTION(BlueprintNativeEvent, CallInEditor, Category = "HL2")
+	//void InitialiseEntity();
 
-	void InitialiseEntity_Implementation();
+	//void InitialiseEntity_Implementation();
 
 
 };

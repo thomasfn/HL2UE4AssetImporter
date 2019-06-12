@@ -66,6 +66,12 @@ namespace Valve { namespace BSP {
         LUMP_DISP_TRIS                      = 48
     };
 
+	enum eGamelumpIndex : int
+	{
+		GAMELUMP_STATICPROPS = 1936749168, // 'sprp'
+		GAMELUMP_DETAILPROPS = 1936749168 // 'dprp'
+	};
+
     class lump_t
     {
     public:
@@ -290,6 +296,58 @@ namespace Valve { namespace BSP {
 	{
 	public:
 		unsigned short m_Tags;	// Displacement triangle tags.
+	};
+
+	class dcubemapsample_t
+	{
+	public:
+		int		m_Origin[3];	// position of light snapped to the nearest integer
+		int	        m_Size;		// resolution of cubemap, 0 - default
+	};
+
+	class dgamelump_t
+	{
+	public:
+		int		m_ID;		// gamelump ID
+		unsigned short	m_Flags;		// flags
+		unsigned short	m_Version;	// gamelump version
+		int		m_Fileofs;	// offset to this gamelump
+		int		m_Filelen;	// length
+	};
+
+	class StaticPropName_t
+	{
+	public:
+		char	m_Str[128];
+	};
+
+	class StaticProp_v4_t
+	{
+	public:
+		Vector3         m_Origin;            // origin
+		Vector3         m_Angles;            // orientation (pitch roll yaw)
+		unsigned short  m_PropType;          // index into model name dictionary
+		unsigned short  m_FirstLeaf;         // index into leaf array
+		unsigned short  m_LeafCount;
+		unsigned char   m_Solid;             // solidity type
+		unsigned char   m_Flags;
+		int             m_Skin;              // model skin numbers
+		float           m_FadeMinDist;
+		float           m_FadeMaxDist;
+		Vector3         m_LightingOrigin;    // for lighting
+	};
+
+	class StaticProp_v5_t : public StaticProp_v4_t
+	{
+	public:
+		float           m_ForcedFadeScale;   // fade distance scale
+	};
+
+	class StaticProp_v6_t : public StaticProp_v5_t
+	{
+	public:
+		unsigned short  m_MinDXLevel;        // minimum DirectX version to be visible
+		unsigned short  m_MaxDXLevel;        // maximum DirectX version to be visible
 	};
 
     class VPlane

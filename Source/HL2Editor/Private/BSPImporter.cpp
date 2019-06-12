@@ -55,10 +55,10 @@ bool FBSPImporter::ImportToWorld(const Valve::BSPFile& bspFile, UWorld* world)
 	loopProgress.MakeDialog();
 
 	loopProgress.EnterProgressFrame(1.0f);
-	if (!ImportEntitiesToWorld(bspFile, world)) { return false; }
+	if (!ImportGeometryToWorld(bspFile, world)) { return false; }
 
 	loopProgress.EnterProgressFrame(1.0f);
-	if (!ImportGeometryToWorld(bspFile, world)) { return false; }
+	if (!ImportEntitiesToWorld(bspFile, world)) { return false; }
 
 	//loopProgress.EnterProgressFrame(1.0f);
 	//if (!ImportBrushesToWorld(bspFile, world)) { return false; }
@@ -146,12 +146,73 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	FActorFolders& folders = FActorFolders::Get();
 	folders.CreateFolder(*world, entitiesFolder);
 
+	// Read entities lump
 	const auto entityStrRaw = StringCast<TCHAR, ANSICHAR>(&bspFile.m_Entities[0], bspFile.m_Entities.size());
 	FString entityStr(entityStrRaw.Get());
 
+	// Parse into entity data
 	TArray<FHL2EntityData> entityDatas;
 	if (!FEntityParser::ParseEntities(entityStr, entityDatas)) { return false; }
 
+	// Parse static props
+	const static FName fnStaticProp(TEXT("prop_static"));
+	const static FName fnSolidity(TEXT("solidity"));
+	const static FName fnModel(TEXT("model"));
+	const static FName fnSkin(TEXT("skin"));
+	const static FName fnAngles(TEXT("angles"));
+	for (const Valve::BSP::StaticProp_v4_t staticProp : bspFile.m_Staticprops_v4)
+	{
+		FHL2EntityData entityData;
+		entityData.Classname = fnStaticProp;
+		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
+		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
+		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
+		entityData.KeyValues[fnModel] = FString(modelRaw.Length(), modelRaw.Get());
+		entityData.KeyValues[fnAngles] = FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2));
+		entityData.KeyValues[fnSkin] = FString::FromInt(staticProp.m_Skin);
+		entityDatas.Add(entityData);
+	}
+	for (const Valve::BSP::StaticProp_v5_t staticProp : bspFile.m_Staticprops_v5)
+	{
+		FHL2EntityData entityData;
+		entityData.Classname = fnStaticProp;
+		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
+		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
+		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
+		entityData.KeyValues[fnModel] = FString(modelRaw.Length(), modelRaw.Get());
+		entityData.KeyValues[fnAngles] = FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2));
+		entityData.KeyValues[fnSkin] = FString::FromInt(staticProp.m_Skin);
+		entityDatas.Add(entityData);
+	}
+	for (const Valve::BSP::StaticProp_v6_t staticProp : bspFile.m_Staticprops_v6)
+	{
+		FHL2EntityData entityData;
+		entityData.Classname = fnStaticProp;
+		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
+		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
+		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
+		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
+		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
+		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
+		entityDatas.Add(entityData);
+	}
+
+	// Parse cubemaps
+	const static FName fnCubemap(TEXT("env_cubemap"));
+	const static FName fnSize(TEXT("size"));
+	for (const Valve::BSP::dcubemapsample_t cubemap : bspFile.m_Cubemaps)
+	{
+		FHL2EntityData entityData;
+		entityData.Classname = fnCubemap;
+		entityData.Origin = FVector(cubemap.m_Origin[0], -cubemap.m_Origin[1], cubemap.m_Origin[2]);
+		entityData.KeyValues.Add(fnSize, FString::FromInt(cubemap.m_Size));
+		entityDatas.Add(entityData);
+	}
+
+	// Convert into actors
 	GEditor->SelectNone(false, true, false);
 	for (const FHL2EntityData& entityData : entityDatas)
 	{
@@ -171,7 +232,18 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 {
 	const static float cellSize = 1024.0f;
 
+	// Determine cell mins and maxs
+	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[nodeIndex];
+	const int cellMinX = FMath::FloorToInt(bspNode.m_Mins[0] / cellSize);
+	const int cellMaxX = FMath::CeilToInt(bspNode.m_Maxs[0] / cellSize);
+	const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
+	const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
+
+	FScopedSlowTask progress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1) + 12, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
+	progress.MakeDialog();
+
 	// Gather all faces and displacements from tree
+	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_GATHER", "Gathering faces and displacements..."));
 	TArray<uint16> faces;
 	GatherFaces(bspFile, nodeIndex, faces);
 	TArray<uint16> displacements;
@@ -179,28 +251,19 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 
 	{
 		// Render whole tree to a single mesh
+		progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_GENERATE", "Generating map geometry..."));
 		FMeshDescription meshDesc;
 		UStaticMesh::RegisterMeshAttributes(meshDesc);
 		RenderFacesToMesh(bspFile, faces, meshDesc, false);
 		RenderDisplacementsToMesh(bspFile, displacements, meshDesc);
 		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
 
-		// Determine cell mins and maxs
-		const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[nodeIndex];
-		const int cellMinX = FMath::FloorToInt(bspNode.m_Mins[0] / cellSize);
-		const int cellMaxX = FMath::CeilToInt(bspNode.m_Maxs[0] / cellSize);
-		const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
-		const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
-
-		FScopedSlowTask loopProgress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1), LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
-		loopProgress.MakeDialog();
-
 		// Iterate each cell
 		for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
 		{
 			for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
 			{
-				loopProgress.EnterProgressFrame(1.0f, FText::Format(LOCTEXT("MapGeometryImporting_CELL", "Importing cell %d x %d..."), cellX, cellY));
+				progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_CELL", "Splitting cells..."));
 
 				// Establish bounding planes for cell
 				TArray<FPlane> boundingPlanes;
@@ -226,6 +289,8 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 	}
 
 	{
+		progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_SKYBOX", "Generating skybox geometry..."));
+
 		// Render skybox to a single mesh
 		FMeshDescription meshDesc;
 		UStaticMesh::RegisterMeshAttributes(meshDesc);
@@ -791,6 +856,7 @@ bool FBSPImporter::SharesSmoothingGroup(uint16 groupA, uint16 groupB)
 
 ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, const FHL2EntityData& entityData)
 {
+	// Resolve blueprint
 	const FString assetPath = IHL2Runtime::Get().GetHL2EntityBasePath() + entityData.Classname.ToString() + TEXT(".") + entityData.Classname.ToString();
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
@@ -798,12 +864,15 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UW
 	if (!assetData.IsValid()) { return false; }
 	UBlueprint* blueprint = CastChecked<UBlueprint>(assetData.GetAsset());
 
+	// Setup transform
 	FTransform transform = FTransform::Identity;
 	transform.SetLocation(entityData.Origin);
 
+	// Spawn the entity
 	ABaseEntity* entity = world->SpawnActor<ABaseEntity>(blueprint->GeneratedClass, transform);
 	if (entity == nullptr) { return nullptr; }
 
+	// Set brush model on it
 	static const FName kModel(TEXT("model"));
 	FString model;
 	if (entityData.TryGetString(kModel, model))
@@ -826,8 +895,13 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UW
 		}
 	}
 
+	// Run ctor on the entity
 	entity->EntityData = entityData;
-	entity->InitialiseEntity();
+	if (!entityData.Targetname.IsEmpty())
+	{
+		entity->SetActorLabel(entityData.Targetname);
+	}
+	entity->RerunConstructionScripts();
 
 	return entity;
 }

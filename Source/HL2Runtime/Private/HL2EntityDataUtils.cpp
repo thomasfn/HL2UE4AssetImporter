@@ -38,7 +38,7 @@ bool UHL2EntityDataUtils::TryGetRotator(const FHL2EntityData& entityData, FName 
 {
 	FVector value;
 	if (!entityData.TryGetVector(key, value)) { return false; }
-	out = FRotator::MakeFromEuler(FVector(value.Z, value.X, value.Y));
+	out = FRotator::MakeFromEuler(FVector(value.Z, value.X, -value.Y));
 	return true;
 }
 

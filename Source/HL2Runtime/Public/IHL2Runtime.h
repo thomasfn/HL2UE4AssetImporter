@@ -12,7 +12,8 @@ enum class EHL2BlendMode : uint8
 {
 	Opaque,
 	AlphaTest,
-	Translucent
+	Translucent,
+	Additive
 };
 
 class HL2RUNTIME_API IHL2Runtime : public IModuleInterface

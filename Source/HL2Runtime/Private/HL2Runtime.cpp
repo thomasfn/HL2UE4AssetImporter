@@ -56,6 +56,7 @@ FName HL2RuntimeImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL
 	{
 		case EHL2BlendMode::Translucent: tmp = tmp.Append("_translucent"); break;
 		case EHL2BlendMode::AlphaTest: tmp = tmp.Append("_alphatest"); break;
+		case EHL2BlendMode::Additive: tmp = tmp.Append("_additive"); break;
 	}
 	return FName(*(hl2ShaderBasePath + tmp + '.' + FPaths::GetBaseFilename(tmp)));
 }

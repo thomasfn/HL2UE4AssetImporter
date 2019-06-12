@@ -213,9 +213,11 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	}
 
 	// Convert into actors
+	FScopedSlowTask progress(entityDatas.Num(), LOCTEXT("MapEntitiesImporting", "Importing map entities..."));
 	GEditor->SelectNone(false, true, false);
 	for (const FHL2EntityData& entityData : entityDatas)
 	{
+		progress.EnterProgressFrame();
 		AActor* actor = ImportEntityToWorld(bspFile, world, entityData);
 		if (actor != nullptr)
 		{
@@ -688,6 +690,10 @@ void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, cons
 		FString parsedMaterialName = ParseMaterialName(bspMaterialName);
 		FName material(*parsedMaterialName);
 
+		// Create a unique poly group for us
+		const FPolygonGroupID polyGroupID = meshDesc.CreatePolygonGroup();
+		polyGroupMaterial[polyGroupID] = material;
+
 		// Gather face verts
 		TArray<FVector> faceVerts;
 		for (uint16 i = 0; i < bspFace.m_Numedges; ++i)
@@ -728,15 +734,11 @@ void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, cons
 			}
 		}
 
-		// Determine direction vectors
-		FVector dU, dV;
-		{
-			const FVector startPoint = faceVerts[startFaceVertIndex];
-			const FVector nextPoint = faceVerts[(startFaceVertIndex + 1) % faceVerts.Num()];
-			const FVector prevPoint = faceVerts[startFaceVertIndex == 0 ? faceVerts.Num() - 1 : startFaceVertIndex - 1];
-			dU = nextPoint - startPoint;
-			dV = prevPoint - startPoint;
-		}
+		// Determine corners vectors
+		const FVector p0 = faceVerts[startFaceVertIndex];
+		const FVector p1 = faceVerts[(startFaceVertIndex + 1) % faceVerts.Num()];
+		const FVector p2 = faceVerts[(startFaceVertIndex + 2) % faceVerts.Num()];
+		const FVector p3 = faceVerts[(startFaceVertIndex + 3) % faceVerts.Num()];
 
 		// Create all verts
 		TArray<FVertexInstanceID> dispVertices;
@@ -744,6 +746,8 @@ void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, cons
 		for (int x = 0; x <= dispRes; ++x)
 		{
 			const float dX = x / (float)dispRes;
+			const FVector mp0 = FMath::Lerp(p0, p1, dX);
+			const FVector mp1 = FMath::Lerp(p3, p2, dX);
 			for (int y = 0; y <= dispRes; ++y)
 			{
 				const float dY = y / (float)dispRes;
@@ -752,13 +756,13 @@ void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, cons
 				const Valve::BSP::ddispvert_t& bspVert = bspFile.m_Dispverts[bspDispinfo.m_DispVertStart + idx];
 				const FVector bspVertVec = FVector(bspVert.m_Vec(0, 0), bspVert.m_Vec(0, 1), bspVert.m_Vec(0, 2));
 
-				const FVector basePos = dispStartPos + dU * dX + dV * dY;
+				const FVector basePos = FMath::Lerp(mp0, mp1, dY);
 				const FVector dispPos = basePos + bspVertVec * bspVert.m_Dist;
 
-				FVertexID meshVertID = meshDesc.CreateVertex();
+				const FVertexID meshVertID = meshDesc.CreateVertex();
 				vertexAttrPosition[meshVertID] = dispPos;
 
-				FVertexInstanceID meshVertInstID = meshDesc.CreateVertexInstance(meshVertID);
+				const FVertexInstanceID meshVertInstID = meshDesc.CreateVertexInstance(meshVertID);
 
 				const FVector texU_XYZ = FVector(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2]);
 				const float texU_W = bspTexInfo.m_TextureVecs[0][3];
@@ -780,10 +784,6 @@ void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, cons
 			}
 		}
 
-		// Create a unique poly group for us
-		const FPolygonGroupID polyGroupID = meshDesc.CreatePolygonGroup();
-		polyGroupMaterial[polyGroupID] = material;
-
 		// Create all polys
 		TArray<FVertexInstanceID> polyPoints;
 		TArray<FEdgeID> polyEdgeIDs;
@@ -802,7 +802,7 @@ void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, cons
 				polyPoints.Add(dispVertices[idxC]);
 				polyPoints.Add(dispVertices[idxD]);
 
-				const FPolygonID& polyID = meshDesc.CreatePolygon(polyGroupID, polyPoints);
+				const FPolygonID polyID = meshDesc.CreatePolygon(polyGroupID, polyPoints);
 				polyEdgeIDs.Empty(4);
 				meshDesc.GetPolygonEdges(polyID, polyEdgeIDs);
 				for (const FEdgeID& edgeID : polyEdgeIDs)

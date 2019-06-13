@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/UObjectAnnotation.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "IHL2Runtime.h"
 
@@ -33,13 +34,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HL2")
 	static UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode, bool& outSuccess);
 
-	UFUNCTION(BlueprintCallable, Category = "HL2")
-	static void FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities);
+	UFUNCTION(BlueprintCallable, meta=(WorldContext = "worldContextObject"), Category = "HL2")
+	static void FindEntitiesByTargetName(UObject* worldContextObject, const FName targetName, TArray<ABaseEntity*>& outEntities);
 
-	UFUNCTION(BlueprintCallable, Category = "HL2")
-	static TArray<ABaseEntity*> FindEntitiesByTargetName(UWorld* world, const FName targetName);
+	UFUNCTION(BlueprintCallable, meta=(WorldContext = "worldContextObject"), Category = "HL2")
+	static TArray<ABaseEntity*> GetEntitiesByTargetName(UObject* worldContextObject, const FName targetName);
 
-	UFUNCTION(BlueprintCallable, Category = "HL2")
-	static ABaseEntity* GetEntityByTargetName(UWorld* world, const FName targetName, bool& outSuccess, bool& outMultiple);
+	UFUNCTION(BlueprintCallable, meta=(WorldContext = "worldContextObject"), Category = "HL2")
+	static ABaseEntity* GetEntityByTargetName(UObject* worldContextObject, const FName targetName, bool& outSuccess, bool& outMultiple);
 	
 };

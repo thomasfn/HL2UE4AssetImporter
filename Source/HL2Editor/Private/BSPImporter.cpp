@@ -215,13 +215,23 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	// Convert into actors
 	FScopedSlowTask progress(entityDatas.Num(), LOCTEXT("MapEntitiesImporting", "Importing map entities..."));
 	GEditor->SelectNone(false, true, false);
+	bool importedLightEnv = false;
+	const static FName fnLightEnv(TEXT("light_environment"));
 	for (const FHL2EntityData& entityData : entityDatas)
 	{
 		progress.EnterProgressFrame();
-		AActor* actor = ImportEntityToWorld(bspFile, world, entityData);
-		if (actor != nullptr)
+
+		// Skip duplicate light_environment
+		if (entityData.Classname == fnLightEnv && importedLightEnv) { continue; }
+
+		ABaseEntity* entity = ImportEntityToWorld(bspFile, world, entityData);
+		if (entity != nullptr)
 		{
-			GEditor->SelectActor(actor, true, false, true, false);
+			GEditor->SelectActor(entity, true, false, true, false);
+			if (entityData.Classname == fnLightEnv)
+			{
+				importedLightEnv = true;
+			}
 		}
 	}
 	folders.SetSelectedFolderPath(entitiesFolder);

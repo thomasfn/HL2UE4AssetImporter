@@ -37,23 +37,23 @@ UMaterial* UHL2Utils::TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2Blen
 	return material;
 }
 
-void UHL2Utils::FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities)
+void UHL2Utils::FindEntitiesByTargetName(UObject* worldContextObject, const FName targetName, TArray<ABaseEntity*>& outEntities)
 {
-	IHL2Runtime::Get().FindEntitiesByTargetName(world, targetName, outEntities);
+	IHL2Runtime::Get().FindEntitiesByTargetName(worldContextObject->GetWorld(), targetName, outEntities);
 }
 
-TArray<ABaseEntity*> UHL2Utils::FindEntitiesByTargetName(UWorld* world, const FName targetName)
+TArray<ABaseEntity*> UHL2Utils::GetEntitiesByTargetName(UObject* worldContextObject, const FName targetName)
 {
 	TArray<ABaseEntity*> result;
-	FindEntitiesByTargetName(world, targetName, result);
+	FindEntitiesByTargetName(worldContextObject, targetName, result);
 	return result;
 }
 
-ABaseEntity* UHL2Utils::GetEntityByTargetName(UWorld* world, const FName targetName, bool& outSuccess, bool& outMultiple)
+ABaseEntity* UHL2Utils::GetEntityByTargetName(UObject* worldContextObject, const FName targetName, bool& outSuccess, bool& outMultiple)
 {
 	TArray<ABaseEntity*> result;
 	result.Reserve(1);
-	FindEntitiesByTargetName(world, targetName, result);
+	FindEntitiesByTargetName(worldContextObject, targetName, result);
 	outMultiple = result.Num() > 1;
 	if (outSuccess = result.Num() > 0)
 	{

@@ -3,6 +3,8 @@
 #include "BaseEntity.h"
 #include "IHL2Runtime.h"
 
+DEFINE_LOG_CATEGORY(LogHL2IOSystem);
+
 // The entity that began the current I / O chain.If a player walks into a trigger that fires a logic_relay, the player is the !activator of the relay's output(s).
 static const FName tnActivator(TEXT("!activator"));
 
@@ -23,6 +25,14 @@ static const FName tnSpeechTarget(TEXT("!speechtarget"));
 	
 // The first entity under the player's crosshair. Only useful in single-player, and mostly only for debugging. Entities without collision can only be selected by aiming at their origin.
 static const FName tnPicker(TEXT("!picker"));
+
+ABaseEntity::ABaseEntity()
+{
+	/*USceneComponent* root = CreateDefaultSubobject<USceneComponent>(TEXT("RootSceneComponent"));
+	root->SetHiddenInGame(false, true);
+	root->SetMobility(EComponentMobility::Movable);
+	RootComponent = root;*/
+}
 	
 
 /**
@@ -34,6 +44,8 @@ static const FName tnPicker(TEXT("!picker"));
  */
 bool ABaseEntity::FireInput(const FName inputName, const TArray<FString>& args, ABaseEntity* caller, ABaseEntity* activator)
 {
+	UE_LOG(LogHL2IOSystem, Log, TEXT("Entity %s:%s receiving '%s' with %d args"), *TargetName.ToString(), *EntityData.Classname.ToString(), *inputName.ToString(), args.Num());
+
 	// Handle basic inputs
 	static const FName inKill(TEXT("Kill"));
 	static const FName inKillHierarchy(TEXT("KillHierarchy"));
@@ -87,10 +99,12 @@ bool ABaseEntity::FireInput(const FName inputName, const TArray<FString>& args, 
  * Fires a logic output on this entity.
  * Returns the number of entities that succesfully handled the output.
  */
-int ABaseEntity::FireOutput(const FName outputName, const TArray<FString>& args, ABaseEntity* caller = nullptr, ABaseEntity* activator = nullptr)
+int ABaseEntity::FireOutput(const FName outputName, const TArray<FString>& args, ABaseEntity* caller, ABaseEntity* activator)
 {
+	UE_LOG(LogHL2IOSystem, Log, TEXT("Entity %s:%s firing '%s' with %d args"), *TargetName.ToString(), *EntityData.Classname.ToString(), *outputName.ToString(), args.Num());
+
 	// Gather all relevant outputs to fire
-	TArray<const FEntityLogicOutput&> toFire;
+	TArray<FEntityLogicOutput> toFire;
 	for (int i = LogicOutputs.Num() - 1; i >= 0; --i)
 	{
 		const FEntityLogicOutput& logicOutput = LogicOutputs[i];
@@ -166,25 +180,7 @@ int ABaseEntity::FireOutput(const FName outputName, const TArray<FString>& args,
  */
 void ABaseEntity::ResetLogicOutputs()
 {
-	LogicOutputs.Empty();
-	for (const auto& pair : EntityData.KeyValues)
-	{
-		TArray<FString> logicArgs;
-		pair.Value.ParseIntoArray(logicArgs, TEXT(","), false);
-		if (logicArgs.Num() >= 4)
-		{
-			FEntityLogicOutput logicOutput;
-			logicOutput.TargetName = FName(*logicArgs[0].Trim());
-			logicOutput.OutputName = pair.Key;
-			logicOutput.InputName = FName(*logicArgs[1].Trim());
-			logicOutput.Delay = FCString::Atof(*logicArgs.Last(1));
-			logicOutput.Once = FCString::Atoi(*logicArgs.Last(0)) != -1;
-			logicArgs.RemoveAt(logicArgs.Num() - 2, 2);
-			logicArgs.RemoveAt(0, 2);
-			logicOutput.Params = logicArgs;
-			LogicOutputs.Add(logicOutput);
-		}
-	}
+	LogicOutputs = EntityData.LogicOutputs;
 }
 
 

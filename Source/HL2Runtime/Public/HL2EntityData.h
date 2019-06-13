@@ -5,6 +5,38 @@
 #include "HL2EntityData.generated.h"
 
 USTRUCT(BlueprintType)
+struct HL2RUNTIME_API FEntityLogicOutput
+{
+	GENERATED_BODY()
+
+public:
+
+	// The targetname of the target. May be a wildcard or special targetname.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	FName TargetName;
+
+	// The name of the output.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	FName OutputName;
+
+	// The name of the input of the target to fire.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	FName InputName;
+
+	// How long to wait before firing (s).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	float Delay;
+
+	// Whether to only fire once.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	bool Once;
+
+	// Parameters.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	TArray<FString> Params;
+};
+
+USTRUCT(BlueprintType)
 struct HL2RUNTIME_API FHL2EntityData
 {
 
@@ -13,7 +45,10 @@ struct HL2RUNTIME_API FHL2EntityData
 public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	TMultiMap<FName, FString> KeyValues;
+	TMap<FName, FString> KeyValues;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	TArray<FEntityLogicOutput> LogicOutputs;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
 	FName Classname = NAME_None;
@@ -30,8 +65,6 @@ public:
 public:
 
 	FString GetString(FName key) const;
-
-	void GetStrings(FName key, TArray<FString>& out) const;
 
 	bool TryGetString(FName key, FString& out) const;
 

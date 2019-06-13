@@ -8,37 +8,7 @@
 
 #include "BaseEntity.generated.h"
 
-USTRUCT(BlueprintType)
-struct HL2RUNTIME_API FEntityLogicOutput
-{
-	GENERATED_BODY()
-
-public:
-
-	// The targetname of the target. May be a wildcard or special targetname.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	FName TargetName;
-
-	// The name of the output.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	FName OutputName;
-
-	// The name of the input of the target to fire.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	FName InputName;
-
-	// How long to wait before firing (s).
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	float Delay;
-
-	// Whether to only fire once.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	bool Once;
-
-	// Parameters.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	TArray<FString> Params;
-};
+DECLARE_LOG_CATEGORY_EXTERN(LogHL2IOSystem, Log, All);
 
 UCLASS()
 class HL2RUNTIME_API ABaseEntity : public AActor
@@ -66,6 +36,8 @@ protected:
 	TArray<FEntityLogicOutput> LogicOutputs;
 
 public:
+
+	ABaseEntity();
 
 	/**
 	 * Fires a logic input on this entity.

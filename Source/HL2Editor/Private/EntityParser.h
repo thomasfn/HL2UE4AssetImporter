@@ -44,7 +44,7 @@ private:
 
 	static void ReadToken(const FString& src, const FEntityParserToken& token, FString& out);
 
-	static bool ParseGroup(const FString& src, const TArray<FEntityParserToken>& tokens, int& nextToken, TMap<FName, FString>& out);
+	static bool ParseGroup(const FString& src, const TArray<FEntityParserToken>& tokens, int& nextToken, TMap<FName, FString>& outKeyValues, TArray<FEntityLogicOutput>& outLogicOutputs);
 
 	inline static void ParseCommonKeys(FHL2EntityData& entity);
 };

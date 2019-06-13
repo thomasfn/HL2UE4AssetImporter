@@ -8,6 +8,8 @@
 
 #include "BaseEntity.generated.h"
 
+class UBaseEntityComponent;
+
 DECLARE_LOG_CATEGORY_EXTERN(LogHL2IOSystem, Log, All);
 
 UCLASS()
@@ -39,6 +41,8 @@ public:
 
 	ABaseEntity();
 
+	virtual void BeginPlay() override;
+
 	/**
 	 * Fires a logic input on this entity.
 	 * Returns true if the logic input was successfully handled.
@@ -61,6 +65,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "HL2")
 	void ResetLogicOutputs();
+
+	/**
+	 * Resolves a target name into an array of targets.
+	 * Supports wildcards and special target names.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HL2")
+	void ResolveTargetName(const FName targetNameToResolve, TArray<ABaseEntity*>& out, ABaseEntity* caller = nullptr, ABaseEntity* activator = nullptr) const;
 
 protected:
 

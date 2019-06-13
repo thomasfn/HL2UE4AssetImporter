@@ -100,9 +100,13 @@ bool FEntityParser::ParseGroup(const FString& src, const TArray<FEntityParserTok
 		if (logicArgs.Num() >= 4)
 		{
 			FEntityLogicOutput logicOutput;
-			logicOutput.TargetName = FName(*logicArgs[0].Trim());
+			logicArgs[0].TrimEndInline();
+			logicArgs[0].TrimStartInline();
+			logicOutput.TargetName = FName(*logicArgs[0]);
 			logicOutput.OutputName = FName(*keyStr);
-			logicOutput.InputName = FName(*logicArgs[1].Trim());
+			logicArgs[1].TrimEndInline();
+			logicArgs[1].TrimStartInline();
+			logicOutput.InputName = FName(*logicArgs[1]);
 			logicOutput.Delay = FCString::Atof(*logicArgs.Last(1));
 			logicOutput.Once = FCString::Atoi(*logicArgs.Last(0)) != -1;
 			logicArgs.RemoveAt(logicArgs.Num() - 2, 2);

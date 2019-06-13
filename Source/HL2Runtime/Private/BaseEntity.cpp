@@ -1,6 +1,7 @@
 #include "HL2RuntimePrivatePCH.h"
 
 #include "BaseEntity.h"
+#include "BaseEntityComponent.h"
 #include "IHL2Runtime.h"
 
 DEFINE_LOG_CATEGORY(LogHL2IOSystem);
@@ -14,7 +15,7 @@ static const FName tnCaller(TEXT("!caller"));
 // The entity from which the current output originates.If a player walks into a trigger that that fires a logic_relay, the relay is the !self of its output(s).
 static const FName tnSelf(TEXT("!self"));
 
-// The player.Only useful in singleplayer.
+// The player. Only useful in singleplayer.
 static const FName tnPlayer(TEXT("!player"));
 
 // The first player found in the entity's Potential Visibility Set. The PVS used is taken from the entity doing the searching, or the activator if no searching entity exists. If no activator exists either, the first player in the game is returned (i.e. !player).
@@ -28,10 +29,12 @@ static const FName tnPicker(TEXT("!picker"));
 
 ABaseEntity::ABaseEntity()
 {
-	/*USceneComponent* root = CreateDefaultSubobject<USceneComponent>(TEXT("RootSceneComponent"));
-	root->SetHiddenInGame(false, true);
-	root->SetMobility(EComponentMobility::Movable);
-	RootComponent = root;*/
+	
+}
+
+void ABaseEntity::BeginPlay()
+{
+	ResetLogicOutputs();
 }
 	
 
@@ -90,7 +93,17 @@ bool ABaseEntity::FireInput(const FName inputName, const TArray<FString>& args, 
 	}
 	else
 	{
+		// Let components handle it
+		for (UActorComponent* component : GetComponentsByClass(UBaseEntityComponent::StaticClass()))
+		{
+			UBaseEntityComponent* baseEntityComponent = CastChecked<UBaseEntityComponent>(component);
+			baseEntityComponent->OnInputFired(inputName, args, caller, activator);
+		}
+
+		// Let derived blueprint handle it
 		OnInputFired(inputName, args, caller, activator);
+
+		// Assume success - we're not bothering with having OnInputFired return a bool yet
 		return true;
 	}
 }
@@ -108,9 +121,9 @@ int ABaseEntity::FireOutput(const FName outputName, const TArray<FString>& args,
 	for (int i = LogicOutputs.Num() - 1; i >= 0; --i)
 	{
 		const FEntityLogicOutput& logicOutput = LogicOutputs[i];
-		if (logicOutput.InputName == outputName)
+		if (logicOutput.OutputName == outputName)
 		{
-			toFire.Add(logicOutput);
+			toFire.Insert(logicOutput, 0);
 			if (logicOutput.Once)
 			{
 				LogicOutputs.RemoveAt(i);
@@ -125,25 +138,9 @@ int ABaseEntity::FireOutput(const FName outputName, const TArray<FString>& args,
 	int result = 0;
 	for (const FEntityLogicOutput& logicOutput : toFire)
 	{
+		// Resolve targetname
 		TArray<ABaseEntity*> targets;
-
-		// Test for special targetnames
-		if (logicOutput.TargetName == tnActivator)
-		{
-			if (activator != nullptr) { targets.Add(activator); }
-		}
-		else if (logicOutput.TargetName == tnCaller)
-		{
-			if (caller != nullptr) { targets.Add(caller); }
-		}
-		else if (logicOutput.TargetName == tnSelf)
-		{
-			targets.Add(this);
-		}
-		else
-		{
-			IHL2Runtime::Get().FindEntitiesByTargetName(GetWorld(), logicOutput.TargetName, targets);
-		}
+		ResolveTargetName(logicOutput.TargetName, targets, caller, activator);
 
 		// Prepare arguments
 		TArray<FString> arguments = logicOutput.Params;
@@ -183,6 +180,46 @@ void ABaseEntity::ResetLogicOutputs()
 	LogicOutputs = EntityData.LogicOutputs;
 }
 
+/**
+ * Resolves a target name into an array of targets.
+ * Supports wildcards and special target names.
+ */
+void ABaseEntity::ResolveTargetName(const FName targetNameToResolve, TArray<ABaseEntity*>& out, ABaseEntity* caller, ABaseEntity* activator) const
+{
+	// Test for special targetnames
+	if (targetNameToResolve == tnActivator)
+	{
+		if (activator != nullptr) { out.Add(activator); }
+	}
+	else if (targetNameToResolve == tnCaller)
+	{
+		if (caller != nullptr) { out.Add(caller); }
+	}
+	else if (targetNameToResolve == tnSelf)
+	{
+		out.Add(const_cast<ABaseEntity*>(this));
+	}
+	else if (targetNameToResolve == tnPlayer)
+	{
+		// TODO
+	}
+	else if (targetNameToResolve == tnPVSPlayer)
+	{
+		// TODO
+	}
+	else if (targetNameToResolve == tnSpeechTarget)
+	{
+		// TODO
+	}
+	else if (targetNameToResolve == tnPicker)
+	{
+		// TODO
+	}
+	else
+	{
+		IHL2Runtime::Get().FindEntitiesByTargetName(GetWorld(), targetNameToResolve, out);
+	}
+}
 
 void ABaseEntity::OnInputFired_Implementation(const FName inputName, const TArray<FString>& args, ABaseEntity* caller, ABaseEntity* activator)
 {

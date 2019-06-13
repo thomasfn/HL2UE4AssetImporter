@@ -36,3 +36,31 @@ UMaterial* UHL2Utils::TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2Blen
 	outSuccess = material != nullptr;
 	return material;
 }
+
+void UHL2Utils::FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities)
+{
+	IHL2Runtime::Get().FindEntitiesByTargetName(world, targetName, outEntities);
+}
+
+TArray<ABaseEntity*> UHL2Utils::FindEntitiesByTargetName(UWorld* world, const FName targetName)
+{
+	TArray<ABaseEntity*> result;
+	FindEntitiesByTargetName(world, targetName, result);
+	return result;
+}
+
+ABaseEntity* UHL2Utils::GetEntityByTargetName(UWorld* world, const FName targetName, bool& outSuccess, bool& outMultiple)
+{
+	TArray<ABaseEntity*> result;
+	result.Reserve(1);
+	FindEntitiesByTargetName(world, targetName, result);
+	outMultiple = result.Num() > 1;
+	if (outSuccess = result.Num() > 0)
+	{
+		return result[0];
+	}
+	else
+	{
+		return nullptr;
+	}
+}

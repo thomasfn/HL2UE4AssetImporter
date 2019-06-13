@@ -3,6 +3,7 @@
 #include "ModuleManager.h"
 #include "Engine/Texture.h"
 #include "Engine/StaticMesh.h"
+#include "BaseEntity.h"
 
 #include "SurfaceProp.h"
 #include "VMTMaterial.h"
@@ -65,5 +66,7 @@ public:
 
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const = 0;
 	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const = 0;
+
+	virtual void FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities) const = 0;
 
 };

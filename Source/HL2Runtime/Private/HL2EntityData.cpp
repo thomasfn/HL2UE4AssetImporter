@@ -9,10 +9,16 @@ FString FHL2EntityData::GetString(FName key) const
 	return tmp;
 }
 
+void FHL2EntityData::GetStrings(FName key, TArray<FString>& out) const
+{
+	KeyValues.MultiFind(key, out, true);
+}
+
 bool FHL2EntityData::TryGetString(FName key, FString& out) const
 {
-	if (!KeyValues.Contains(key)) { return false; }
-	out = KeyValues[key];
+	const FString* result = KeyValues.Find(key);
+	if (result == nullptr) { return false; }
+	out = *result;
 	return true;
 }
 

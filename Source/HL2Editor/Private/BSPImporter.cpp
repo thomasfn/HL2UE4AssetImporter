@@ -900,8 +900,12 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UW
 	if (!entityData.Targetname.IsEmpty())
 	{
 		entity->SetActorLabel(entityData.Targetname);
+		entity->TargetName = FName(*entityData.Targetname);
 	}
 	entity->RerunConstructionScripts();
+	entity->ResetLogicOutputs();
+	entity->PostEditChange();
+	entity->MarkPackageDirty();
 
 	return entity;
 }

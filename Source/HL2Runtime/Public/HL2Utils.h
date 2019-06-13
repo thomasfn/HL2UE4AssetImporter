@@ -32,5 +32,14 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "HL2")
 	static UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode, bool& outSuccess);
+
+	UFUNCTION(BlueprintCallable, Category = "HL2")
+	static void FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities);
+
+	UFUNCTION(BlueprintCallable, Category = "HL2")
+	static TArray<ABaseEntity*> FindEntitiesByTargetName(UWorld* world, const FName targetName);
+
+	UFUNCTION(BlueprintCallable, Category = "HL2")
+	static ABaseEntity* GetEntityByTargetName(UWorld* world, const FName targetName, bool& outSuccess, bool& outMultiple);
 	
 };

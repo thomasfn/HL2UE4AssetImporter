@@ -5,6 +5,7 @@
 #include "Misc/Paths.h"
 #include "Engine/Texture.h"
 #include "VMTMaterial.h"
+#include "EngineUtils.h"
 
 void HL2RuntimeImpl::StartupModule()
 {
@@ -134,6 +135,57 @@ void HL2RuntimeImpl::FindAllMaterialsThatReferenceTexture(FName assetPath, TArra
 		if (material && material->DoesReferenceTexture(assetPath))
 		{
 			out.Add(material);
+		}
+	}
+}
+
+void HL2RuntimeImpl::FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities) const
+{
+	// Note: We're avoiding allocations in here as this will be called fairly frequently,
+	// and we'd like to avoid losing the perf gain from using FName target names.
+	// Hence all the stack-based C-string operations.
+
+	// Determine if wildcard
+	TCHAR targetNameStr[1024];
+	targetName.GetPlainWIDEString(targetNameStr);
+	int targetNameStrLen = FCString::Strlen(targetNameStr);
+	check(targetNameStrLen > 0);
+	check(targetNameStrLen < 1024);
+	bool isWildcard;
+	if (targetNameStr[targetNameStrLen - 1] == '*')
+	{
+		targetNameStr[targetNameStrLen - 1] = '\0';
+		isWildcard = true;
+	}
+	else
+	{
+		isWildcard = false;
+	}
+
+	// Iterate all entities
+	for (TActorIterator<ABaseEntity> it(world); it; ++it)
+	{
+		ABaseEntity* entity = *it;
+
+		// Handle simple equals case first
+		if (entity->TargetName == targetName)
+		{
+			outEntities.Add(entity);
+		}
+		else if (entity->EntityData.Classname == targetName)
+		{
+			outEntities.Add(entity);
+		}
+		// Handle wildcard case
+		else if (isWildcard)
+		{
+			TCHAR tmpName[1024];
+			entity->TargetName.GetPlainWIDEString(tmpName);
+			tmpName[targetNameStrLen - 1] = '\0';
+			if (FCString::Strcmp(targetNameStr, tmpName) == 0)
+			{
+				outEntities.Add(entity);
+			}
 		}
 	}
 }

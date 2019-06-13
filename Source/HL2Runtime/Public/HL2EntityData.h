@@ -13,7 +13,7 @@ struct HL2RUNTIME_API FHL2EntityData
 public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	TMap<FName, FString> KeyValues;
+	TMultiMap<FName, FString> KeyValues;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
 	FName Classname = NAME_None;
@@ -30,6 +30,8 @@ public:
 public:
 
 	FString GetString(FName key) const;
+
+	void GetStrings(FName key, TArray<FString>& out) const;
 
 	bool TryGetString(FName key, FString& out) const;
 

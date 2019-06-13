@@ -59,6 +59,9 @@ public:
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const override;
 	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const override;
 
+	/* Supports wildcards and classnames. */
+	virtual void FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities) const override;
+
 	/** End IHL2Runtime implementation */
 
 };

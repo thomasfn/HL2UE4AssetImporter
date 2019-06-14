@@ -3,6 +3,7 @@
 #include "BaseEntity.h"
 #include "BaseEntityComponent.h"
 #include "IHL2Runtime.h"
+#include "TimerManager.h"
 
 DEFINE_LOG_CATEGORY(LogHL2IOSystem);
 
@@ -34,6 +35,7 @@ ABaseEntity::ABaseEntity()
 
 void ABaseEntity::BeginPlay()
 {
+	Super::BeginPlay();
 	ResetLogicOutputs();
 }
 	
@@ -131,17 +133,10 @@ int ABaseEntity::FireOutput(const FName outputName, const TArray<FString>& args,
 		}
 	}
 
-	// TODO: Deal with delay somehow...
-	// Timers?
-
-	// Iterate all and fire them
+	// Iterate all
 	int result = 0;
 	for (const FEntityLogicOutput& logicOutput : toFire)
 	{
-		// Resolve targetname
-		TArray<ABaseEntity*> targets;
-		ResolveTargetName(logicOutput.TargetName, targets, caller, activator);
-
 		// Prepare arguments
 		TArray<FString> arguments = logicOutput.Params;
 		arguments.Reserve(args.Num());
@@ -158,14 +153,26 @@ int ABaseEntity::FireOutput(const FName outputName, const TArray<FString>& args,
 		}
 		arguments.Reserve(FMath::Max(args.Num(), logicOutput.Params.Num()));
 
-		// Iterate all entities
-		for (ABaseEntity* targetEntity : targets)
+		// Setup pending fire
+		FPendingFireOutput pendingFireOutput;
+		pendingFireOutput.Output = logicOutput;
+		pendingFireOutput.Args = arguments;
+		pendingFireOutput.Caller = caller;
+		pendingFireOutput.Activator = activator;
+
+		// If the delay is zero, fire it immediately
+		if (logicOutput.Delay <= 0.0f)
 		{
-			// Fire the input!
-			if (targetEntity->FireInput(logicOutput.InputName, arguments, this, caller))
-			{
-				++result;
-			}
+			FireOutputInternal(pendingFireOutput);
+		}
+		else
+		{
+			// Setup a timer
+			static const FName fnFireOutputInternal("FireOutputInternal");
+			FTimerDelegate timerDelegate;
+			timerDelegate.BindUFunction(this, fnFireOutputInternal, pendingFireOutput);
+			GetWorldTimerManager().SetTimer(pendingFireOutput.TimerHandle, timerDelegate, logicOutput.Delay, false);
+			PendingOutputs.Add(pendingFireOutput.TimerHandle);
 		}
 	}
 
@@ -218,6 +225,23 @@ void ABaseEntity::ResolveTargetName(const FName targetNameToResolve, TArray<ABas
 	else
 	{
 		IHL2Runtime::Get().FindEntitiesByTargetName(GetWorld(), targetNameToResolve, out);
+	}
+}
+
+void ABaseEntity::FireOutputInternal(const FPendingFireOutput& data)
+{
+	// Remove timer
+	PendingOutputs.Remove(data.TimerHandle);
+
+	// Resolve targetname
+	TArray<ABaseEntity*> targets;
+	ResolveTargetName(data.Output.TargetName, targets, data.Caller, data.Activator);
+
+	// Iterate all target entities
+	for (ABaseEntity* targetEntity : targets)
+	{
+		// Fire the input!
+		targetEntity->FireInput(data.Output.InputName, data.Args, this, data.Caller);
 	}
 }
 

@@ -13,6 +13,7 @@ UBaseEntityComponent::UBaseEntityComponent()
 void UBaseEntityComponent::BeginPlay()
 {
 	Entity = CastChecked<ABaseEntity>(GetOwner());
+	Super::BeginPlay();
 }
 
 /**

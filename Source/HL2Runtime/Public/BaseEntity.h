@@ -10,7 +10,32 @@
 
 class UBaseEntityComponent;
 
+class ABaseEntity;
+
 DECLARE_LOG_CATEGORY_EXTERN(LogHL2IOSystem, Log, All);
+
+USTRUCT()
+struct FPendingFireOutput
+{
+	GENERATED_BODY()
+
+public:
+
+	UPROPERTY()
+	FEntityLogicOutput Output;
+
+	UPROPERTY()
+	ABaseEntity* Caller;
+
+	UPROPERTY()
+	ABaseEntity* Activator;
+
+	UPROPERTY()
+	TArray<FString> Args;
+
+	UPROPERTY()
+	FTimerHandle TimerHandle;
+};
 
 UCLASS()
 class HL2RUNTIME_API ABaseEntity : public AActor
@@ -37,6 +62,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
 	TArray<FEntityLogicOutput> LogicOutputs;
 
+	UPROPERTY()
+	TArray<FTimerHandle> PendingOutputs;
+
 public:
 
 	ABaseEntity();
@@ -55,7 +83,7 @@ public:
 
 	/**
 	 * Fires a logic output on this entity.
-	 * Returns the number of entities that succesfully handled the output.
+	 * Returns the number of outputs that were actually fired.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "HL2")
 	int FireOutput(const FName outputName, const TArray<FString>& args, ABaseEntity* caller = nullptr, ABaseEntity* activator = nullptr);
@@ -74,6 +102,9 @@ public:
 	void ResolveTargetName(const FName targetNameToResolve, TArray<ABaseEntity*>& out, ABaseEntity* caller = nullptr, ABaseEntity* activator = nullptr) const;
 
 protected:
+
+	UFUNCTION()
+	void FireOutputInternal(const FPendingFireOutput& data);
 
 	/**
 	 * Published when an input has been fired on this entity.

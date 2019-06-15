@@ -6,6 +6,7 @@
 #include "HL2EntityData.h"
 #include "EntityParser.h"
 #include "BaseEntity.h"
+#include "VBSPInfo.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogHL2BSPImporter, Log, All);
 
@@ -48,11 +49,15 @@ private:
 	static void RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter);
 	 
 	static void RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& displacements, FMeshDescription& meshDesc);
-	 
+	
+	static AVBSPInfo* RenderTreeToVBSPInfo(const Valve::BSPFile& bspFile, UWorld* world, uint32 nodeIndex);
+
+	static AVBSPInfo* GetVBSPInfo(UWorld* world);
+
 	static FString ParseMaterialName(const char* bspMaterialName);
 	 
 	static bool SharesSmoothingGroup(uint16 groupA, uint16 groupB);
 	 
-	static ABaseEntity* ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, const FHL2EntityData& entityData);
+	static ABaseEntity* ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, AVBSPInfo* vbspInfo, const FHL2EntityData& entityData);
 
 };

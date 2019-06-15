@@ -60,6 +60,15 @@ namespace Valve {
         }
 
     private:        
+		/**
+         * @brief      Parse map visibility.
+         *
+         * @param      bsp_binary  The bsp binary
+         *
+         * @return     False if an exception got throwed, True otherwise.
+         */
+        bool parse_vis( std::ifstream& bsp_binary );
+
         /**
          * @brief      Parse map planes.
          *
@@ -149,6 +158,7 @@ namespace Valve {
         BSP::dheader_t                   m_BSPHeader;
 		std::vector< char >			     m_Entities;
         std::vector< BSP::mvertex_t >    m_Vertexes;
+		std::vector< std::vector<int> >  m_Visibility;
         std::vector< BSP::cplane_t >     m_Planes;
         std::vector< BSP::dedge_t >      m_Edges;
         std::vector< int32_t >           m_Surfedges;

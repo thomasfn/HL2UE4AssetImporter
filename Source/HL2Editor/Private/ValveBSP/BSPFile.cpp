@@ -32,6 +32,10 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
             return false;
         }
 
+		if ( !parse_vis( bsp_binary ) ) {
+			return false;
+		}
+
 		parse_lump_data( bsp_binary, LUMP_ENTITIES, m_Entities );
 
         parse_lump_data( bsp_binary, LUMP_VERTEXES, m_Vertexes );
@@ -79,6 +83,47 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
     }
 
     return true;
+}
+
+bool BSPFile::parse_vis( std::ifstream& bsp_binary )
+{
+	try {
+		std::vector< char > data;
+		parse_lump_data( bsp_binary, LUMP_VISIBILITY, data );
+		const int* start = (const int*)&data[0];
+
+		const int numClusters = *start;
+		
+		for (int clusterIndex = 0; clusterIndex < numClusters; ++clusterIndex) {
+			std::vector< int > visibleClusters;
+			int v = start[(clusterIndex << 1) + 1];
+
+			for (int c = 0; c < numClusters; v++) {
+
+				if (start[v] == 0) {
+					v++;
+					c += 8 * start[v];
+				}
+				else {
+					for (char bit = 1; bit != 0; bit *= 2, c++) {
+						if (start[v] & bit) {
+							visibleClusters.push_back(c);
+						}
+					}
+				}
+
+			}
+
+			m_Visibility.push_back(visibleClusters);
+		}
+
+
+	}
+	catch (const std::exception& e) {
+		print_exception("parse_vis", e);
+		return false;
+	}
+	return true;
 }
 
 bool BSPFile::parse_planes( std::ifstream& bsp_binary )

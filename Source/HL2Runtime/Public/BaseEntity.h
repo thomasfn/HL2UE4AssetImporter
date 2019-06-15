@@ -11,6 +11,7 @@
 class UBaseEntityComponent;
 
 class ABaseEntity;
+class AVBSPInfo;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogHL2IOSystem, Log, All);
 
@@ -55,6 +56,10 @@ public:
 	/** The targetname, if any, for this entity. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
 	FName TargetName;
+
+	/** The vbsp info for the map. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	AVBSPInfo* VBSPInfo;
 
 protected:
 

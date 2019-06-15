@@ -23,6 +23,7 @@
 #include "AssetRegistryModule.h"
 #include "Internationalization/Regex.h"
 #include "Misc/ScopedSlowTask.h"
+#include "EngineUtils.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -146,6 +147,8 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	FActorFolders& folders = FActorFolders::Get();
 	folders.CreateFolder(*world, entitiesFolder);
 
+	AVBSPInfo* vbspInfo = GetVBSPInfo(world);
+
 	// Read entities lump
 	const auto entityStrRaw = StringCast<TCHAR, ANSICHAR>(&bspFile.m_Entities[0], bspFile.m_Entities.size());
 	FString entityStr(entityStrRaw.Get());
@@ -224,7 +227,7 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 		// Skip duplicate light_environment
 		if (entityData.Classname == fnLightEnv && importedLightEnv) { continue; }
 
-		ABaseEntity* entity = ImportEntityToWorld(bspFile, world, entityData);
+		ABaseEntity* entity = ImportEntityToWorld(bspFile, world, vbspInfo, entityData);
 		if (entity != nullptr)
 		{
 			GEditor->SelectActor(entity, true, false, true, false);
@@ -251,8 +254,12 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 	const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
 	const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
 
-	FScopedSlowTask progress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1) + 12, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
+	FScopedSlowTask progress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1) + 13, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
 	progress.MakeDialog();
+
+	// Render out VBSPInfo
+	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_VBSPINFO", "Generating VBSPInfo..."));
+	AVBSPInfo* vbspInfo = RenderTreeToVBSPInfo(bspFile, world, nodeIndex);
 
 	// Gather all faces and displacements from tree
 	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_GATHER", "Gathering faces and displacements..."));
@@ -295,6 +302,8 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 					AStaticMeshActor* staticMeshActor = RenderMeshToActor(world, cellMeshDesc);
 					staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
 					out.Add(staticMeshActor);
+
+					// TODO: Insert to VBSPInfo
 				}
 			}
 		}
@@ -825,6 +834,150 @@ void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, cons
 	}
 }
 
+AVBSPInfo* FBSPImporter::RenderTreeToVBSPInfo(const Valve::BSPFile& bspFile, UWorld* world, uint32 nodeIndex)
+{
+	AVBSPInfo* vbspInfo = world->SpawnActor<AVBSPInfo>();
+
+	TMap<uint32, int> nodeMap;
+	// TMap<uint32, int> leafMap;
+	TMap<int16, int> clusterMap;
+
+	struct ExploreState
+	{
+		uint32 NodeIndex;
+		uint32 ParentNodeIndex;
+		bool IsLeft;
+		ExploreState(uint32 nodeIndex, uint32 parentNodeIndex, bool isLeft)
+			: NodeIndex(nodeIndex), ParentNodeIndex(parentNodeIndex), IsLeft(isLeft)
+		{ }
+		ExploreState()
+			: ExploreState(0, 0, false)
+		{ }
+	};
+
+	// Explore the node hierarchy
+	TArray<ExploreState> exploreStack;
+	exploreStack.Push(ExploreState(nodeIndex, nodeIndex, false));
+	while (exploreStack.Num() > 0)
+	{
+		const ExploreState state = exploreStack.Pop();
+		const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[state.NodeIndex];
+		FVBSPNode newNode;
+		newNode.Plane = ValveToUnrealPlane(bspFile.m_Planes[bspNode.m_PlaneNum]);
+		const int newNodeIndex = vbspInfo->Nodes.Add(newNode);
+		nodeMap.Add(state.NodeIndex, newNodeIndex);
+		if (state.ParentNodeIndex != state.NodeIndex)
+		{
+			FVBSPNode& parentNode = vbspInfo->Nodes[nodeMap[state.ParentNodeIndex]];
+			if (state.IsLeft)
+			{
+				parentNode.Left = newNodeIndex;
+			}
+			else
+			{
+				parentNode.Right = newNodeIndex;
+			}
+		}
+
+		// Check left
+		if (bspNode.m_Children[0] < 0)
+		{
+			// Left is leaf
+			const Valve::BSP::dleaf_t& bspLeaf = bspFile.m_Leaves[1 - bspNode.m_Children[0]];
+			FVBSPLeaf newLeaf;
+			newLeaf.Solid = (bspLeaf.m_Contents & Valve::BSP::CONTENTS_SOLID) != 0;
+			int newLeafIndex = vbspInfo->Leaves.Num();
+			if (bspLeaf.m_Cluster >= 0)
+			{
+				int* tmpCluster = clusterMap.Find(bspLeaf.m_Cluster);
+				if (tmpCluster != nullptr)
+				{
+					newLeaf.Cluster = *tmpCluster;
+				}
+				else
+				{
+					FVBSPCluster newCluster;
+					newCluster.Leaves.Add(newLeafIndex);
+					newLeaf.Cluster = vbspInfo->Clusters.Add(newCluster);
+					clusterMap.Add(bspLeaf.m_Cluster, newLeaf.Cluster);
+				}
+			}
+			else
+			{
+				newLeaf.Cluster = -1;
+			}
+			check(vbspInfo->Leaves.Add(newLeaf) == newLeafIndex);
+			vbspInfo->Nodes[newNodeIndex].Left = -(1 + newLeafIndex);
+		}
+		else
+		{
+			// Left is node
+			exploreStack.Push(ExploreState((uint32)bspNode.m_Children[0], state.NodeIndex, true));
+		}
+
+		// Check right
+		if (bspNode.m_Children[1] < 0)
+		{
+			// Right is leaf
+			const Valve::BSP::dleaf_t& bspLeaf = bspFile.m_Leaves[1 - bspNode.m_Children[1]];
+			FVBSPLeaf newLeaf;
+			newLeaf.Solid = (bspLeaf.m_Contents & Valve::BSP::CONTENTS_SOLID) != 0;
+			int newLeafIndex = vbspInfo->Leaves.Num();
+			if (bspLeaf.m_Cluster >= 0)
+			{
+				int* tmpCluster = clusterMap.Find(bspLeaf.m_Cluster);
+				if (tmpCluster != nullptr)
+				{
+					newLeaf.Cluster = *tmpCluster;
+				}
+				else
+				{
+					FVBSPCluster newCluster;
+					newCluster.Leaves.Add(newLeafIndex);
+					newLeaf.Cluster = vbspInfo->Clusters.Add(newCluster);
+					clusterMap.Add(bspLeaf.m_Cluster, newLeaf.Cluster);
+				}
+			}
+			else
+			{
+				newLeaf.Cluster = -1;
+			}
+			check(vbspInfo->Leaves.Add(newLeaf) == newLeafIndex);
+			vbspInfo->Nodes[newNodeIndex].Right = -(1 + newLeafIndex);
+		}
+		else
+		{
+			// Right is node
+			exploreStack.Push(ExploreState((uint32)bspNode.m_Children[1], state.NodeIndex, false));
+		}
+	}
+
+	// Parse vis info
+	for (const auto& pair : clusterMap)
+	{
+		const std::vector<int>& bspVisibleSet = bspFile.m_Visibility[pair.Key];
+		FVBSPCluster& cluster = vbspInfo->Clusters[pair.Value];
+		for (const int otherCluster : bspVisibleSet)
+		{
+			cluster.VisibleClusters.Add(otherCluster);
+		}
+	}
+
+	vbspInfo->PostEditChange();
+	vbspInfo->MarkPackageDirty();
+
+	return vbspInfo;
+}
+
+AVBSPInfo* FBSPImporter::GetVBSPInfo(UWorld* world)
+{
+	for (TActorIterator<AVBSPInfo> it(world); it; ++it)
+	{
+		return *it;
+	}
+	return nullptr;
+}
+
 FString FBSPImporter::ParseMaterialName(const char* bspMaterialName)
 {
 	// It might be something like "brick/brick06c" which is fine
@@ -864,7 +1017,7 @@ bool FBSPImporter::SharesSmoothingGroup(uint16 groupA, uint16 groupB)
 
 #undef LOCTEXT_NAMESPACE
 
-ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, const FHL2EntityData& entityData)
+ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, AVBSPInfo* vbspInfo, const FHL2EntityData& entityData)
 {
 	// Resolve blueprint
 	const FString assetPath = IHL2Runtime::Get().GetHL2EntityBasePath() + entityData.Classname.ToString() + TEXT(".") + entityData.Classname.ToString();
@@ -907,6 +1060,7 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UW
 
 	// Run ctor on the entity
 	entity->EntityData = entityData;
+	entity->VBSPInfo = vbspInfo;
 	if (!entityData.Targetname.IsEmpty())
 	{
 		entity->SetActorLabel(entityData.Targetname);

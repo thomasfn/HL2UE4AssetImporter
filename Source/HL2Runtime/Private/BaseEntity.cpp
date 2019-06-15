@@ -4,6 +4,7 @@
 #include "BaseEntityComponent.h"
 #include "IHL2Runtime.h"
 #include "TimerManager.h"
+#include "VBSPInfo.h"
 
 DEFINE_LOG_CATEGORY(LogHL2IOSystem);
 

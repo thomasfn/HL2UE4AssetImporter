@@ -48,17 +48,11 @@ FName HL2RuntimeImpl::HL2SurfacePropToAssetPath(const FName& surfaceProp) const
 	return FName(*(hl2SurfacePropBasePath + surfaceProp.ToString() + '.' + surfaceProp.ToString()));
 }
 
-FName HL2RuntimeImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL2BlendMode blendMode) const
+FName HL2RuntimeImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath) const
 {
 	// e.g. "VertexLitGeneric" -> "/HL2Editor/Shaders/VertexLitGeneric.VertexLitGeneric"
 	FString tmp = hl2ShaderPath;
 	tmp.ReplaceCharInline('\\', '/');
-	switch (blendMode)
-	{
-		case EHL2BlendMode::Translucent: tmp = tmp.Append("_translucent"); break;
-		case EHL2BlendMode::AlphaTest: tmp = tmp.Append("_alphatest"); break;
-		case EHL2BlendMode::Additive: tmp = tmp.Append("_additive"); break;
-	}
 	return FName(*(hl2ShaderBasePath + tmp + '.' + FPaths::GetBaseFilename(tmp)));
 }
 
@@ -103,18 +97,13 @@ USurfaceProp* HL2RuntimeImpl::TryResolveHL2SurfaceProp(const FName& surfaceProp)
 	return Cast<USurfaceProp>(assetData.GetAsset());
 }
 
-UMaterial* HL2RuntimeImpl::TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode) const
+UMaterial* HL2RuntimeImpl::TryResolveHL2Shader(const FString& hl2ShaderPath) const
 {
-	FName assetPath = HL2ShaderPathToAssetPath(hl2ShaderPath, blendMode);
+	FName assetPath = HL2ShaderPathToAssetPath(hl2ShaderPath);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
 	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
-	if (!assetData.IsValid())
-	{
-		// Fall back to opaque
-		if (blendMode == EHL2BlendMode::Opaque) { return nullptr; }
-		return TryResolveHL2Shader(hl2ShaderBasePath);
-	}
+	if (!assetData.IsValid()) { return nullptr; }
 	return CastChecked<UMaterial>(assetData.GetAsset());
 }
 

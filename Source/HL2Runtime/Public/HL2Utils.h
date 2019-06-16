@@ -32,7 +32,7 @@ public:
 	static USurfaceProp* TryResolveHL2SurfaceProp(const FName& surfaceProp, bool& outSuccess);
 
 	UFUNCTION(BlueprintCallable, Category = "HL2")
-	static UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode, bool& outSuccess);
+	static UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, bool& outSuccess);
 
 	UFUNCTION(BlueprintCallable, meta=(WorldContext = "worldContextObject"), Category = "HL2")
 	static void FindEntitiesByTargetName(UObject* worldContextObject, const FName targetName, TArray<ABaseEntity*>& outEntities);

@@ -6,18 +6,47 @@ bool FMaterialUtils::SetFromVMT(UVMTMaterial* mtl, const VTFLib::Nodes::CVMTGrou
 {
 	IHL2Runtime& hl2Runtime = IHL2Runtime::Get();
 
-	// Special case: identify translucency
-	const bool translucent = GetVMTKeyAsBool(groupNode, "$translucent");
-	const bool alphatest = GetVMTKeyAsBool(groupNode, "$alphatest");
-	const bool additive = GetVMTKeyAsBool(groupNode, "$additive");
-
 	// Try resolve shader
-	mtl->Parent = hl2Runtime.TryResolveHL2Shader(groupNode.GetName(), additive ? EHL2BlendMode::Additive : alphatest ? EHL2BlendMode::AlphaTest : translucent ? EHL2BlendMode::Translucent : EHL2BlendMode::Opaque);
-	if (mtl->Parent == nullptr)
 	{
-		UE_LOG(LogHL2Editor, Error, TEXT("Shader '%s' not found"), groupNode.GetName());
-		return false;
+		const auto shaderNameRaw = StringCast<TCHAR, ANSICHAR>(groupNode.GetName());
+		FString shaderName(shaderNameRaw.Length(), shaderNameRaw.Get());
+		mtl->Parent = hl2Runtime.TryResolveHL2Shader(shaderName);
+		if (mtl->Parent == nullptr)
+		{
+			UE_LOG(LogHL2Editor, Error, TEXT("Shader '%s' not found"), *shaderName);
+			return false;
+		}
 	}
+
+	// Set blend mode on the material
+	FMaterialInstanceBasePropertyOverrides& overrides = mtl->BasePropertyOverrides;
+	if (GetVMTKeyAsBool(groupNode, "$additive"))
+	{
+		overrides.BlendMode = EBlendMode::BLEND_Additive;
+		overrides.bOverride_BlendMode = true;
+	}
+	else if (GetVMTKeyAsBool(groupNode, "$alphatest"))
+	{
+		overrides.BlendMode = EBlendMode::BLEND_Masked;
+		overrides.bOverride_BlendMode = true;
+		const auto node = groupNode.GetNode("$alphatestreference");
+		if (node != nullptr && node->GetType() == VMTNodeType::NODE_TYPE_SINGLE)
+		{
+			overrides.OpacityMaskClipValue = ((VTFLib::Nodes::CVMTSingleNode*)node)->GetValue();
+			overrides.bOverride_OpacityMaskClipValue = true;
+		}
+	}
+	else if (GetVMTKeyAsBool(groupNode, "$translucent"))
+	{
+		overrides.BlendMode = EBlendMode::BLEND_Translucent;
+		overrides.bOverride_BlendMode = true;
+	}
+	if (GetVMTKeyAsBool(groupNode, "$nocull"))
+	{
+		overrides.TwoSided = true;
+		overrides.bOverride_TwoSided = true;
+	}
+	mtl->UpdateOverridableBaseProperties();
 
 	// Cache all material parameters from the shader
 	TArray<FMaterialParameterInfo> textureParams, scalarParams, vectorParams, staticSwitchParams;

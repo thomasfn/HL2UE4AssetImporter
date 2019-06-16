@@ -8,15 +8,6 @@
 #include "SurfaceProp.h"
 #include "VMTMaterial.h"
 
-UENUM()
-enum class EHL2BlendMode : uint8
-{
-	Opaque,
-	AlphaTest,
-	Translucent,
-	Additive
-};
-
 class HL2RUNTIME_API IHL2Runtime : public IModuleInterface
 {
 public:
@@ -56,13 +47,13 @@ public:
 	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const = 0;
 	virtual FName HL2ModelPathToAssetPath(const FString& hl2ModelPath) const = 0;
 	virtual FName HL2SurfacePropToAssetPath(const FName& surfaceProp) const = 0;
-	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, EHL2BlendMode blendMode = EHL2BlendMode::Opaque) const = 0;
+	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath) const = 0;
 
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const = 0;
 	virtual UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath) const = 0;
 	virtual UStaticMesh* TryResolveHL2StaticProp(const FString& hl2ModelPath) const = 0;
 	virtual USurfaceProp* TryResolveHL2SurfaceProp(const FName& surfaceProp) const = 0;
-	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode = EHL2BlendMode::Opaque) const = 0;
+	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath) const = 0;
 
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const = 0;
 	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const = 0;

@@ -30,9 +30,9 @@ USurfaceProp* UHL2Utils::TryResolveHL2SurfaceProp(const FName& surfaceProp, bool
 	return surfacePropObj;
 }
 
-UMaterial* UHL2Utils::TryResolveHL2Shader(const FString& hl2ShaderPath, EHL2BlendMode blendMode, bool& outSuccess)
+UMaterial* UHL2Utils::TryResolveHL2Shader(const FString& hl2ShaderPath, bool& outSuccess)
 {
-	UMaterial* material = IHL2Runtime::Get().TryResolveHL2Shader(hl2ShaderPath, blendMode);
+	UMaterial* material = IHL2Runtime::Get().TryResolveHL2Shader(hl2ShaderPath);
 	outSuccess = material != nullptr;
 	return material;
 }

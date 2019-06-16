@@ -102,5 +102,12 @@ private:
 		FFeedbackContext* warn
 	);
 
+	USkeletalMesh* ImportSkeletalMesh
+	(
+		UObject* inParent, FName inName, UObject* inSkeletonParent, FName inSkeletonName, EObjectFlags flags,
+		const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, const Valve::PHY::phyheader_t* phyHeader,
+		FFeedbackContext* warn
+	);
+
 	void ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out);
 };

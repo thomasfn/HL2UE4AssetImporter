@@ -8,6 +8,8 @@
 #include "IHL2Runtime.h"
 #include "MeshUtils.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "Rendering/SkeletalMeshModel.h"
+#include "MeshUtilities.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -270,7 +272,27 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 		return result;
 	}
 
-	warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Animated models not yet supported"));
+	// Skeletal mesh + skeleton
+	FString skeletonPackagePath = inParent->GetPathName();
+	skeletonPackagePath.Append(TEXT("_skeleton"));
+	const FName skeletonPackageName(*(FPaths::GetBaseFilename(skeletonPackagePath)));
+	UPackage* skeletonPackage = CreatePackage(nullptr, *skeletonPackagePath);
+	result.SkeletalMesh = ImportSkeletalMesh(inParent, inName, skeletonPackage, skeletonPackageName, flags, header, vtxHeader, vvdHeader, phyHeader, warn);
+	if (result.SkeletalMesh == nullptr)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Failed to import skeletal mesh"));
+		skeletonPackage->MarkPendingKill();
+		return result;
+	}
+	result.SkeletalMesh->PostEditChange();
+	FAssetRegistryModule::AssetCreated(result.SkeletalMesh);
+	result.SkeletalMesh->MarkPackageDirty();
+	result.Skeleton = result.SkeletalMesh->Skeleton;
+	result.Skeleton->PostEditChange();
+	FAssetRegistryModule::AssetCreated(result.Skeleton);
+	result.Skeleton->MarkPackageDirty();
+
+	// TODO: Animations
 
 	return result;
 }
@@ -668,6 +690,344 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	staticMesh->Build();
 
 	return staticMesh;
+}
+
+USkeletalMesh* UMDLFactory::ImportSkeletalMesh
+(
+	UObject* inParent, FName inName, UObject* inSkeletonParent, FName inSkeletonName, EObjectFlags flags,
+	const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, const Valve::PHY::phyheader_t* phyHeader,
+	FFeedbackContext* warn
+)
+{
+	// Read textures
+	TArray<FString> textureDirs;
+	header.GetTextureDirs(textureDirs);
+	TArray<const Valve::MDL::mstudiotexture_t*> textures;
+	header.GetTextures(textures);
+	if (textureDirs.Num() < 1)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: No texture dirs present (%d)"), textures.Num(), textureDirs.Num());
+		return nullptr;
+	}
+	TArray<FName> materials;
+	materials.Reserve(textures.Num());
+	for (int textureIndex = 0; textureIndex < textures.Num(); ++textureIndex)
+	{
+		FString materialPath = (textureIndex >= textureDirs.Num() ? textureDirs.Top() : textureDirs[textureIndex]) / textures[textureIndex]->GetName();
+		materialPath.ReplaceCharInline('\\', '/');
+		materials.Add(FName(*materialPath));
+	}
+	TSet<int> usedMaterialIndices;
+
+	// Read and validate body parts
+	TArray<const Valve::MDL::mstudiobodyparts_t*> bodyParts;
+	header.GetBodyParts(bodyParts);
+	TArray<const Valve::VTX::BodyPartHeader_t*> vtxBodyParts;
+	vtxHeader.GetBodyParts(vtxBodyParts);
+	if (bodyParts.Num() != vtxBodyParts.Num())
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Body parts in vtx didn't match body parts in mdl"));
+		return nullptr;
+	}
+
+	// Create all data arrays
+	struct LocalMeshData
+	{
+		TArray<FVector> points;
+		TArray<SkeletalMeshImportData::FMeshWedge> wedges;
+		TArray<SkeletalMeshImportData::FMeshFace> faces;
+		TArray<SkeletalMeshImportData::FVertInfluence> influences;
+		TArray<int32> pointToRawMap;
+	};
+	TArray<LocalMeshData> localMeshDatas;
+	localMeshDatas.AddDefaulted(vtxHeader.numLODs);
+
+	// Read bones
+	TArray<const Valve::MDL::mstudiobone_t*> bones;
+	header.GetBones(bones);
+
+	// Create skeleton
+	USkeleton* skeleton = CreateSkeleton(inSkeletonParent, inSkeletonName, flags);
+
+	// Create skeletal mesh
+	USkeletalMesh* skeletalMesh = CreateSkeletalMesh(inParent, inName, flags);
+	skeletalMesh->Skeleton = skeleton;
+
+	// Load bones into skeleton
+	FReferenceSkeleton refSkel;
+	{
+		FReferenceSkeletonModifier refSkelMod(refSkel, skeleton);
+		refSkel.Empty(bones.Num());
+		for (int i = 0; i < bones.Num(); ++i)
+		{
+			const Valve::MDL::mstudiobone_t& bone = *bones[i];
+			FMeshBoneInfo meshBoneInfo;
+			meshBoneInfo.ParentIndex = bone.parent;
+			meshBoneInfo.ExportName = bone.GetName();
+			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
+
+			FTransform bonePose;
+			bonePose.SetLocation(FVector(bone.pos[0], bone.pos[1], bone.pos[2]));
+			bonePose.SetRotation(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]));
+			refSkelMod.Add(meshBoneInfo, bonePose);
+		}
+	}
+	skeletalMesh->RefSkeleton = refSkel;
+	skeleton->MergeAllBonesToBoneTree(skeletalMesh);
+
+	// Prepare mesh geometry
+	FSkeletalMeshModel* meshModel = skeletalMesh->GetImportedModel();
+	meshModel->LODModels.Empty();
+	skeletalMesh->ResetLODInfo();
+
+	// Iterate all body parts
+	uint16 accumIndex = 0;
+	for (int bodyPartIndex = 0; bodyPartIndex < bodyParts.Num(); ++bodyPartIndex)
+	{
+		const Valve::MDL::mstudiobodyparts_t& bodyPart = *bodyParts[bodyPartIndex];
+		const Valve::VTX::BodyPartHeader_t& vtxBodyPart = *vtxBodyParts[bodyPartIndex];
+
+		// Read and validate models
+		TArray<const Valve::MDL::mstudiomodel_t*> models;
+		bodyPart.GetModels(models);
+		TArray<const Valve::VTX::ModelHeader_t*> vtxModels;
+		vtxBodyPart.GetModels(vtxModels);
+		if (models.Num() != vtxModels.Num())
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Models in vtx didn't match models in mdl for body part %d"), bodyPartIndex);
+			return nullptr;
+		}
+
+		// Iterate all models
+		for (int modelIndex = 0; modelIndex < models.Num(); ++modelIndex)
+		{
+			const Valve::MDL::mstudiomodel_t& model = *models[modelIndex];
+			const Valve::VTX::ModelHeader_t& vtxModel = *vtxModels[modelIndex];
+
+			// Read and validate meshes & lods
+			TArray<const Valve::MDL::mstudiomesh_t*> meshes;
+			model.GetMeshes(meshes);
+			TArray<const Valve::VTX::ModelLODHeader_t*> lods;
+			vtxModel.GetLODs(lods);
+			if (lods.Num() != vtxHeader.numLODs)
+			{
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Model %d in vtx didn't have correct lod count for body part %d"), modelIndex, bodyPartIndex);
+				return nullptr;
+			}
+
+			// Iterate all lods
+			for (int lodIndex = 0; lodIndex < lods.Num(); ++lodIndex)
+			{
+				LocalMeshData& localMeshData = localMeshDatas[lodIndex];
+				const Valve::VTX::ModelLODHeader_t& lod = *lods[lodIndex];
+
+				// Iterate all vertices in the vvd for this lod and insert them
+				TArray<Valve::VVD::mstudiovertex_t> vvdVertices;
+				TArray<FVector4> vvdTangents;
+				{
+					const uint16 vertCount = (uint16)vvdHeader.numLODVertexes[0];
+					vvdVertices.Reserve(vertCount);
+					vvdTangents.Reserve(vertCount);
+
+					if (vvdHeader.numFixups > 0)
+					{
+						TArray<Valve::VVD::mstudiovertex_t> fixupVertices;
+						TArray<FVector4> fixupTangents;
+						TArray<Valve::VVD::vertexFileFixup_t> fixups;
+						vvdHeader.GetFixups(fixups);
+						for (const Valve::VVD::vertexFileFixup_t& fixup : fixups)
+						{
+							//if (fixup.lod >= lodIndex)
+							{
+								for (int i = 0; i < fixup.numVertexes; ++i)
+								{
+									Valve::VVD::mstudiovertex_t vertex;
+									FVector4 tangent;
+									vvdHeader.GetVertex(fixup.sourceVertexID + i, vertex, tangent);
+									vvdVertices.Add(vertex);
+									vvdTangents.Add(tangent);
+								}
+							}
+						}
+					}
+					else
+					{
+						for (uint16 i = 0; i < vertCount; ++i)
+						{
+							Valve::VVD::mstudiovertex_t vertex;
+							FVector4 tangent;
+							vvdHeader.GetVertex(i, vertex, tangent);
+							vvdVertices.Add(vertex);
+							vvdTangents.Add(tangent);
+						}
+					}
+				}
+
+				// Fetch and iterate all meshes
+				TArray<const Valve::VTX::MeshHeader_t*> vtxMeshes;
+				lod.GetMeshes(vtxMeshes);
+				for (int meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
+				{
+					const Valve::MDL::mstudiomesh_t& mesh = *meshes[meshIndex];
+					const Valve::VTX::MeshHeader_t& vtxMesh = *vtxMeshes[meshIndex];
+
+					// Fetch and validate material
+					if (!materials.IsValidIndex(mesh.material))
+					{
+						warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Mesh %d in model %d had invalid material index %d (%d materials available)"), meshIndex, modelIndex, mesh.material, materials.Num());
+						return nullptr;
+					}
+					usedMaterialIndices.Add(mesh.material);
+
+					// Fetch and iterate all strip groups
+					TArray<const Valve::VTX::StripGroupHeader_t*> stripGroups;
+					vtxMesh.GetStripGroups(stripGroups);
+					for (int stripGroupIndex = 0; stripGroupIndex < stripGroups.Num(); ++stripGroupIndex)
+					{
+						const Valve::VTX::StripGroupHeader_t& stripGroup = *stripGroups[stripGroupIndex];
+
+						TArray<uint16> indices;
+						stripGroup.GetIndices(indices);
+
+						TArray<Valve::VTX::Vertex_t> vertices;
+						stripGroup.GetVertices(vertices);
+
+						TArray<const Valve::VTX::StripHeader_t*> strips;
+						stripGroup.GetStrips(strips);
+
+						for (int stripIndex = 0; stripIndex < strips.Num(); ++stripIndex)
+						{
+							const Valve::VTX::StripHeader_t& strip = *strips[stripIndex];
+
+							for (int i = 0; i < strip.numIndices; i += 3)
+							{
+								const uint16 idxs[3] =
+								{
+									indices[strip.indexOffset + i],
+									indices[strip.indexOffset + i + 1],
+									indices[strip.indexOffset + i + 2]
+								};
+
+								const Valve::VTX::Vertex_t* verts[3] =
+								{
+									 &vertices[idxs[0]],
+									 &vertices[idxs[1]],
+									 &vertices[idxs[2]]
+								};
+
+								const uint16 baseIdxs[3] =
+								{
+									accumIndex + mesh.vertexoffset + verts[0]->origMeshVertID,
+									accumIndex + mesh.vertexoffset + verts[1]->origMeshVertID,
+									accumIndex + mesh.vertexoffset + verts[2]->origMeshVertID
+								};
+
+								const Valve::VVD::mstudiovertex_t* origVerts[3] =
+								{
+									&vvdVertices[baseIdxs[0]],
+									&vvdVertices[baseIdxs[1]],
+									&vvdVertices[baseIdxs[2]]
+								};
+
+								SkeletalMeshImportData::FMeshFace face;
+								face.MeshMaterialIndex = (uint16)mesh.material;
+								face.SmoothingGroups = 0;
+								for (int j = 0; j < 3; ++j)
+								{
+									const Valve::VTX::Vertex_t& vert = *verts[j];
+									const Valve::VVD::mstudiovertex_t& origVert = *origVerts[j];
+
+									const int vertIdx = localMeshData.points.Add(origVert.m_vecPosition);
+									localMeshData.pointToRawMap.Add(baseIdxs[j]);
+
+									SkeletalMeshImportData::FMeshWedge wedge;
+									wedge.iVertex = vertIdx;
+									wedge.Color = FColor::White;
+									wedge.UVs[0] = origVert.m_vecTexCoord;
+									face.iWedge[j] = localMeshData.wedges.Add(wedge);
+									face.TangentZ[j] = origVert.m_vecNormal.GetSafeNormal();
+									face.TangentY[j] = vvdTangents[baseIdxs[j]].GetSafeNormal();
+									face.TangentX[j] = FVector::CrossProduct(face.TangentY[j], face.TangentZ[j]);
+									
+									const int numBones = FMath::Min((int)origVert.m_BoneWeights.numbones, Valve::VVD::MAX_NUM_BONES_PER_VERT);
+									for (int k = 0; k < numBones; ++k)
+									{
+										const uint8 boneWeightIdx = vert.boneWeightIndex[k];
+										const int boneID = origVert.m_BoneWeights.bone[boneWeightIdx];
+										// check(vert.boneID[k] == boneID);
+										const float weight = origVert.m_BoneWeights.weight[boneWeightIdx];
+										SkeletalMeshImportData::FVertInfluence influence;
+										influence.BoneIndex = boneID;
+										influence.VertIndex = wedge.iVertex;
+										influence.Weight = weight;
+										localMeshData.influences.Add(influence);
+									}
+								}
+								localMeshData.faces.Add(face);
+							}
+						}
+					}
+				}
+			}
+
+			accumIndex += model.numvertices;
+		}
+	}
+
+	// Build geometry
+	skeletalMesh->bHasVertexColors = false;
+	IMeshUtilities::MeshBuildOptions buildOptions;
+	buildOptions.bComputeNormals = false;
+	buildOptions.bComputeTangents = false;
+	buildOptions.bRemoveDegenerateTriangles = false;
+	IMeshUtilities& meshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
+	for (int lodIndex = 0; lodIndex < localMeshDatas.Num(); ++lodIndex)
+	{
+		const LocalMeshData& localMeshData = localMeshDatas[lodIndex];
+
+		// Prepare lod on skeletal mesh
+		meshModel->LODModels.Add(new FSkeletalMeshLODModel());
+		FSkeletalMeshLODModel& LODModel = meshModel->LODModels[lodIndex];
+		FSkeletalMeshLODInfo& newLODInfo = skeletalMesh->AddLODInfo();
+		newLODInfo.ReductionSettings.NumOfTrianglesPercentage = 1.0f;
+		newLODInfo.ReductionSettings.NumOfVertPercentage = 1.0f;
+		newLODInfo.ReductionSettings.MaxDeviationPercentage = 0.0f;
+		newLODInfo.LODHysteresis = 0.02f;
+		if (lodIndex == 0)
+		{
+			skeletalMesh->SetImportedBounds(FBoxSphereBounds(&localMeshData.points[0], (uint32)localMeshData.points.Num()));
+		}
+		LODModel.NumTexCoords = 1;
+
+		// Build
+		TArray<FText> warningMessages;
+		TArray<FName> warningNames;
+		if (!meshUtilities.BuildSkeletalMesh(meshModel->LODModels[lodIndex], skeletalMesh->RefSkeleton, localMeshData.influences, localMeshData.wedges, localMeshData.faces, localMeshData.points, localMeshData.pointToRawMap, buildOptions, &warningMessages, &warningNames))
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Skeletal mesh build for lod %d failed"), lodIndex);
+			return nullptr;
+		}
+
+		// Calculate required bones
+		USkeletalMesh::CalculateRequiredBones(LODModel, refSkel, nullptr);
+	}
+	skeletalMesh->CalculateInvRefMatrices();
+
+	// Assign materials
+	for (int materialIdx = 0; materialIdx < materials.Num(); ++materialIdx)
+	{
+		if (usedMaterialIndices.Contains(materialIdx))
+		{
+			FSkeletalMaterial material;
+			material.ImportedMaterialSlotName = materials[materialIdx];
+			material.MaterialSlotName = materials[materialIdx];
+			material.MaterialInterface = IHL2Runtime::Get().TryResolveHL2Material(materials[materialIdx].ToString());
+			skeletalMesh->Materials.Add(material);
+		}
+	}
+
+	// Done
+	return skeletalMesh;
 }
 
 void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)

@@ -54,19 +54,21 @@ namespace Valve
 		struct mstudiobone_t
 		{
 			int					sznameindex;
+			FString GetName() const { return ReadString(this, sznameindex); }
+
 			int		 			parent;		// parent bone
 			int					bonecontroller[6];	// bone controller index, -1 == none
 
 			// default values
-			FVector				pos;
-			FQuat			quat;
-			FVector			rot;
+			float			pos[3];
+			float			quat[4];
+			float			rot[3];
 			// compression scale
-			FVector				posscale;
-			FVector				rotscale;
+			float				posscale[3];
+			float				rotscale[3];
 
 			float			poseToBone[12]; // 3x4 matrix
-			FQuat			qAlignment;
+			float			qAlignment[4];
 			int					flags;
 			int					proctype;
 			int					procindex;		// procedural rule
@@ -213,7 +215,7 @@ namespace Valve
 			 // mstudiobone_t
 			int		bone_count;	// Number of data sections (of type mstudiobone_t)
 			int		bone_offset;	// Offset of first data section
-			void GetBones(TArray<mstudiobone_t>& out) const { ReadArray(this, bone_offset, bone_count, out); }
+			void GetBones(TArray<const mstudiobone_t *>& out) const { ReadArray<mstudiobone_t>(this, bone_offset, bone_count, out); }
 
 			// mstudiobonecontroller_t
 			int		bonecontroller_count;

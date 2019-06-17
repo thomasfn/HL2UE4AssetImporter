@@ -196,9 +196,9 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	}
 
 	// Version
-	if (header.version != 44)
+	if (header.version < 44 || header.version > 48)
 	{
-		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: MDL Header has invalid version (expecting 44, got %d)"), header.version);
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: MDL Header has invalid version (expecting 44-48, got %d)"), header.version);
 		return result;
 	}
 
@@ -341,24 +341,9 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	TArray<LocalMeshData> localMeshDatas;
 	localMeshDatas.AddDefaulted(vtxHeader.numLODs);
 
-	// Read textures
-	TArray<FString> textureDirs;
-	header.GetTextureDirs(textureDirs);
-	TArray<const Valve::MDL::mstudiotexture_t*> textures;
-	header.GetTextures(textures);
-	if (textureDirs.Num() < 1)
-	{
-		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: No texture dirs present (%d)"), textures.Num(), textureDirs.Num());
-		return nullptr;
-	}
+	// Read materials
 	TArray<FName> materials;
-	materials.Reserve(textures.Num());
-	for (int textureIndex = 0; textureIndex < textures.Num(); ++textureIndex)
-	{
-		FString materialPath = (textureIndex >= textureDirs.Num() ? textureDirs.Top() : textureDirs[textureIndex]) / textures[textureIndex]->GetName();
-		materialPath.ReplaceCharInline('\\', '/');
-		materials.Add(FName(*materialPath));
-	}
+	ResolveMaterials(header, materials);
 
 	// Iterate all body parts
 	uint16 accumIndex = 0;
@@ -699,26 +684,6 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	FFeedbackContext* warn
 )
 {
-	// Read textures
-	TArray<FString> textureDirs;
-	header.GetTextureDirs(textureDirs);
-	TArray<const Valve::MDL::mstudiotexture_t*> textures;
-	header.GetTextures(textures);
-	if (textureDirs.Num() < 1)
-	{
-		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: No texture dirs present (%d)"), textures.Num(), textureDirs.Num());
-		return nullptr;
-	}
-	TArray<FName> materials;
-	materials.Reserve(textures.Num());
-	for (int textureIndex = 0; textureIndex < textures.Num(); ++textureIndex)
-	{
-		FString materialPath = (textureIndex >= textureDirs.Num() ? textureDirs.Top() : textureDirs[textureIndex]) / textures[textureIndex]->GetName();
-		materialPath.ReplaceCharInline('\\', '/');
-		materials.Add(FName(*materialPath));
-	}
-	TSet<int> usedMaterialIndices;
-
 	// Read and validate body parts
 	TArray<const Valve::MDL::mstudiobodyparts_t*> bodyParts;
 	header.GetBodyParts(bodyParts);
@@ -741,6 +706,11 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	};
 	TArray<LocalMeshData> localMeshDatas;
 	localMeshDatas.AddDefaulted(vtxHeader.numLODs);
+
+	// Read materials
+	TArray<FName> materials;
+	ResolveMaterials(header, materials);
+	TSet<int> usedMaterialIndices;
 
 	// Read bones
 	TArray<const Valve::MDL::mstudiobone_t*> bones;
@@ -1109,6 +1079,45 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 
 			// Store the vertex uniquely to the section and rewire the face index to point at it
 			section.FaceIndices[i] = section.Vertices.AddUnique(vert);
+		}
+	}
+}
+
+void UMDLFactory::ResolveMaterials(const Valve::MDL::studiohdr_t& header, TArray<FName>& out)
+{
+	// Read texture dirs
+	TArray<FString> textureDirs;
+	header.GetTextureDirs(textureDirs);
+
+	// Read textures
+	TArray<const Valve::MDL::mstudiotexture_t*> textures;
+	header.GetTextures(textures);
+
+	// Resolve materials
+	TArray<FName> materials;
+	materials.Reserve(textures.Num());
+	IHL2Runtime& hl2Runtime = IHL2Runtime::Get();
+	for (int textureIndex = 0; textureIndex < textures.Num(); ++textureIndex)
+	{
+		FString materialName = textures[textureIndex]->GetName();
+
+		// Search each textureDir for it
+		bool found = false;
+		for (int i = 0; i < textureDirs.Num(); ++i)
+		{
+			FString materialPath = textureDirs[i] / materialName;
+			materialPath.ReplaceCharInline('\\', '/');
+			if (hl2Runtime.TryResolveHL2Material(materialPath) != nullptr)
+			{
+				out.Add(FName(*materialPath));
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+		{
+			// Not found but we can't skip entries as the order of the array matters, so insert it with no path
+			out.Add(FName(*materialName));
 		}
 	}
 }

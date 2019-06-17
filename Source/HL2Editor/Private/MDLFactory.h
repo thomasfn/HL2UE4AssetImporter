@@ -110,4 +110,6 @@ private:
 	);
 
 	void ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out);
+
+	void ResolveMaterials(const Valve::MDL::studiohdr_t& header, TArray<FName>& out);
 };

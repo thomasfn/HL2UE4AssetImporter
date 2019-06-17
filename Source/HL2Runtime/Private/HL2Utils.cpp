@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "HL2Utils.h"
+#include "HL2ModelData.h"
 
 UTexture* UHL2Utils::TryResolveHL2Texture(const FString& hl2TexturePath, bool& outSuccess)
 {
@@ -21,6 +22,13 @@ UStaticMesh* UHL2Utils::TryResolveHL2StaticProp(const FString& hl2ModelPath, boo
 	UStaticMesh* staticMesh = IHL2Runtime::Get().TryResolveHL2StaticProp(hl2ModelPath);
 	outSuccess = staticMesh != nullptr;
 	return staticMesh;
+}
+
+USkeletalMesh* UHL2Utils::TryResolveHL2AnimatedProp(const FString& hl2ModelPath, bool& outSuccess)
+{
+	USkeletalMesh* skeletalMesh = IHL2Runtime::Get().TryResolveHL2AnimatedProp(hl2ModelPath);
+	outSuccess = skeletalMesh != nullptr;
+	return skeletalMesh;
 }
 
 USurfaceProp* UHL2Utils::TryResolveHL2SurfaceProp(const FName& surfaceProp, bool& outSuccess)
@@ -63,4 +71,36 @@ ABaseEntity* UHL2Utils::GetEntityByTargetName(UObject* worldContextObject, const
 	{
 		return nullptr;
 	}
+}
+
+bool UHL2Utils::ApplyBodygroupToStaticMesh(UStaticMeshComponent* target, const FName bodygroupName, int index)
+{
+	UStaticMesh* staticMesh = target->GetStaticMesh();
+	if (staticMesh == nullptr) { return false; }
+	UHL2ModelData* modelData = staticMesh->GetAssetUserDataChecked<UHL2ModelData>();
+	return modelData->ApplyBodygroupToStaticMesh(target, bodygroupName, index);
+}
+
+bool UHL2Utils::ApplySkinToStaticMesh(UStaticMeshComponent* target, int index)
+{
+	UStaticMesh* staticMesh = target->GetStaticMesh();
+	if (staticMesh == nullptr) { return false; }
+	UHL2ModelData* modelData = staticMesh->GetAssetUserDataChecked<UHL2ModelData>();
+	return modelData->ApplySkinToStaticMesh(target, index);
+}
+
+bool UHL2Utils::ApplyBodygroupToSkeletalMesh(USkeletalMeshComponent* target, const FName bodygroupName, int index)
+{
+	USkeletalMesh* skeletalMesh = target->SkeletalMesh;
+	if (skeletalMesh == nullptr) { return false; }
+	UHL2ModelData* modelData = skeletalMesh->GetAssetUserDataChecked<UHL2ModelData>();
+	return modelData->ApplyBodygroupToSkeletalMesh(target, bodygroupName, index);
+}
+
+bool UHL2Utils::ApplySkinToSkeletalMesh(USkeletalMeshComponent* target, int index)
+{
+	USkeletalMesh* skeletalMesh = target->SkeletalMesh;
+	if (skeletalMesh == nullptr) { return false; }
+	UHL2ModelData* modelData = skeletalMesh->GetAssetUserDataChecked<UHL2ModelData>();
+	return modelData->ApplySkinToSkeletalMesh(target, index);
 }

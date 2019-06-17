@@ -9,6 +9,7 @@
 #include "MeshUtils.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Rendering/SkeletalMeshModel.h"
+#include "HL2ModelData.h"
 #include "MeshUtilities.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
@@ -344,6 +345,13 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	// Read materials
 	TArray<FName> materials;
 	ResolveMaterials(header, materials);
+	struct LocalSectionData
+	{
+		int materialIndex;
+		FName sectionName;
+	};
+	TArray<LocalSectionData> localSectionDatas;
+	TMap<FName, FModelBodygroup> bodygroups;
 
 	// Iterate all body parts
 	uint16 accumIndex = 0;
@@ -351,6 +359,8 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	{
 		const Valve::MDL::mstudiobodyparts_t& bodyPart = *bodyParts[bodyPartIndex];
 		const Valve::VTX::BodyPartHeader_t& vtxBodyPart = *vtxBodyParts[bodyPartIndex];
+
+		FModelBodygroup bodygroup;
 
 		// Read and validate models
 		TArray<const Valve::MDL::mstudiomodel_t*> models;
@@ -368,6 +378,9 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 		{
 			const Valve::MDL::mstudiomodel_t& model = *models[modelIndex];
 			const Valve::VTX::ModelHeader_t& vtxModel = *vtxModels[modelIndex];
+			TMap<int, int> materialToSectionMap;
+
+			FModelBodygroupMapping bodygroupMapping;
 
 			// Read and validate meshes & lods
 			TArray<const Valve::MDL::mstudiomesh_t*> meshes;
@@ -467,10 +480,32 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 						warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Mesh %d in model %d had invalid material index %d (%d materials available)"), meshIndex, modelIndex, mesh.material, materials.Num());
 						return nullptr;
 					}
+
+					// Allocate a section index for us
+					int sectionIndex;
+					{
+						const int* sectionIndexPtr = materialToSectionMap.Find(mesh.material);
+						if (sectionIndexPtr == nullptr)
+						{
+							LocalSectionData localSectionData;
+							localSectionData.materialIndex = mesh.material;
+							localSectionData.sectionName = FName(*FString::Printf(TEXT("%s:%d:%s"), *bodyPart.GetName(), modelIndex, *materials[mesh.material].ToString()));
+							sectionIndex = localSectionDatas.Add(localSectionData);
+							materialToSectionMap.Add(mesh.material, sectionIndex);
+						}
+						else
+						{
+							sectionIndex = *sectionIndexPtr;
+						}
+					}
+
+					// Add to the current bodygroup mapping
+					bodygroup.AllSections.Add(sectionIndex);
+					bodygroupMapping.Sections.Add(sectionIndex);
 					
 					// Create poly group
 					const FPolygonGroupID polyGroupID = localMeshData.meshDescription.CreatePolygonGroup();
-					localMeshData.polyGroupMaterial[polyGroupID] = materials[mesh.material];
+					localMeshData.polyGroupMaterial[polyGroupID] = localSectionDatas[sectionIndex].sectionName;
 
 					// Fetch and iterate all strip groups
 					TArray<const Valve::VTX::StripGroupHeader_t*> stripGroups;
@@ -526,8 +561,12 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 				}
 			}
 
+			bodygroup.Mappings.Add(bodygroupMapping);
+
 			accumIndex += model.numvertices;
 		}
+
+		bodygroups.Add(FName(*bodyPart.GetName()), bodygroup);
 	}
 
 	// Construct static mesh
@@ -535,15 +574,25 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	if (staticMesh == nullptr) { return nullptr; }
 	staticMesh->LightMapResolution = 64;
 
+	// Create model data
+	UHL2ModelData* modelData = NewObject<UHL2ModelData>(staticMesh);
+	modelData->Bodygroups = bodygroups;
+	staticMesh->AddAssetUserData(modelData);
+
 	constexpr bool debugPhysics = false; // if true, the physics mesh is rendered instead
 
 	// Write all lods to the static mesh
 	if (!debugPhysics || phyHeader == nullptr)
 	{
-		TMap<FName, int> materialSlots;
-		for (const FName material : materials)
+		for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
 		{
-			materialSlots.Add(material, staticMesh->StaticMaterials.Emplace(nullptr, material, material));
+			const LocalSectionData& localSectionData = localSectionDatas[sectionIdx];
+			const FName materialName = materials[localSectionData.materialIndex];
+			FStaticMaterial material;
+			material.ImportedMaterialSlotName = localSectionData.sectionName;
+			material.MaterialSlotName = localSectionData.sectionName;
+			material.MaterialInterface = IHL2Runtime::Get().TryResolveHL2Material(materialName.ToString());
+			staticMesh->StaticMaterials.Add(material);
 		}
 		for (int lodIndex = 0; lodIndex < vtxHeader.numLODs; ++lodIndex)
 		{
@@ -570,11 +619,10 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			staticMesh->CommitMeshDescription(lodIndex);
 
 			// Assign materials
-			for (const FName material : materials)
+			for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
 			{
-				const int32 meshSlot = materialSlots[material];
-				staticMesh->SectionInfoMap.Set(lodIndex, meshSlot, FMeshSectionInfo(meshSlot));
-				staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
+				const LocalSectionData& localSectionData = localSectionDatas[sectionIdx];
+				staticMesh->SectionInfoMap.Set(lodIndex, sectionIdx, FMeshSectionInfo(sectionIdx));
 			}
 		}
 	}
@@ -674,6 +722,38 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	staticMesh->LightMapCoordinateIndex = 1;
 	staticMesh->Build();
 
+	// Resolve skins
+	{
+		TArray<TArray<int>> rawSkinFamilies;
+		ReadSkins(header, rawSkinFamilies);
+		for (const TArray<int>& rawSkinFamily : rawSkinFamilies)
+		{
+			FModelSkinMapping skinMapping;
+			// Key is src material index and value is dst material index
+			// We've mapped src material index onto arbitrary sections
+			// So, we need to go back over our section map, identify all sections pointing to src material index, and map them to dst material
+			for (int srcMatIdx = 0; srcMatIdx < rawSkinFamily.Num(); ++srcMatIdx)
+			{
+				const int dstMatIdx = rawSkinFamily[srcMatIdx];
+				if (srcMatIdx != dstMatIdx)
+				{
+					for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
+					{
+						const LocalSectionData& localSectionData = localSectionDatas[sectionIdx];
+						if (localSectionData.materialIndex == srcMatIdx)
+						{
+							const FName materialName = materials[dstMatIdx];
+							skinMapping.MaterialOverrides.Add(sectionIdx, IHL2Runtime::Get().TryResolveHL2Material(materialName.ToString()));
+						}
+					}
+				}
+			}
+			modelData->Skins.Add(skinMapping);
+		}
+	}
+	modelData->PostEditChange();
+	modelData->MarkPackageDirty();
+
 	return staticMesh;
 }
 
@@ -710,7 +790,12 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	// Read materials
 	TArray<FName> materials;
 	ResolveMaterials(header, materials);
-	TSet<int> usedMaterialIndices;
+	struct LocalSectionData
+	{
+		int materialIndex;
+		FName sectionName;
+	};
+	TArray<LocalSectionData> localSectionDatas;
 
 	// Read bones
 	TArray<const Valve::MDL::mstudiobone_t*> bones;
@@ -722,6 +807,10 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	// Create skeletal mesh
 	USkeletalMesh* skeletalMesh = CreateSkeletalMesh(inParent, inName, flags);
 	skeletalMesh->Skeleton = skeleton;
+
+	// Create model data
+	UHL2ModelData* modelData = NewObject<UHL2ModelData>(skeletalMesh);
+	skeletalMesh->AddAssetUserData(modelData);
 
 	// Load bones into skeleton
 	FReferenceSkeleton refSkel;
@@ -756,6 +845,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	{
 		const Valve::MDL::mstudiobodyparts_t& bodyPart = *bodyParts[bodyPartIndex];
 		const Valve::VTX::BodyPartHeader_t& vtxBodyPart = *vtxBodyParts[bodyPartIndex];
+		FModelBodygroup bodygroup;
 
 		// Read and validate models
 		TArray<const Valve::MDL::mstudiomodel_t*> models;
@@ -773,6 +863,9 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		{
 			const Valve::MDL::mstudiomodel_t& model = *models[modelIndex];
 			const Valve::VTX::ModelHeader_t& vtxModel = *vtxModels[modelIndex];
+			TMap<int, int> materialToSectionMap;
+
+			FModelBodygroupMapping bodygroupMapping;
 
 			// Read and validate meshes & lods
 			TArray<const Valve::MDL::mstudiomesh_t*> meshes;
@@ -847,7 +940,28 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 						warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Mesh %d in model %d had invalid material index %d (%d materials available)"), meshIndex, modelIndex, mesh.material, materials.Num());
 						return nullptr;
 					}
-					usedMaterialIndices.Add(mesh.material);
+
+					// Allocate a section index for us
+					int sectionIndex;
+					{
+						const int* sectionIndexPtr = materialToSectionMap.Find(mesh.material);
+						if (sectionIndexPtr == nullptr)
+						{
+							LocalSectionData localSectionData;
+							localSectionData.materialIndex = mesh.material;
+							localSectionData.sectionName = FName(*FString::Printf(TEXT("%s:%d:%s"), *bodyPart.GetName(), modelIndex, *materials[mesh.material].ToString()));
+							sectionIndex = localSectionDatas.Add(localSectionData);
+							materialToSectionMap.Add(mesh.material, sectionIndex);
+						}
+						else
+						{
+							sectionIndex = *sectionIndexPtr;
+						}
+					}
+
+					// Add to the current bodygroup mapping
+					bodygroup.AllSections.Add(sectionIndex);
+					bodygroupMapping.Sections.Add(sectionIndex);
 
 					// Fetch and iterate all strip groups
 					TArray<const Valve::VTX::StripGroupHeader_t*> stripGroups;
@@ -900,7 +1014,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 								};
 
 								SkeletalMeshImportData::FMeshFace face;
-								face.MeshMaterialIndex = (uint16)mesh.material;
+								face.MeshMaterialIndex = (uint16)sectionIndex;
 								face.SmoothingGroups = 0;
 								for (int j = 0; j < 3; ++j)
 								{
@@ -940,8 +1054,12 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 				}
 			}
 
+			bodygroup.Mappings.Add(bodygroupMapping);
+
 			accumIndex += model.numvertices;
 		}
+
+		modelData->Bodygroups.Add(FName(*bodyPart.GetName()), bodygroup);
 	}
 
 	// Build geometry
@@ -984,17 +1102,48 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	skeletalMesh->CalculateInvRefMatrices();
 
 	// Assign materials
-	for (int materialIdx = 0; materialIdx < materials.Num(); ++materialIdx)
+	for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
 	{
-		if (usedMaterialIndices.Contains(materialIdx))
+		const LocalSectionData& localSectionData = localSectionDatas[sectionIdx];
+		const FName materialName = materials[localSectionData.materialIndex];
+		FSkeletalMaterial material;
+		material.ImportedMaterialSlotName = localSectionData.sectionName;
+		material.MaterialSlotName = localSectionData.sectionName;
+		material.MaterialInterface = IHL2Runtime::Get().TryResolveHL2Material(materialName.ToString());
+		skeletalMesh->Materials.Add(material);
+	}
+
+	// Resolve skins
+	{
+		TArray<TArray<int>> rawSkinFamilies;
+		ReadSkins(header, rawSkinFamilies);
+		for (const TArray<int>& rawSkinFamily : rawSkinFamilies)
 		{
-			FSkeletalMaterial material;
-			material.ImportedMaterialSlotName = materials[materialIdx];
-			material.MaterialSlotName = materials[materialIdx];
-			material.MaterialInterface = IHL2Runtime::Get().TryResolveHL2Material(materials[materialIdx].ToString());
-			skeletalMesh->Materials.Add(material);
+			FModelSkinMapping skinMapping;
+			// Key is src material index and value is dst material index
+			// We've mapped src material index onto arbitrary sections
+			// So, we need to go back over our section map, identify all sections pointing to src material index, and map them to dst material
+			for (int srcMatIdx = 0; srcMatIdx < rawSkinFamily.Num(); ++srcMatIdx)
+			{
+				const int dstMatIdx = rawSkinFamily[srcMatIdx];
+				if (srcMatIdx != dstMatIdx)
+				{
+					for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
+					{
+						const LocalSectionData& localSectionData = localSectionDatas[sectionIdx];
+						if (localSectionData.materialIndex == srcMatIdx)
+						{
+							const FName materialName = materials[dstMatIdx];
+							skinMapping.MaterialOverrides.Add(sectionIdx, IHL2Runtime::Get().TryResolveHL2Material(materialName.ToString()));
+						}
+					}
+				}
+			}
+			modelData->Skins.Add(skinMapping);
 		}
 	}
+	modelData->PostEditChange();
+	modelData->MarkPackageDirty();
 
 	// Done
 	return skeletalMesh;
@@ -1119,5 +1268,20 @@ void UMDLFactory::ResolveMaterials(const Valve::MDL::studiohdr_t& header, TArray
 			// Not found but we can't skip entries as the order of the array matters, so insert it with no path
 			out.Add(FName(*materialName));
 		}
+	}
+}
+
+void UMDLFactory::ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray<int>>& out)
+{
+	const uint16* basePtr = (uint16*)(((uint8*)& header) + header.skinreference_index);
+	for (int familyIndex = 0; familyIndex < header.skinrfamily_count; ++familyIndex)
+	{
+		const uint16* familyPtr = basePtr + familyIndex * header.skinreference_count;
+		TArray<int> mapping;
+		for (int skinRefIndex = 0; skinRefIndex < FMath::Min(header.skinreference_count, header.texture_count); ++skinRefIndex)
+		{
+			mapping.Add((int)familyPtr[skinRefIndex]);
+		}
+		out.Add(mapping);
 	}
 }

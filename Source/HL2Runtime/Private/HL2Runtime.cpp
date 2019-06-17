@@ -87,6 +87,17 @@ UStaticMesh* HL2RuntimeImpl::TryResolveHL2StaticProp(const FString& hl2ModelPath
 	return Cast<UStaticMesh>(assetData.GetAsset());
 }
 
+USkeletalMesh* HL2RuntimeImpl::TryResolveHL2AnimatedProp(const FString& hl2ModelPath) const
+{
+	FName assetPath = HL2ModelPathToAssetPath(hl2ModelPath);
+	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
+	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	if (!assetData.IsValid()) { return nullptr; }
+	// It might not be a USkeletalMesh if the model is not animated, so let Cast just return nullptr in this case
+	return Cast<USkeletalMesh>(assetData.GetAsset());
+}
+
 USurfaceProp* HL2RuntimeImpl::TryResolveHL2SurfaceProp(const FName& surfaceProp) const
 {
 	FName assetPath = HL2SurfacePropToAssetPath(surfaceProp);

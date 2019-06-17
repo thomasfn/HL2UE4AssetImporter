@@ -3,6 +3,7 @@
 #include "ModuleManager.h"
 #include "Engine/Texture.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/SkeletalMesh.h"
 #include "BaseEntity.h"
 
 #include "SurfaceProp.h"
@@ -52,6 +53,7 @@ public:
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const = 0;
 	virtual UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath) const = 0;
 	virtual UStaticMesh* TryResolveHL2StaticProp(const FString& hl2ModelPath) const = 0;
+	virtual USkeletalMesh* TryResolveHL2AnimatedProp(const FString& hl2ModelPath) const = 0;
 	virtual USurfaceProp* TryResolveHL2SurfaceProp(const FName& surfaceProp) const = 0;
 	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath) const = 0;
 

@@ -53,6 +53,7 @@ public:
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const override;
 	virtual UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath) const override;
 	virtual UStaticMesh* TryResolveHL2StaticProp(const FString& hl2ModelPath) const override;
+	virtual USkeletalMesh* TryResolveHL2AnimatedProp(const FString& hl2ModelPath) const override;
 	virtual USurfaceProp* TryResolveHL2SurfaceProp(const FName& surfaceProp) const override;
 	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath) const override;
 	

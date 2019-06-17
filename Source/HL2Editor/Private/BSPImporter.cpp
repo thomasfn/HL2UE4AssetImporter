@@ -27,57 +27,69 @@
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
-#define LOCTEXT_NAMESPACE ""
+#define LOCTEXT_NAMESPACE "HL2Importer"
 
-FBSPImporter::FBSPImporter()
+FBSPImporter::FBSPImporter(const FString& fileName) :
+	bspFileName(fileName),
+	bspLoaded(false),
+	mapName(FPaths::GetCleanFilename(fileName)),
+	world(nullptr),
+	vbspInfo(nullptr)
+{ }
+
+bool FBSPImporter::Load()
 {
-
-}
-
-bool FBSPImporter::ImportToCurrentLevel(const FString& fileName)
-{
-	FString bspDir = FPaths::GetPath(fileName) + "/";
-	FString bspFileName = FPaths::GetCleanFilename(fileName);
-	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing map '%s' to current level"), *bspFileName);
-	const auto bspDirConvert = StringCast<ANSICHAR, TCHAR>(*bspDir);
-	const auto bspFileNameConvert = StringCast<ANSICHAR, TCHAR>(*bspFileName);
-	Valve::BSPFile bspFile;
-	if (!bspFile.parse(std::string(bspDirConvert.Get()), std::string(bspFileNameConvert.Get())))
+	FString path = FPaths::GetPath(bspFileName) + TEXT("/");
+	FString fileName = FPaths::GetCleanFilename(bspFileName);
+	mapName = FPaths::GetBaseFilename(bspFileName);
+	UE_LOG(LogHL2BSPImporter, Log, TEXT("Loading map '%s'..."), *mapName);
+	const auto pathConvert = StringCast<ANSICHAR, TCHAR>(*path);
+	const auto fileNameConvert = StringCast<ANSICHAR, TCHAR>(*fileName);
+	if (!bspFile.parse(std::string(pathConvert.Get()), std::string(fileNameConvert.Get())))
 	{
 		UE_LOG(LogHL2BSPImporter, Error, TEXT("Failed to parse BSP"));
 		return false;
 	}
-	return ImportToWorld(bspFile, GEditor->GetEditorWorldContext().World());
+	return true;
 }
 
-bool FBSPImporter::ImportToWorld(const Valve::BSPFile& bspFile, UWorld* world)
+bool FBSPImporter::ImportToCurrentLevel()
+{
+	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing map '%s' to current level"), *bspFileName);
+	return ImportAllToWorld(GEditor->GetEditorWorldContext().World());
+}
+
+bool FBSPImporter::ImportAllToWorld(UWorld* targetWorld)
 {
 	FScopedSlowTask loopProgress(2, LOCTEXT("MapImporting", "Importing map..."));
 	loopProgress.MakeDialog();
 
 	loopProgress.EnterProgressFrame(1.0f);
-	if (!ImportGeometryToWorld(bspFile, world)) { return false; }
+	if (!ImportGeometryToWorld(targetWorld)) { return false; }
 
 	loopProgress.EnterProgressFrame(1.0f);
-	if (!ImportEntitiesToWorld(bspFile, world)) { return false; }
+	if (!ImportEntitiesToWorld(targetWorld)) { return false; }
 
 	//loopProgress.EnterProgressFrame(1.0f);
-	//if (!ImportBrushesToWorld(bspFile, world)) { return false; }
+	//if (!ImportBrushesToWorld(targetWorld)) { return false; }
 
 	return true;
 }
 
-bool FBSPImporter::ImportBrushesToWorld(const Valve::BSPFile& bspFile, UWorld* world)
+bool FBSPImporter::ImportBrushesToWorld(UWorld* targetWorld)
 {
+	world = targetWorld;
+
 	const FName brushesFolder = TEXT("HL2Brushes");
 	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing brushes..."));
 	FActorFolders& folders = FActorFolders::Get();
 	folders.CreateFolder(*world, brushesFolder);
+
 	for (uint32 i = 0, l = bspFile.m_Models.size(); i < l; ++i)
 	{
 		const Valve::BSP::dmodel_t& model = bspFile.m_Models[i];
 		TArray<uint16> brushIndices;
-		GatherBrushes(bspFile, model.m_Headnode, brushIndices);
+		GatherBrushes(model.m_Headnode, brushIndices);
 		brushIndices.Sort();
 
 		int num = 0;
@@ -85,7 +97,7 @@ bool FBSPImporter::ImportBrushesToWorld(const Valve::BSPFile& bspFile, UWorld* w
 		{
 			if (i == 0)
 			{
-				AActor* brushActor = ImportBrush(world, bspFile, brushIndex);
+				AActor* brushActor = ImportBrush(brushIndex);
 				GEditor->SelectActor(brushActor, true, false, true, false);
 				folders.SetSelectedFolderPath(brushesFolder);
 				++num;
@@ -104,8 +116,10 @@ bool FBSPImporter::ImportBrushesToWorld(const Valve::BSPFile& bspFile, UWorld* w
 	return true;
 }
 
-bool FBSPImporter::ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* world)
+bool FBSPImporter::ImportGeometryToWorld(UWorld* targetWorld)
 {
+	world = targetWorld;
+
 	const FName geometryFolder = TEXT("HL2Geometry");
 	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing geometry..."));
 	FActorFolders& folders = FActorFolders::Get();
@@ -114,7 +128,7 @@ bool FBSPImporter::ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	const Valve::BSP::dmodel_t& bspWorldModel = bspFile.m_Models[0];
 
 	TArray<AStaticMeshActor*> staticMeshes;
-	RenderTreeToActors(bspFile, world, staticMeshes, bspWorldModel.m_Headnode);
+	RenderTreeToActors(staticMeshes, bspWorldModel.m_Headnode);
 	GEditor->SelectNone(false, true, false);
 	for (AStaticMeshActor* actor : staticMeshes)
 	{
@@ -140,14 +154,14 @@ bool FBSPImporter::ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	return true;
 }
 
-bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* world)
+bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 {
+	world = targetWorld;
+
 	const FName entitiesFolder = TEXT("HL2Entities");
 	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing entities..."));
 	FActorFolders& folders = FActorFolders::Get();
 	folders.CreateFolder(*world, entitiesFolder);
-
-	AVBSPInfo* vbspInfo = GetVBSPInfo(world);
 
 	// Read entities lump
 	const auto entityStrRaw = StringCast<TCHAR, ANSICHAR>(&bspFile.m_Entities[0], bspFile.m_Entities.size());
@@ -227,7 +241,7 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 		// Skip duplicate light_environment
 		if (entityData.Classname == fnLightEnv && importedLightEnv) { continue; }
 
-		ABaseEntity* entity = ImportEntityToWorld(bspFile, world, vbspInfo, entityData);
+		ABaseEntity* entity = ImportEntityToWorld(entityData);
 		if (entity != nullptr)
 		{
 			GEditor->SelectActor(entity, true, false, true, false);
@@ -243,7 +257,7 @@ bool FBSPImporter::ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* 
 	return true;
 }
 
-void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* world, TArray<AStaticMeshActor*>& out, uint32 nodeIndex)
+void FBSPImporter::RenderTreeToActors(TArray<AStaticMeshActor*>& out, uint32 nodeIndex)
 {
 	const static float cellSize = 1024.0f;
 
@@ -259,25 +273,26 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 
 	// Render out VBSPInfo
 	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_VBSPINFO", "Generating VBSPInfo..."));
-	AVBSPInfo* vbspInfo = RenderTreeToVBSPInfo(bspFile, world, nodeIndex);
+	RenderTreeToVBSPInfo(nodeIndex);
 
 	// Gather all faces and displacements from tree
 	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_GATHER", "Gathering faces and displacements..."));
 	TArray<uint16> faces;
-	GatherFaces(bspFile, nodeIndex, faces);
+	GatherFaces(nodeIndex, faces);
 	TArray<uint16> displacements;
-	GatherDisplacements(bspFile, faces, displacements);
+	GatherDisplacements(faces, displacements);
 
 	{
 		// Render whole tree to a single mesh
 		progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_GENERATE", "Generating map geometry..."));
 		FMeshDescription meshDesc;
 		UStaticMesh::RegisterMeshAttributes(meshDesc);
-		RenderFacesToMesh(bspFile, faces, meshDesc, false);
-		RenderDisplacementsToMesh(bspFile, displacements, meshDesc);
+		RenderFacesToMesh(faces, meshDesc, false);
+		RenderDisplacementsToMesh(displacements, meshDesc);
 		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
 
 		// Iterate each cell
+		int cellIndex = 0;
 		for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
 		{
 			for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
@@ -299,7 +314,7 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 				if (cellMeshDesc.Polygons().Num() > 0)
 				{
 					// Create a static mesh for it
-					AStaticMeshActor* staticMeshActor = RenderMeshToActor(world, cellMeshDesc);
+					AStaticMeshActor* staticMeshActor = RenderMeshToActor(cellMeshDesc, FString::Printf(TEXT("Cells/Cell_%d"), cellIndex++));
 					staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
 					out.Add(staticMeshActor);
 
@@ -315,22 +330,27 @@ void FBSPImporter::RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* wor
 		// Render skybox to a single mesh
 		FMeshDescription meshDesc;
 		UStaticMesh::RegisterMeshAttributes(meshDesc);
-		RenderFacesToMesh(bspFile, faces, meshDesc, true);
+		RenderFacesToMesh(faces, meshDesc, true);
 		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
 		meshDesc.TriangulateMesh();
 
 		// Create actor for it
-		AStaticMeshActor* staticMeshActor = RenderMeshToActor(world, meshDesc);
+		AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("SkyboxMesh"));
 		staticMeshActor->SetActorLabel(TEXT("Skybox"));
 		staticMeshActor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
 		staticMeshActor->GetStaticMeshComponent()->CastShadow = false;
+		staticMeshActor->PostEditChange();
+		staticMeshActor->MarkPackageDirty();
 		out.Add(staticMeshActor);
 	}
 }
 
-UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(UWorld* world, const FMeshDescription& meshDesc)
+UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName)
 {
-	UStaticMesh* staticMesh = NewObject<UStaticMesh>(world);
+	FString packageName = TEXT("/Game/hl2/maps") / mapName / assetName;
+	UPackage* package = CreatePackage(nullptr, *packageName);
+
+	UStaticMesh* staticMesh = NewObject<UStaticMesh>(package, FName(*(FPaths::GetBaseFilename(assetName))), RF_Public | RF_Standalone);
 	FStaticMeshSourceModel& staticMeshSourceModel = staticMesh->AddSourceModel();
 	FMeshBuildSettings& settings = staticMeshSourceModel.BuildSettings;
 	settings.bRecomputeNormals = false;
@@ -357,12 +377,17 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(UWorld* world, const FMeshDesc
 	staticMesh->Build();
 	staticMesh->CreateBodySetup();
 	staticMesh->BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseComplexAsSimple;
+
+	staticMesh->PostEditChange();
+	FAssetRegistryModule::AssetCreated(staticMesh);
+	staticMesh->MarkPackageDirty();
+
 	return staticMesh;
 }
 
-AStaticMeshActor* FBSPImporter::RenderMeshToActor(UWorld* world, const FMeshDescription& meshDesc)
+AStaticMeshActor* FBSPImporter::RenderMeshToActor(const FMeshDescription& meshDesc, const FString& assetName)
 {
-	UStaticMesh* staticMesh = RenderMeshToStaticMesh(world, meshDesc);
+	UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, assetName);
 
 	FTransform transform = FTransform::Identity;
 	transform.SetScale3D(FVector(1.0f, -1.0f, 1.0f));
@@ -378,7 +403,7 @@ AStaticMeshActor* FBSPImporter::RenderMeshToActor(UWorld* world, const FMeshDesc
 	return staticMeshActor;
 }
 
-AActor* FBSPImporter::ImportBrush(UWorld* world, const Valve::BSPFile& bspFile, uint16 brushIndex)
+AActor* FBSPImporter::ImportBrush(uint16 brushIndex)
 {
 	const Valve::BSP::dbrush_t& brush = bspFile.m_Brushes[brushIndex];
 
@@ -422,7 +447,7 @@ AActor* FBSPImporter::ImportBrush(UWorld* world, const Valve::BSPFile& bspFile, 
 	return brushActor;
 }
 
-void FBSPImporter::GatherBrushes(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<uint16>& out)
+void FBSPImporter::GatherBrushes(uint32 nodeIndex, TArray<uint16>& out)
 {
 	const Valve::BSP::snode_t& node = bspFile.m_Nodes[nodeIndex];
 	if (node.m_Children[0] < 0)
@@ -435,7 +460,7 @@ void FBSPImporter::GatherBrushes(const Valve::BSPFile& bspFile, uint32 nodeIndex
 	}
 	else
 	{
-		GatherBrushes(bspFile, (uint32)node.m_Children[0], out);
+		GatherBrushes((uint32)node.m_Children[0], out);
 	}
 	if (node.m_Children[1] < 0)
 	{
@@ -447,11 +472,11 @@ void FBSPImporter::GatherBrushes(const Valve::BSPFile& bspFile, uint32 nodeIndex
 	}
 	else
 	{
-		GatherBrushes(bspFile, (uint32)node.m_Children[1], out);
+		GatherBrushes((uint32)node.m_Children[1], out);
 	}
 }
 
-void FBSPImporter::GatherFaces(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<uint16>& out, TSet<int16>* clusterFilter)
+void FBSPImporter::GatherFaces(uint32 nodeIndex, TArray<uint16>& out, TSet<int16>* clusterFilter)
 {
 	const Valve::BSP::snode_t& node = bspFile.m_Nodes[nodeIndex];
 	if (node.m_Children[0] < 0)
@@ -467,7 +492,7 @@ void FBSPImporter::GatherFaces(const Valve::BSPFile& bspFile, uint32 nodeIndex, 
 	}
 	else
 	{
-		GatherFaces(bspFile, (uint32)node.m_Children[0], out, clusterFilter);
+		GatherFaces((uint32)node.m_Children[0], out, clusterFilter);
 	}
 	if (node.m_Children[1] < 0)
 	{
@@ -482,11 +507,11 @@ void FBSPImporter::GatherFaces(const Valve::BSPFile& bspFile, uint32 nodeIndex, 
 	}
 	else
 	{
-		GatherFaces(bspFile, (uint32)node.m_Children[1], out, clusterFilter);
+		GatherFaces((uint32)node.m_Children[1], out, clusterFilter);
 	}
 }
 
-void FBSPImporter::GatherDisplacements(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, TArray<uint16>& out)
+void FBSPImporter::GatherDisplacements(const TArray<uint16>& faceIndices, TArray<uint16>& out)
 {
 	for (uint16 dispIndex = 0; dispIndex < (uint16)bspFile.m_Dispinfos.size(); ++dispIndex)
 	{
@@ -498,7 +523,7 @@ void FBSPImporter::GatherDisplacements(const Valve::BSPFile& bspFile, const TArr
 	}
 }
 
-void FBSPImporter::GatherClusters(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<int16>& out)
+void FBSPImporter::GatherClusters(uint32 nodeIndex, TArray<int16>& out)
 {
 	const Valve::BSP::snode_t& node = bspFile.m_Nodes[nodeIndex];
 	if (node.m_Children[0] < 0)
@@ -511,7 +536,7 @@ void FBSPImporter::GatherClusters(const Valve::BSPFile& bspFile, uint32 nodeInde
 	}
 	else
 	{
-		GatherClusters(bspFile, (uint32)node.m_Children[0], out);
+		GatherClusters((uint32)node.m_Children[0], out);
 	}
 	if (node.m_Children[1] < 0)
 	{
@@ -523,7 +548,7 @@ void FBSPImporter::GatherClusters(const Valve::BSPFile& bspFile, uint32 nodeInde
 	}
 	else
 	{
-		GatherClusters(bspFile, (uint32)node.m_Children[1], out);
+		GatherClusters((uint32)node.m_Children[1], out);
 	}
 }
 
@@ -532,7 +557,7 @@ FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 	return FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
 }
 
-void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter)
+void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter)
 {
 	TMap<uint32, FVertexID> valveToUnrealVertexMap;
 	TMap<FName, FPolygonGroupID> materialToPolyGroupMap;
@@ -679,7 +704,7 @@ void FBSPImporter::RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray
 	}
 }
 
-void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& displacements, FMeshDescription& meshDesc)
+void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements, FMeshDescription& meshDesc)
 {
 	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
 	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
@@ -834,9 +859,9 @@ void FBSPImporter::RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, cons
 	}
 }
 
-AVBSPInfo* FBSPImporter::RenderTreeToVBSPInfo(const Valve::BSPFile& bspFile, UWorld* world, uint32 nodeIndex)
+void FBSPImporter::RenderTreeToVBSPInfo(uint32 nodeIndex)
 {
-	AVBSPInfo* vbspInfo = world->SpawnActor<AVBSPInfo>();
+	vbspInfo = world->SpawnActor<AVBSPInfo>();
 
 	TMap<uint32, int> nodeMap;
 	// TMap<uint32, int> leafMap;
@@ -965,17 +990,6 @@ AVBSPInfo* FBSPImporter::RenderTreeToVBSPInfo(const Valve::BSPFile& bspFile, UWo
 
 	vbspInfo->PostEditChange();
 	vbspInfo->MarkPackageDirty();
-
-	return vbspInfo;
-}
-
-AVBSPInfo* FBSPImporter::GetVBSPInfo(UWorld* world)
-{
-	for (TActorIterator<AVBSPInfo> it(world); it; ++it)
-	{
-		return *it;
-	}
-	return nullptr;
 }
 
 FString FBSPImporter::ParseMaterialName(const char* bspMaterialName)
@@ -1017,7 +1031,7 @@ bool FBSPImporter::SharesSmoothingGroup(uint16 groupA, uint16 groupB)
 
 #undef LOCTEXT_NAMESPACE
 
-ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, AVBSPInfo* vbspInfo, const FHL2EntityData& entityData)
+ABaseEntity* FBSPImporter::ImportEntityToWorld(const FHL2EntityData& entityData)
 {
 	// Resolve blueprint
 	const FString assetPath = IHL2Runtime::Get().GetHL2EntityBasePath() + entityData.Classname.ToString() + TEXT(".") + entityData.Classname.ToString();
@@ -1047,13 +1061,13 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const Valve::BSPFile& bspFile, UW
 			int modelIndex = FCString::Atoi(*matchWorldModel.GetCaptureGroup(1));
 			const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[modelIndex];
 			TArray<uint16> faces;
-			GatherFaces(bspFile, bspModel.m_Headnode, faces);
+			GatherFaces(bspModel.m_Headnode, faces);
 			FMeshDescription meshDesc;
 			UStaticMesh::RegisterMeshAttributes(meshDesc);
-			RenderFacesToMesh(bspFile, faces, meshDesc, false);
+			RenderFacesToMesh(faces, meshDesc, false);
 			meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
 			meshDesc.TriangulateMesh();
-			UStaticMesh* staticMesh = RenderMeshToStaticMesh(world, meshDesc);
+			UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), modelIndex));
 			entity->WorldModel = staticMesh;
 		}
 	}

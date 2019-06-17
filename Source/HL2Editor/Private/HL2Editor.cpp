@@ -254,9 +254,10 @@ void HL2EditorImpl::ImportBSPClicked()
 	const FString& fileName = selectedFilenames[0];
 
 	// Run import
-	if (!FBSPImporter::ImportToCurrentLevel(fileName))
+	FBSPImporter importer(fileName);
+	if (importer.Load())
 	{
-		return;
+		importer.ImportToCurrentLevel();
 	}
 }
 

@@ -14,50 +14,66 @@ class FBSPImporter
 {
 private:
 
-	FBSPImporter();
-	
+	FString bspFileName;
+	bool bspLoaded;
+	Valve::BSPFile bspFile;
+
+	FString mapName;
+	UWorld* world;
+	AVBSPInfo* vbspInfo;
+
 public:
 
-	static bool ImportToCurrentLevel(const FString& fileName);
-	static bool ImportToWorld(const Valve::BSPFile& bspFile, UWorld* world);
-	static bool ImportBrushesToWorld(const Valve::BSPFile& bspFile, UWorld* world);
-	static bool ImportGeometryToWorld(const Valve::BSPFile& bspFile, UWorld* world);
-	static bool ImportEntitiesToWorld(const Valve::BSPFile& bspFile, UWorld* world);
+	FBSPImporter(const FString& fileName);
+
+	/* Loads the BSP file and parses the data. */
+	bool Load();
+
+	/* Imports the entire BSP map into the currently opened level. */
+	bool ImportToCurrentLevel();
+
+	/* Imports the entire BSP map into the target world. */
+	bool ImportAllToWorld(UWorld* targetWorld);
+
+	/* Imports brushes only into the target world. */
+	bool ImportBrushesToWorld(UWorld* targetWorld);
+
+	/* Imports geometry only into the target world. */
+	bool ImportGeometryToWorld(UWorld* targetWorld);
+
+	/* Imports entities only into the target world. */
+	bool ImportEntitiesToWorld(UWorld* targetWorld);
 
 private:
 
-	static TSet<uint16> faceDedup;
+	AActor* ImportBrush(uint16 brushIndex);
 
-	static AActor* ImportBrush(UWorld* world, const Valve::BSPFile& bspFile, uint16 brushIndex);
-
-	static void GatherBrushes(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<uint16>& out);
-	 
-	static void GatherFaces(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<uint16>& out, TSet<int16>* clusterFilter = nullptr);
-	 
-	static void GatherDisplacements(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, TArray<uint16>& out);
-	 
-	static void GatherClusters(const Valve::BSPFile& bspFile, uint32 nodeIndex, TArray<int16>& out);
-	 
-	static FPlane ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
-	 
-	static void RenderTreeToActors(const Valve::BSPFile& bspFile, UWorld* world, TArray<AStaticMeshActor*>& out, uint32 nodeIndex);
+	void GatherBrushes(uint32 nodeIndex, TArray<uint16>& out);
 	
-	static UStaticMesh* RenderMeshToStaticMesh(UWorld* world, const FMeshDescription& meshDesc);
-
-	static AStaticMeshActor* RenderMeshToActor(UWorld* world, const FMeshDescription& meshDesc);
-	 
-	static void RenderFacesToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter);
-	 
-	static void RenderDisplacementsToMesh(const Valve::BSPFile& bspFile, const TArray<uint16>& displacements, FMeshDescription& meshDesc);
+	void GatherFaces(uint32 nodeIndex, TArray<uint16>& out, TSet<int16>* clusterFilter = nullptr);
 	
-	static AVBSPInfo* RenderTreeToVBSPInfo(const Valve::BSPFile& bspFile, UWorld* world, uint32 nodeIndex);
+	void GatherDisplacements(const TArray<uint16>& faceIndices, TArray<uint16>& out);
+	
+	void GatherClusters(uint32 nodeIndex, TArray<int16>& out);
+	
+	FPlane ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
+	
+	void RenderTreeToActors(TArray<AStaticMeshActor*>& out, uint32 nodeIndex);
+	
+	UStaticMesh* RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName);
 
-	static AVBSPInfo* GetVBSPInfo(UWorld* world);
+	AStaticMeshActor* RenderMeshToActor(const FMeshDescription& meshDesc, const FString& assetName);
+	
+	void RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter);
+	
+	void RenderDisplacementsToMesh(const TArray<uint16>& displacements, FMeshDescription& meshDesc);
+	
+	void RenderTreeToVBSPInfo(uint32 nodeIndex);
 
 	static FString ParseMaterialName(const char* bspMaterialName);
-	 
+	
 	static bool SharesSmoothingGroup(uint16 groupA, uint16 groupB);
-	 
-	static ABaseEntity* ImportEntityToWorld(const Valve::BSPFile& bspFile, UWorld* world, AVBSPInfo* vbspInfo, const FHL2EntityData& entityData);
+	
+	ABaseEntity* ImportEntityToWorld(const FHL2EntityData& entityData);
 
 };

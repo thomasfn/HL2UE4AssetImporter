@@ -6,6 +6,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Animation/Skeleton.h"
 #include "Animation/AnimSequence.h"
+#include "PhysicsEngine/PhysicsAsset.h"
 
 #include "studiomdl/studiomdl.h"
 #include "studiomdl/valvemeshstrip.h"
@@ -31,6 +32,9 @@ public:
 
 	UPROPERTY()
 	USkeleton* Skeleton = nullptr;
+
+	UPROPERTY()
+	UPhysicsAsset* PhysicsAsset = nullptr;
 
 	UPROPERTY()
 	TArray<UAnimSequence*> Animations;
@@ -89,6 +93,8 @@ public:
 
 	virtual USkeleton* CreateSkeleton(UObject* InParent, FName Name, EObjectFlags Flags);
 
+	virtual UPhysicsAsset* CreatePhysAsset(UObject* InParent, FName Name, EObjectFlags Flags);
+
 	virtual UAnimSequence* CreateAnimSequence(UObject* InParent, FName Name, EObjectFlags Flags);
 
 private:
@@ -104,7 +110,7 @@ private:
 
 	USkeletalMesh* ImportSkeletalMesh
 	(
-		UObject* inParent, FName inName, UObject* inSkeletonParent, FName inSkeletonName, EObjectFlags flags,
+		UObject* inParent, FName inName, UObject* inSkeletonParent, FName inSkeletonName, UObject* inPhysAssetParent, FName inPhysAssetName, EObjectFlags flags,
 		const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, const Valve::PHY::phyheader_t* phyHeader,
 		FFeedbackContext* warn
 	);

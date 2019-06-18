@@ -172,6 +172,18 @@ USkeleton* UMDLFactory::CreateSkeleton(UObject* InParent, FName Name, EObjectFla
 	return newSkeleton;
 }
 
+UPhysicsAsset* UMDLFactory::CreatePhysAsset(UObject* InParent, FName Name, EObjectFlags Flags)
+{
+	UObject* newObject = CreateOrOverwriteAsset(UPhysicsAsset::StaticClass(), InParent, Name, Flags);
+	UPhysicsAsset* newPhysAsset = nullptr;
+	if (newObject)
+	{
+		newPhysAsset = CastChecked<UPhysicsAsset>(newObject);
+	}
+
+	return newPhysAsset;
+}
+
 UAnimSequence* UMDLFactory::CreateAnimSequence(UObject* InParent, FName Name, EObjectFlags Flags)
 {
 	UObject* newObject = CreateOrOverwriteAsset(UAnimSequence::StaticClass(), InParent, Name, Flags);
@@ -278,7 +290,11 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	skeletonPackagePath.Append(TEXT("_skeleton"));
 	const FName skeletonPackageName(*(FPaths::GetBaseFilename(skeletonPackagePath)));
 	UPackage* skeletonPackage = CreatePackage(nullptr, *skeletonPackagePath);
-	result.SkeletalMesh = ImportSkeletalMesh(inParent, inName, skeletonPackage, skeletonPackageName, flags, header, vtxHeader, vvdHeader, phyHeader, warn);
+	FString physAssetPackagePath = inParent->GetPathName();
+	physAssetPackagePath.Append(TEXT("_physics"));
+	const FName physAssetPackageName(*(FPaths::GetBaseFilename(physAssetPackagePath)));
+	UPackage* physAssetPackage = phyHeader != nullptr ? CreatePackage(nullptr, *physAssetPackagePath) : nullptr;
+	result.SkeletalMesh = ImportSkeletalMesh(inParent, inName, skeletonPackage, skeletonPackageName, physAssetPackage, physAssetPackageName, flags, header, vtxHeader, vvdHeader, phyHeader, warn);
 	if (result.SkeletalMesh == nullptr)
 	{
 		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Failed to import skeletal mesh"));
@@ -292,6 +308,13 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	result.Skeleton->PostEditChange();
 	FAssetRegistryModule::AssetCreated(result.Skeleton);
 	result.Skeleton->MarkPackageDirty();
+	result.PhysicsAsset = result.SkeletalMesh->PhysicsAsset;
+	if (result.PhysicsAsset != nullptr)
+	{
+		result.PhysicsAsset->PostEditChange();
+		FAssetRegistryModule::AssetCreated(result.PhysicsAsset);
+		result.PhysicsAsset->MarkPackageDirty();
+	}
 
 	// TODO: Animations
 
@@ -627,7 +650,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 		}
 	}
 
-	// Identify physics
+	// Resolve physics
 	if (phyHeader != nullptr)
 	{
 		if (!debugPhysics)
@@ -759,7 +782,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 
 USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 (
-	UObject* inParent, FName inName, UObject* inSkeletonParent, FName inSkeletonName, EObjectFlags flags,
+	UObject* inParent, FName inName, UObject* inSkeletonParent, FName inSkeletonName, UObject* inPhysAssetParent, FName inPhysAssetName, EObjectFlags flags,
 	const Valve::MDL::studiohdr_t& header, const Valve::VTX::FileHeader_t& vtxHeader, const Valve::VVD::vertexFileHeader_t& vvdHeader, const Valve::PHY::phyheader_t* phyHeader,
 	FFeedbackContext* warn
 )
@@ -1111,6 +1134,34 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		material.MaterialSlotName = localSectionData.sectionName;
 		material.MaterialInterface = IHL2Runtime::Get().TryResolveHL2Material(materialName.ToString());
 		skeletalMesh->Materials.Add(material);
+	}
+
+	// Resolve physics
+	if (phyHeader != nullptr && inPhysAssetParent != nullptr)
+	{
+		// Create phys asset
+		UPhysicsAsset* physicsAsset = CreatePhysAsset(inPhysAssetParent, inPhysAssetName, flags);
+
+		uint8* curPtr = ((uint8*)phyHeader) + phyHeader->size;
+		for (int i = 0; i < phyHeader->solidCount; ++i)
+		{
+			TArray<FPHYSection> sections;
+			ReadPHYSolid(curPtr, sections);
+
+			for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
+			{
+				const FPHYSection& section = sections[sectionIndex];
+
+				USkeletalBodySetup* bodySetup = NewObject<USkeletalBodySetup>(physicsAsset, FName(*FString::Printf(TEXT("%d:%d"), i, sectionIndex)));
+				bodySetup->BoneName = FName(*bones[section.BoneIndex]->GetName());
+				bodySetup->bGenerateMirroredCollision = true;
+				bodySetup->bConsiderForBounds = true;
+				FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, bodySetup);
+				physicsAsset->SkeletalBodySetups.Add(bodySetup);
+			}
+		}
+		physicsAsset->PreviewSkeletalMesh = skeletalMesh;
+		skeletalMesh->PhysicsAsset = physicsAsset;
 	}
 
 	// Resolve skins

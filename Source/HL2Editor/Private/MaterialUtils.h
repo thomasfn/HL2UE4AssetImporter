@@ -18,6 +18,16 @@ public:
 
 private:
 
+	static inline void ProcessVMTNode(
+		UVMTMaterial* mtl,
+		const TArray<FMaterialParameterInfo>& textureParams,
+		const TArray<FMaterialParameterInfo>& scalarParams,
+		const TArray<FMaterialParameterInfo>& vectorParams,
+		const TArray<FMaterialParameterInfo>& staticSwitchParams,
+		FStaticParameterSet& staticParamSet,
+		const VTFLib::Nodes::CVMTNode* node
+	);
+
 	static FName GetVMTKeyAsParameterName(const char* key);
 	static FName GetVMTKeyAsParameterName(const char* key, const FString& postfix);
 

@@ -22,21 +22,13 @@ public:
 
 private:
 
-	bool isLoading;
-
 	TSharedPtr<FUICommandList> utilMenuCommandList;
 	TSharedPtr<FExtender> myExtender;
-
-	FDelegateHandle handleFilesLoaded;
-	FDelegateHandle handleAssetAdded;
 
 private:
 
 	void AddToolbarExtension(FToolBarBuilder& builder);
 	static TSharedRef<SWidget> GenerateUtilityMenu(TSharedRef<FUICommandList> InCommandList);
-
-	void HandleFilesLoaded();
-	void HandleAssetAdded(const FAssetData& assetData);
 
 	void BulkImportTexturesClicked();
 	void BulkImportMaterialsClicked();

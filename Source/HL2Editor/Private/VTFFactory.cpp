@@ -412,14 +412,51 @@ UTexture* UVTFFactory::ImportTexture(UClass* Class, UObject* InParent, FName Nam
 
 		uint8* mipData = texture->Source.LockMip(0);
 		bool success = VTFLib::CVTFFile::Convert(vtfFile.GetData(0, 0, 0, 0), mipData, vtfFile.GetWidth(), vtfFile.GetHeight(), vtfFile.GetFormat(), hdr ? VTFImageFormat::IMAGE_FORMAT_RGBA16161616 : VTFImageFormat::IMAGE_FORMAT_BGRA8888);
-		texture->Source.UnlockMip(0);
 
 		if (!success)
 		{
+			texture->Source.UnlockMip(0);
 			FString err = VTFLib::LastError.Get();
 			Warn->Logf(ELogVerbosity::Error, TEXT("Failed to convert VTF image data to RGBA8: %s"), *err);
 			return nullptr;
 		}
+
+		// If it's a normal map, identify any alpha - we need to extract this into it's own texture as normal maps can't have alpha
+		if (texture->CompressionSettings == TC_Normalmap)
+		{
+			bool alphaFound = false;
+			for (uint32 y = 0; y < vtfFile.GetHeight(); ++y)
+			{
+				for (uint32 x = 0; x < vtfFile.GetWidth(); ++x)
+				{
+					uint32 pixel = ((uint32*)mipData)[y * vtfFile.GetWidth() + x];
+					uint8 alpha = pixel >> 0x18;
+					if (alpha != 255)
+					{
+						alphaFound = true;
+						break;
+					}
+				}
+				if (alphaFound)
+				{
+					break;
+				}
+			}
+			if (alphaFound)
+			{
+				FString alphaTexPathName = InParent->GetPathName() + TEXT("_a");
+				UPackage* alphaTexPackage = CreatePackage(nullptr, *alphaTexPathName);
+				UTexture* alphaTex = ExtractAlpha(alphaTexPackage, FName(*FPaths::GetCleanFilename(alphaTexPathName)), RF_Public | RF_Standalone, vtfFile.GetWidth(), vtfFile.GetHeight(), mipData, Warn);
+				if (alphaTex != nullptr)
+				{
+					alphaTex->PostEditChange();
+					FAssetRegistryModule::AssetCreated(alphaTex);
+					alphaTex->MarkPackageDirty();
+				}
+			}
+		}
+
+		texture->Source.UnlockMip(0);
 
 		return texture;
 	}
@@ -481,4 +518,34 @@ UTexture* UVTFFactory::ImportTexture(UClass* Class, UObject* InParent, FName Nam
 
 		return texture;
 	}
+}
+
+UTexture* UVTFFactory::ExtractAlpha(UObject* inParent, FName name, EObjectFlags flags, int width, int height, const uint8* data, FFeedbackContext* warn)
+{
+	UTexture2D* texture = FindObject<UTexture2D>(inParent, *name.ToString());
+	if (texture == nullptr)
+	{
+		texture = NewObject<UTexture2D>(inParent, name, flags);
+	}
+	else
+	{
+		texture->ReleaseResource();
+	}
+
+	texture->CompressionSettings = TC_Alpha;
+	texture->SRGB = false;
+	
+	texture->Source.Init(
+		width,
+		height,
+		/*NumSlices=*/ 1,
+		/*NumMips=*/ 1,
+		TSF_BGRA8
+	);
+
+	uint8* mipData = texture->Source.LockMip(0);
+	FMemory::Memcpy(mipData, data, width * height * 4);
+	texture->Source.UnlockMip(0);
+
+	return texture;
 }

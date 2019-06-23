@@ -21,14 +21,7 @@ DEFINE_LOG_CATEGORY(LogHL2Editor);
 
 void HL2EditorImpl::StartupModule()
 {
-	isLoading = true;
-
 	FUtilMenuStyle::Initialize();
-
-	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	handleFilesLoaded = assetRegistry.OnFilesLoaded().AddRaw(this, &HL2EditorImpl::HandleFilesLoaded);
-	handleAssetAdded = assetRegistry.OnAssetAdded().AddRaw(this, &HL2EditorImpl::HandleAssetAdded);
 
 	FUtilMenuCommands::Register();
 
@@ -63,38 +56,12 @@ void HL2EditorImpl::StartupModule()
 
 void HL2EditorImpl::ShutdownModule()
 {
-	handleAssetAdded.Reset();
-	handleFilesLoaded.Reset();
-
 	FLevelEditorModule& levelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
 	levelEditorModule.GetToolBarExtensibilityManager()->RemoveExtender(myExtender);
 
 	FUtilMenuCommands::Unregister();
 
 	FUtilMenuStyle::Shutdown();
-}
-
-void HL2EditorImpl::HandleFilesLoaded()
-{
-	isLoading = false;
-	handleFilesLoaded.Reset();
-}
-
-void HL2EditorImpl::HandleAssetAdded(const FAssetData& assetData)
-{
-	if (isLoading) { return; }
-	if (Cast<UTexture>(assetData.GetAsset()))
-	{
-		TArray<UVMTMaterial*> materials;
-		IHL2Runtime::Get().FindAllMaterialsThatReferenceTexture(assetData.ObjectPath, materials);
-		for (UVMTMaterial* material : materials)
-		{
-			FMaterialUtils::TryResolveTextures(material);
-			material->PostEditChange();
-			material->MarkPackageDirty();
-			UE_LOG(LogHL2Editor, Log, TEXT("Trying to resolve textures on '%s' as '%s' now exists"), *material->GetName(), *assetData.AssetName.ToString());
-		}
-	}
 }
 
 void HL2EditorImpl::AddToolbarExtension(FToolBarBuilder& builder)
@@ -218,7 +185,6 @@ void HL2EditorImpl::ConvertSkyboxes()
 
 	FScopedSlowTask loopProgress(skyboxNames.Num(), LOCTEXT("SkyboxesConverting", "Converting skyboxes to cubemaps..."));
 	loopProgress.MakeDialog();
-	isLoading = true; // stop the material auto-fixer working
 	for (const FString& skyboxName : skyboxNames)
 	{
 		loopProgress.EnterProgressFrame();
@@ -241,7 +207,6 @@ void HL2EditorImpl::ConvertSkyboxes()
 			cubeMap->MarkPackageDirty();
 		}
 	}
-	isLoading = false;
 }
 
 void HL2EditorImpl::ImportBSPClicked()

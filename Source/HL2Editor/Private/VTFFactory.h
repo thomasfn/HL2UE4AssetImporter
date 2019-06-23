@@ -54,6 +54,8 @@ private:
 
 	UTexture* ImportTexture(UClass* Class, UObject* InParent, FName Name, EObjectFlags Flags, const TCHAR* Type, const uint8*& Buffer, const uint8* BufferEnd, FFeedbackContext* Warn);
 
+	UTexture* ExtractAlpha(UObject* inParent, FName name, EObjectFlags flags, int width, int height, const uint8* data, FFeedbackContext* warn);
+
 	/** Texture settings from the automated importer that should be applied to the new texture */
 	TSharedPtr<class FJsonObject> AutomatedImportSettings;
 

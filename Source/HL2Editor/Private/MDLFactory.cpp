@@ -11,6 +11,9 @@
 #include "Rendering/SkeletalMeshModel.h"
 #include "HL2ModelData.h"
 #include "MeshUtilities.h"
+#include "MeshDescriptionOperations.h"
+#include "MeshUtilitiesCommon.h"
+#include "OverlappingCorners.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -425,12 +428,12 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 				LocalMeshData& localMeshData = localMeshDatas[lodIndex];
 
 				// Iterate all vertices in the vvd for this lod and insert them
+				TArray<Valve::VVD::mstudiovertex_t> vvdVertices;
+				TArray<FVector4> vvdTangents;
 				{
 					const uint16 vertCount = (uint16)vvdHeader.numLODVertexes[0];
-					TArray<Valve::VVD::mstudiovertex_t> vertices;
-					vertices.Reserve(vertCount);
-					TArray<FVector4> tangents;
-					tangents.Reserve(vertCount);
+					vvdVertices.Reserve(vertCount);
+					vvdTangents.Reserve(vertCount);
 
 					if (vvdHeader.numFixups > 0)
 					{
@@ -447,8 +450,8 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 									Valve::VVD::mstudiovertex_t vertex;
 									FVector4 tangent;
 									vvdHeader.GetVertex(fixup.sourceVertexID + i, vertex, tangent);
-									vertices.Add(vertex);
-									tangents.Add(tangent);
+									vvdVertices.Add(vertex);
+									vvdTangents.Add(tangent);
 								}
 							}
 						}
@@ -460,13 +463,13 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 							Valve::VVD::mstudiovertex_t vertex;
 							FVector4 tangent;
 							vvdHeader.GetVertex(i, vertex, tangent);
-							vertices.Add(vertex);
-							tangents.Add(tangent);
+							vvdVertices.Add(vertex);
+							vvdTangents.Add(tangent);
 						}
 					}
 
 					// Write to mesh and store in map
-					for (uint16 i = 0; i < vertCount; ++i)
+					/*for (uint16 i = 0; i < vertCount; ++i)
 					{
 						const Valve::VVD::mstudiovertex_t& vertex = vertices[i];
 						const FVector4& tangent = tangents[i];
@@ -486,7 +489,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 						localMeshData.vertInstTangent[vertInstID] = FVector(tangent.X, tangent.Y, tangent.Z);
 						localMeshData.vertInstUV0[vertInstID] = vertex.m_vecTexCoord;
 						localMeshData.vertexInstanceMap.Add(i, vertInstID);
-					}
+					}*/
 				}
 
 				// Fetch and iterate all meshes
@@ -555,27 +558,52 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 							{
 								tmpVertInstIDs.Empty(3);
 
-								const uint16 idx0 = indices[strip.indexOffset + i];
-								const uint16 idx1 = indices[strip.indexOffset + i + 1];
-								const uint16 idx2 = indices[strip.indexOffset + i + 2];
+								const uint16 idxs[3] =
+								{
+									indices[strip.indexOffset + i],
+									indices[strip.indexOffset + i + 1],
+									indices[strip.indexOffset + i + 2]
+								};
 
-								const Valve::VTX::Vertex_t& vert0 = vertices[idx0];
-								const Valve::VTX::Vertex_t& vert1 = vertices[idx1];
-								const Valve::VTX::Vertex_t& vert2 = vertices[idx2];
+								const Valve::VTX::Vertex_t* verts[3] =
+								{
+									&vertices[idxs[0]],
+									&vertices[idxs[1]],
+									&vertices[idxs[2]]
+								};
 
-								const uint16 baseIdx0 = accumIndex + mesh.vertexoffset + vert0.origMeshVertID;
-								const uint16 baseIdx1 = accumIndex + mesh.vertexoffset + vert1.origMeshVertID;
-								const uint16 baseIdx2 = accumIndex + mesh.vertexoffset + vert2.origMeshVertID;
+								const uint16 baseIdxs[3] =
+								{
+									accumIndex + mesh.vertexoffset + verts[0]->origMeshVertID,
+									accumIndex + mesh.vertexoffset + verts[1]->origMeshVertID,
+									accumIndex + mesh.vertexoffset + verts[2]->origMeshVertID
+								};
 
-								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx0]);
-								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx1]);
-								tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx2]);
+								for (int j = 0; j < 3; ++j)
+								{
+									const Valve::VVD::mstudiovertex_t& vvdVertex = vvdVertices[baseIdxs[j]];
+									const FVector4& vvdTangent = vvdTangents[baseIdxs[j]];
+
+									FVertexID vertID = localMeshData.meshDescription.CreateVertex();
+									localMeshData.vertPos[vertID] = vvdVertex.m_vecPosition;
+
+									FVertexInstanceID vertInstID = localMeshData.meshDescription.CreateVertexInstance(vertID);
+									localMeshData.vertInstNormal[vertInstID] = vvdVertex.m_vecNormal;
+									localMeshData.vertInstTangent[vertInstID] = FVector(vvdTangent.X, vvdTangent.Y, vvdTangent.Z);
+									localMeshData.vertInstUV0[vertInstID] = vvdVertex.m_vecTexCoord;
+
+									tmpVertInstIDs.Add(vertInstID);
+								}
+
+								//tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx0]);
+								//tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx1]);
+								//tmpVertInstIDs.Add(localMeshData.vertexInstanceMap[baseIdx2]);
 
 								// Sanity check: if one or more vertex instances share the same base vertex, this poly is degenerate so reject it
-								const FVertexID baseVert0ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[0]);
-								const FVertexID baseVert1ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[1]);
-								const FVertexID baseVert2ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[2]);
-								if (baseVert0ID == baseVert1ID || baseVert0ID == baseVert2ID || baseVert1ID == baseVert2ID) { continue; }
+								//const FVertexID baseVert0ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[0]);
+								//const FVertexID baseVert1ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[1]);
+								//const FVertexID baseVert2ID = localMeshData.meshDescription.GetVertexInstanceVertex(tmpVertInstIDs[2]);
+								//if (baseVert0ID == baseVert1ID || baseVert0ID == baseVert2ID || baseVert1ID == baseVert2ID) { continue; }
 
 								FPolygonID polyID = localMeshData.meshDescription.CreatePolygon(polyGroupID, tmpVertInstIDs);
 							}
@@ -624,7 +652,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			FMeshBuildSettings& settings = sourceModel.BuildSettings;
 			settings.bRecomputeNormals = false;
 			settings.bRecomputeTangents = false;
-			settings.bGenerateLightmapUVs = true;
+			settings.bGenerateLightmapUVs = false;
 			settings.SrcLightmapIndex = 0;
 			settings.DstLightmapIndex = 1;
 			settings.bRemoveDegenerates = false;
@@ -635,6 +663,21 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			// Fetch and prepare our mesh description
 			FMeshDescription& localMeshDescription = localMeshDatas[lodIndex].meshDescription;
 			FMeshUtils::Clean(localMeshDescription);
+
+			// Generate lightmap coords
+			{
+				localMeshDescription.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
+				FOverlappingCorners overlappingCorners;
+				FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, localMeshDescription, 0.00001f);
+				FMeshDescriptionOperations::CreateLightMapUVLayout(localMeshDescription, settings.SrcLightmapIndex, settings.DstLightmapIndex, settings.MinLightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+			}
+
+			// Clean again but this time weld - we do weld after lightmap uv layout because welded vertices sometimes break that algorithm for whatever reason
+			{
+				//FMeshCleanSettings cleanSettings = FMeshCleanSettings::Default;
+				//cleanSettings.WeldVertices = true;
+				//FMeshUtils::Clean(localMeshDescription, cleanSettings);
+			}
 
 			// Copy to static mesh
 			FMeshDescription* meshDescription = staticMesh->CreateMeshDescription(lodIndex);

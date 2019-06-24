@@ -24,6 +24,9 @@
 #include "Internationalization/Regex.h"
 #include "Misc/ScopedSlowTask.h"
 #include "EngineUtils.h"
+#include "MeshDescriptionOperations.h"
+#include "MeshUtilitiesCommon.h"
+#include "OverlappingCorners.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -310,6 +313,21 @@ void FBSPImporter::RenderTreeToActors(TArray<AStaticMeshActor*>& out, uint32 nod
 				FMeshDescription cellMeshDesc = meshDesc;
 				FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
 
+				// Generate lightmap coords
+				{
+					cellMeshDesc.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
+					FOverlappingCorners overlappingCorners;
+					FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, cellMeshDesc, 0.00001f);
+					FMeshDescriptionOperations::CreateLightMapUVLayout(cellMeshDesc, 0, 1, 128, ELightmapUVVersion::Latest, overlappingCorners);
+				}
+
+				// Clean again but this time weld - we do weld after lightmap uv layout because welded vertices sometimes break that algorithm for whatever reason
+				{
+					//FMeshCleanSettings cleanSettings = FMeshCleanSettings::Default;
+					//cleanSettings.WeldVertices = true;
+					//FMeshUtils::Clean(cellMeshDesc, cleanSettings);
+				}
+
 				// Check if it has anything
 				if (cellMeshDesc.Polygons().Num() > 0)
 				{
@@ -355,7 +373,7 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	FMeshBuildSettings& settings = staticMeshSourceModel.BuildSettings;
 	settings.bRecomputeNormals = false;
 	settings.bRecomputeTangents = false;
-	settings.bGenerateLightmapUVs = true;
+	settings.bGenerateLightmapUVs = false;
 	settings.SrcLightmapIndex = 0;
 	settings.DstLightmapIndex = 1;
 	settings.bRemoveDegenerates = false;
@@ -559,7 +577,7 @@ FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 
 void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter)
 {
-	TMap<uint32, FVertexID> valveToUnrealVertexMap;
+	// TMap<uint32, FVertexID> valveToUnrealVertexMap;
 	TMap<FName, FPolygonGroupID> materialToPolyGroupMap;
 	TMap<FPolygonID, uint16> polyToValveFaceMap;
 
@@ -622,19 +640,10 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 			if (bspVerts.Contains(vertIndex)) { break; }
 			bspVerts.Add(vertIndex);
 
-			// Create vertices if needed
-			FVertexID vertID;
-			if (!valveToUnrealVertexMap.Contains(vertIndex))
-			{
-				vertID = meshDesc.CreateVertex();
-				valveToUnrealVertexMap.Add(vertIndex, vertID);
-				const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
-				vertexAttrPosition[vertID] = FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
-			}
-			else
-			{
-				vertID = valveToUnrealVertexMap[vertIndex];
-			}
+			// Create vertex
+			FVertexID vertID = meshDesc.CreateVertex();
+			const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
+			vertexAttrPosition[vertID] = FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
 
 			// Create vertex instance
 			FVertexInstanceID vertInstID = meshDesc.CreateVertexInstance(vertID);

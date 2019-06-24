@@ -5,6 +5,24 @@
 
 #include "PhysicsEngine/BodySetup.h"
 
+struct FMeshCleanSettings
+{
+	bool WeldVertices : 1;
+	bool RemoveDegeneratePolys : 1;
+	bool RemoveUnusedEdges : 1;
+	bool RemoveUnusedVertexInstances : 1;
+	bool RemoveUnusedVertices : 1;
+	bool RemoveEmptyPolyGroups : 1;
+	bool Compact : 1;
+	bool Retriangulate : 1;
+
+	static const FMeshCleanSettings Default;
+	static const FMeshCleanSettings None;
+	static const FMeshCleanSettings All;
+
+	FMeshCleanSettings(bool weldVertices, bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate);
+};
+
 class FMeshUtils
 {
 private:
@@ -23,7 +41,7 @@ public:
 	/**
 	 * Cleans a mesh, removing degenerate edges and polys, and removing unused elements.
 	 */
-	static void Clean(FMeshDescription& meshDesc);
+	static void Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& settings = FMeshCleanSettings::Default);
 
 	/**
 	 * Decomposes a UCX mesh into a body setup.
@@ -34,5 +52,8 @@ private:
 
 	static FVertexInstanceID ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& a, const FVertexInstanceID& b, const FPlane& clipPlane);
 
+	static void WeldVertices(FMeshDescription& meshDesc, const FVertexID& vertexAID, const FVertexID& vertexBID);
+
+	static inline float AreaOfTriangle(const FVector& v0, const FVector& v1, const FVector& v2);
 	
 };

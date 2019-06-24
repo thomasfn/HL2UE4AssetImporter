@@ -9,6 +9,13 @@ public class HL2Editor : ModuleRules
 		
         PrivateIncludePaths.AddRange(new string[] { Path.Combine(ModuleDirectory, "Private") });
 
-        PrivateDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "JsonUtilities", "Engine", "RenderCore", "RHI", "UnrealEd", "Slate", "SlateCore", "EditorStyle", "DesktopPlatform", "AssetTools", "MeshDescription", "HL2Runtime" });
+        PrivateDependencyModuleNames.AddRange(new string[]
+        {
+            "Core", "CoreUObject", "JsonUtilities", "Engine",
+            "RenderCore", "RHI",
+            "UnrealEd", "Slate", "SlateCore", "EditorStyle", "DesktopPlatform", "AssetTools",
+            "MeshDescription", "MeshUtilitiesCommon", "MeshDescriptionOperations",
+            "HL2Runtime"
+        });
     }
 }

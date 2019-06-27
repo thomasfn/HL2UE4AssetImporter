@@ -354,113 +354,145 @@ void FMeshUtils::WeldVertices(FMeshDescription& meshDesc, const FVertexID& verte
 	FMeshVertex& vertexA = meshDesc.GetVertex(vertexAID);
 	FMeshVertex& vertexB = meshDesc.GetVertex(vertexBID);
 
+	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstAttrTexCoord = meshDesc.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
+	TMeshAttributesRef<FVertexInstanceID, FVector> vertexInstAttrNormal = meshDesc.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
+	TMeshAttributesRef<FVertexInstanceID, FVector> vertexInstAttrTangent = meshDesc.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Tangent);
+
 	// Move position of A to midpoint of AB
-	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
-	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
 	vertexAttrPosition[vertexAID] = FMath::Lerp(vertexAttrPosition[vertexAID], vertexAttrPosition[vertexBID], 0.5f);
 
-	// Discover all edges that refer to B and change them to A
-	for (const FEdgeID& edgeID : meshDesc.Edges().GetElementIDs())
-	{
-		FMeshEdge& edge = meshDesc.GetEdge(edgeID);
-		
-		// Check if the edge is AB or BA
-		if ((edge.VertexIDs[0] == vertexAID && edge.VertexIDs[1] == vertexBID) || (edge.VertexIDs[0] == vertexBID && edge.VertexIDs[1] == vertexAID))
-		{
-			// Note that this may cause degenerate polys or orphaned vertices, but we're going to ignore that and let Clean take care of it
-			edge.ConnectedPolygons.Empty();
-			vertexB.ConnectedEdgeIDs.Remove(edgeID);
-			meshDesc.DeleteEdge(edgeID);
-		}
-		else if (edge.VertexIDs[0] == vertexBID)
-		{
-			edge.VertexIDs[0] = vertexAID;
-			vertexA.ConnectedEdgeIDs.AddUnique(edgeID);
-			check(vertexB.ConnectedEdgeIDs.Remove(edgeID) == 1);
-		}
-		else if (edge.VertexIDs[1] == vertexBID)
-		{
-			edge.VertexIDs[1] = vertexAID;
-			vertexA.ConnectedEdgeIDs.AddUnique(edgeID);
-			check(vertexB.ConnectedEdgeIDs.Remove(edgeID) == 1);
-		}
-	}
-
-	// Identify duplicate edges
-	{
-		TArray<FEdgeID> edgeIDs;
-		for (const FEdgeID& edgeID : meshDesc.Edges().GetElementIDs())
-		{
-			edgeIDs.Add(edgeID);
-		}
-		TSet<FEdgeID> toRemove;
-		for (int i = 0; i < edgeIDs.Num(); ++i)
-		{
-			const FEdgeID& edgeAID = edgeIDs[i];
-			const FMeshEdge& edgeA = meshDesc.GetEdge(edgeAID);
-			for (int j = i + 1; j < edgeIDs.Num(); ++j)
-			{
-				const FEdgeID& edgeBID = edgeIDs[j];
-				const FMeshEdge& edgeB = meshDesc.GetEdge(edgeBID);
-				if ((edgeA.VertexIDs[0] == edgeB.VertexIDs[0] && edgeA.VertexIDs[1] == edgeB.VertexIDs[1]) || (edgeA.VertexIDs[1] == edgeB.VertexIDs[0] && edgeA.VertexIDs[0] == edgeB.VertexIDs[1]))
-				{
-					toRemove.Add(edgeBID);
-				}
-			}
-		}
-		for (const FEdgeID& edgeID : toRemove)
-		{
-			meshDesc.DeleteEdge(edgeID);
-		}
-	}
-
-	// Discover all vertex instances that refer to B and change them to A
-	for (const FVertexInstanceID& vertInstID : meshDesc.VertexInstances().GetElementIDs())
-	{
-		FMeshVertexInstance& vertexInstance = meshDesc.GetVertexInstance(vertInstID);
-
-		if (vertexInstance.VertexID == vertexBID)
-		{
-			vertexInstance.VertexID = vertexAID;
-			vertexA.VertexInstanceIDs.Add(vertInstID);
-			check(vertexB.VertexInstanceIDs.Remove(vertInstID) == 1);
-		}
-	}
-
-	// Discover any polys that have a contour passing A twice (possible if previously it went *-A-B-*)
+	// Find all polygons that contour through vertex B
 	TArray<FPolygonID> polyIDs;
-	meshDesc.GetVertexConnectedPolygons(vertexAID, polyIDs);
-	for (const FPolygonID& polyID : polyIDs)
+	meshDesc.GetVertexConnectedPolygons(vertexBID, polyIDs);
+	for (const FPolygonID polyID : polyIDs)
 	{
-		TSet<FVertexInstanceID> toDelete;
-		FMeshPolygon& poly = meshDesc.GetPolygon(polyID);
-		for (int i = 0, n = poly.PerimeterContour.VertexInstanceIDs.Num(); i < n; ++i)
+		TArray<FVertexInstanceID> contour = meshDesc.GetPolygonPerimeterVertexInstances(polyID);
+
+		// Reform the contour, changing any vertex instances that point at B to instead point at A
+		const FPolygonGroupID polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
+		meshDesc.DeletePolygon(polyID);
+		for (int i = 0; i < contour.Num(); ++i)
 		{
-			FVertexInstanceID vi0 = poly.PerimeterContour.VertexInstanceIDs[i];
-			FVertexInstanceID vi1 = poly.PerimeterContour.VertexInstanceIDs[(i + 1) % n];
-			FVertexID v0 = meshDesc.GetVertexInstanceVertex(vi0);
-			FVertexID v1 = meshDesc.GetVertexInstanceVertex(vi1);
-			if (v0 == vertexAID && v1 == vertexAID)
+			const FVertexInstanceID oldVertInstID = contour[i];
+			if (meshDesc.GetVertexInstanceVertex(oldVertInstID) == vertexBID)
 			{
-				toDelete.Add(vi1);
+				const FVertexInstanceID newVertInstID = meshDesc.CreateVertexInstance(vertexAID);
+
+				// Preserve UV, normal and tangent
+				vertexInstAttrTexCoord[newVertInstID] = vertexInstAttrTexCoord[oldVertInstID];
+				vertexInstAttrNormal[newVertInstID] = vertexInstAttrNormal[oldVertInstID];
+				vertexInstAttrTangent[newVertInstID] = vertexInstAttrTangent[oldVertInstID];
+
+				contour[i] = newVertInstID;
 			}
 		}
-		if (poly.PerimeterContour.VertexInstanceIDs.Num() - toDelete.Num() < 3)
-		{
-			meshDesc.DeletePolygon(polyID);
-		}
-		else if (toDelete.Num() > 0)
-		{
-			TArray<FVertexInstanceID> newPerimeterContour = poly.PerimeterContour.VertexInstanceIDs;
-			for (const FVertexInstanceID& vertInstID : toDelete)
-			{
-				newPerimeterContour.Remove(vertInstID);
-			}
-			const FPolygonGroupID polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
-			meshDesc.DeletePolygon(polyID);
-			meshDesc.CreatePolygonWithID(polyID, polyGroupID, newPerimeterContour);
-		}
+		meshDesc.CreatePolygonWithID(polyID, polyGroupID, contour);
 	}
+	//
+
+	//// Discover all edges that refer to B and change them to A
+	//for (const FEdgeID& edgeID : meshDesc.Edges().GetElementIDs())
+	//{
+	//	FMeshEdge& edge = meshDesc.GetEdge(edgeID);
+	//	
+	//	// Check if the edge is AB or BA
+	//	if ((edge.VertexIDs[0] == vertexAID && edge.VertexIDs[1] == vertexBID) || (edge.VertexIDs[0] == vertexBID && edge.VertexIDs[1] == vertexAID))
+	//	{
+	//		// Note that this may cause degenerate polys or orphaned vertices, but we're going to ignore that and let Clean take care of it
+	//		edge.ConnectedPolygons.Empty();
+	//		vertexB.ConnectedEdgeIDs.Remove(edgeID);
+	//		meshDesc.DeleteEdge(edgeID);
+	//	}
+	//	else if (edge.VertexIDs[0] == vertexBID)
+	//	{
+	//		edge.VertexIDs[0] = vertexAID;
+	//		vertexA.ConnectedEdgeIDs.AddUnique(edgeID);
+	//		check(vertexB.ConnectedEdgeIDs.Remove(edgeID) == 1);
+	//	}
+	//	else if (edge.VertexIDs[1] == vertexBID)
+	//	{
+	//		edge.VertexIDs[1] = vertexAID;
+	//		vertexA.ConnectedEdgeIDs.AddUnique(edgeID);
+	//		check(vertexB.ConnectedEdgeIDs.Remove(edgeID) == 1);
+	//	}
+	//}
+
+	//// Identify duplicate edges
+	//{
+	//	TArray<FEdgeID> edgeIDs;
+	//	for (const FEdgeID& edgeID : meshDesc.Edges().GetElementIDs())
+	//	{
+	//		edgeIDs.Add(edgeID);
+	//	}
+	//	TSet<FEdgeID> toRemove;
+	//	for (int i = 0; i < edgeIDs.Num(); ++i)
+	//	{
+	//		const FEdgeID& edgeAID = edgeIDs[i];
+	//		const FMeshEdge& edgeA = meshDesc.GetEdge(edgeAID);
+	//		for (int j = i + 1; j < edgeIDs.Num(); ++j)
+	//		{
+	//			const FEdgeID& edgeBID = edgeIDs[j];
+	//			const FMeshEdge& edgeB = meshDesc.GetEdge(edgeBID);
+	//			if ((edgeA.VertexIDs[0] == edgeB.VertexIDs[0] && edgeA.VertexIDs[1] == edgeB.VertexIDs[1]) || (edgeA.VertexIDs[1] == edgeB.VertexIDs[0] && edgeA.VertexIDs[0] == edgeB.VertexIDs[1]))
+	//			{
+	//				toRemove.Add(edgeBID);
+	//			}
+	//		}
+	//	}
+	//	for (const FEdgeID& edgeID : toRemove)
+	//	{
+	//		meshDesc.DeleteEdge(edgeID);
+	//	}
+	//}
+
+	//// Discover all vertex instances that refer to B and change them to A
+	//for (const FVertexInstanceID& vertInstID : meshDesc.VertexInstances().GetElementIDs())
+	//{
+	//	FMeshVertexInstance& vertexInstance = meshDesc.GetVertexInstance(vertInstID);
+
+	//	if (vertexInstance.VertexID == vertexBID)
+	//	{
+	//		vertexInstance.VertexID = vertexAID;
+	//		vertexA.VertexInstanceIDs.Add(vertInstID);
+	//		check(vertexB.VertexInstanceIDs.Remove(vertInstID) == 1);
+	//	}
+	//}
+
+	//// Discover any polys that have a contour passing A twice (possible if previously it went *-A-B-*)
+	//TArray<FPolygonID> polyIDs;
+	//meshDesc.GetVertexConnectedPolygons(vertexAID, polyIDs);
+	//for (const FPolygonID& polyID : polyIDs)
+	//{
+	//	TSet<FVertexInstanceID> toDelete;
+	//	const FMeshPolygon& poly = meshDesc.GetPolygon(polyID);
+	//	for (int i = 0, n = poly.PerimeterContour.VertexInstanceIDs.Num(); i < n; ++i)
+	//	{
+	//		FVertexInstanceID vi0 = poly.PerimeterContour.VertexInstanceIDs[i];
+	//		FVertexInstanceID vi1 = poly.PerimeterContour.VertexInstanceIDs[(i + 1) % n];
+	//		FVertexID v0 = meshDesc.GetVertexInstanceVertex(vi0);
+	//		FVertexID v1 = meshDesc.GetVertexInstanceVertex(vi1);
+	//		if (v0 == vertexAID && v1 == vertexAID)
+	//		{
+	//			toDelete.Add(vi1);
+	//		}
+	//	}
+	//	if (poly.PerimeterContour.VertexInstanceIDs.Num() - toDelete.Num() < 3)
+	//	{
+	//		meshDesc.DeletePolygon(polyID);
+	//	}
+	//	else if (toDelete.Num() > 0)
+	//	{
+	//		TArray<FVertexInstanceID> newPerimeterContour = poly.PerimeterContour.VertexInstanceIDs;
+	//		for (const FVertexInstanceID& vertInstID : toDelete)
+	//		{
+	//			newPerimeterContour.Remove(vertInstID);
+	//		}
+	//		const FPolygonGroupID polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
+	//		meshDesc.DeletePolygon(polyID);
+	//		meshDesc.CreatePolygonWithID(polyID, polyGroupID, newPerimeterContour);
+	//	}
+	//}
 }
 
 inline float FMeshUtils::AreaOfTriangle(const FVector& v0, const FVector& v1, const FVector& v2)

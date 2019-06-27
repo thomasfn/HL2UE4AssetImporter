@@ -48,12 +48,15 @@ public:
 	 */
 	static void DecomposeUCXMesh(const TArray<FVector>& CollisionVertices, const TArray<int32>& CollisionFaceIdx, UBodySetup* BodySetup);
 
+	/**
+	 * Finds the area of a triangle with the given points.
+	 */
+	static inline float AreaOfTriangle(const FVector& v0, const FVector& v1, const FVector& v2);
+
 private:
 
 	static FVertexInstanceID ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& a, const FVertexInstanceID& b, const FPlane& clipPlane);
 
 	static void WeldVertices(FMeshDescription& meshDesc, const FVertexID& vertexAID, const FVertexID& vertexBID);
-
-	static inline float AreaOfTriangle(const FVector& v0, const FVector& v1, const FVector& v2);
 	
 };

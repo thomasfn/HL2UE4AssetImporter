@@ -38,19 +38,22 @@ namespace Valve { namespace BSP {
     static constexpr size_t  MAX_DISP_CORNER_NEIGHBORS = 4;
 
     /// NOTE: These are stored in a short in the engine now.  Don't use more than 16 bits
-    static constexpr int32_t SURF_LIGHT     = 0x0001; /// value will hold the light strength
-    static constexpr int32_t SURF_SLICK     = 0x0002; /// effects game physics
-    static constexpr int32_t SURF_SKY       = 0x0004; /// don't draw, but add to skybox
-    static constexpr int32_t SURF_WARP      = 0x0008; /// turbulent water warp
-    static constexpr int32_t SURF_TRANS     = 0x0010;
-    static constexpr int32_t SURF_WET       = 0x0020; /// the surface is wet
-    static constexpr int32_t SURF_FLOWING   = 0x0040; /// scroll towards angle
-    static constexpr int32_t SURF_NODRAW    = 0x0080; /// don't bother referencing the texture
-    static constexpr int32_t SURF_Hint32_t  = 0x0100; /// make a primary bsp splitter
-    static constexpr int32_t SURF_SKIP      = 0x0200; /// completely ignore, allowing non-closed brushes
-    static constexpr int32_t SURF_NOLIGHT   = 0x0400; /// Don't calculate light
-    static constexpr int32_t SURF_BUMPLIGHT = 0x0800; /// calculate three lightmaps for the surface for bumpmapping
-    static constexpr int32_t SURF_HITBOX    = 0x8000; /// surface is part of a hitbox
+	static constexpr int32_t SURF_LIGHT		= 0x1; // value will hold the light strength
+	static constexpr int32_t SURF_SKY2D		= 0x2; // don't draw, indicates we should skylight + draw 2d sky but not draw the 3D skybox
+	static constexpr int32_t SURF_SKY		= 0x4; // don't draw, but add to skybox
+	static constexpr int32_t SURF_WARP		= 0x8; // turbulent water warp
+	static constexpr int32_t SURF_TRANS		= 0x10; // texture is translucent
+	static constexpr int32_t SURF_NOPORTAL	= 0x20; // the surface can not have a portal placed on it
+	static constexpr int32_t SURF_TRIGGER	= 0x40; // FIXME: This is an xbox hack to work around elimination of trigger surfaces, which breaks occluders
+	static constexpr int32_t SURF_NODRAW	= 0x80; // don't bother referencing the texture
+	static constexpr int32_t SURF_HINT		= 0x100; // make a primary bsp splitter
+	static constexpr int32_t SURF_SKIP		= 0x200; // completely ignore, allowing non - closed brushes
+	static constexpr int32_t SURF_NOLIGHT	= 0x400; // Don't calculate light
+	static constexpr int32_t SURF_BUMPLIGHT	= 0x800; // calculate three lightmaps for the surface for bumpmapping
+	static constexpr int32_t SURF_NOSHADOWS	= 0x1000; // Don't receive shadows
+	static constexpr int32_t SURF_NODECALS	= 0x2000; // Don't receive decals
+	static constexpr int32_t SURF_NOCHOP	= 0x4000; // Don't subdivide patches on this surface
+	static constexpr int32_t SURF_HITBOX	= 0x8000; // surface is part of a hitbox
 
     static constexpr int32_t CONTENTS_EMPTY         = 0;           /// No contents
     static constexpr int32_t CONTENTS_SOLID         = 0x1;         /// an eye is never valid in a solid

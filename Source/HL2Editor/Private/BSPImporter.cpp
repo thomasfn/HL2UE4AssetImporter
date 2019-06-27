@@ -14,7 +14,7 @@
 #include "Lightmass/LightmassImportanceVolume.h"
 #include "Builders/EditorBrushBuilder.h"
 #include "Components/BrushComponent.h"
-#include "VBSPBrushBuilder.h"
+#include "BSPBrushUtils.h"
 #include "MeshAttributes.h"
 #include "Internationalization/Regex.h"
 #include "MeshAttributes.h"
@@ -79,46 +79,6 @@ bool FBSPImporter::ImportAllToWorld(UWorld* targetWorld)
 	return true;
 }
 
-bool FBSPImporter::ImportBrushesToWorld(UWorld* targetWorld)
-{
-	world = targetWorld;
-
-	const FName brushesFolder = TEXT("HL2Brushes");
-	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing brushes..."));
-	FActorFolders& folders = FActorFolders::Get();
-	folders.CreateFolder(*world, brushesFolder);
-
-	for (uint32 i = 0, l = bspFile.m_Models.size(); i < l; ++i)
-	{
-		const Valve::BSP::dmodel_t& model = bspFile.m_Models[i];
-		TArray<uint16> brushIndices;
-		GatherBrushes(model.m_Headnode, brushIndices);
-		brushIndices.Sort();
-
-		int num = 0;
-		for (uint16 brushIndex : brushIndices)
-		{
-			if (i == 0)
-			{
-				AActor* brushActor = ImportBrush(brushIndex);
-				GEditor->SelectActor(brushActor, true, false, true, false);
-				folders.SetSelectedFolderPath(brushesFolder);
-				++num;
-				//if (num >= 100) break;
-			}
-			else
-			{
-				// TODO: Deal with brush entities
-			}
-		}
-	}
-
-	//GEditor->csgRebuild(world);
-	GEditor->RebuildAlteredBSP();
-
-	return true;
-}
-
 bool FBSPImporter::ImportGeometryToWorld(UWorld* targetWorld)
 {
 	world = targetWorld;
@@ -131,7 +91,7 @@ bool FBSPImporter::ImportGeometryToWorld(UWorld* targetWorld)
 	const Valve::BSP::dmodel_t& bspWorldModel = bspFile.m_Models[0];
 
 	TArray<AStaticMeshActor*> staticMeshes;
-	RenderTreeToActors(staticMeshes, bspWorldModel.m_Headnode);
+	RenderModelToActors(staticMeshes, 0);
 	GEditor->SelectNone(false, true, false);
 	for (AStaticMeshActor* actor : staticMeshes)
 	{
@@ -260,12 +220,15 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	return true;
 }
 
-void FBSPImporter::RenderTreeToActors(TArray<AStaticMeshActor*>& out, uint32 nodeIndex)
+void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 modelIndex)
 {
-	const static float cellSize = 1024.0f;
+	constexpr bool useCells = true;
+	constexpr float cellSize = 1024.0f;
+
+	const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[modelIndex];
 
 	// Determine cell mins and maxs
-	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[nodeIndex];
+	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[bspModel.m_Headnode];
 	const int cellMinX = FMath::FloorToInt(bspNode.m_Mins[0] / cellSize);
 	const int cellMaxX = FMath::CeilToInt(bspNode.m_Maxs[0] / cellSize);
 	const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
@@ -276,12 +239,18 @@ void FBSPImporter::RenderTreeToActors(TArray<AStaticMeshActor*>& out, uint32 nod
 
 	// Render out VBSPInfo
 	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_VBSPINFO", "Generating VBSPInfo..."));
-	RenderTreeToVBSPInfo(nodeIndex);
+	RenderTreeToVBSPInfo(bspModel.m_Headnode);
 
 	// Gather all faces and displacements from tree
 	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_GATHER", "Gathering faces and displacements..."));
 	TArray<uint16> faces;
-	GatherFaces(nodeIndex, faces);
+	faces.Reserve(bspModel.m_Numfaces);
+	for (int i = 0; i < bspModel.m_Numfaces; ++i)
+	{
+		faces.Add(bspModel.m_Firstface + i);
+	}
+	//TArray<uint16> brushes;
+	//GatherBrushes(nodeIndex, brushes);
 	TArray<uint16> displacements;
 	GatherDisplacements(faces, displacements);
 
@@ -291,54 +260,85 @@ void FBSPImporter::RenderTreeToActors(TArray<AStaticMeshActor*>& out, uint32 nod
 		FMeshDescription meshDesc;
 		UStaticMesh::RegisterMeshAttributes(meshDesc);
 		RenderFacesToMesh(faces, meshDesc, false);
+		//RenderBrushesToMesh(brushes, meshDesc);
 		RenderDisplacementsToMesh(displacements, meshDesc);
 		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
+		//FMeshUtils::Clean(meshDesc, FMeshCleanSettings::All);
 
-		// Iterate each cell
-		int cellIndex = 0;
-		for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
+		if (useCells)
 		{
-			for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
+			// Iterate each cell
+			int cellIndex = 0;
+			for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
 			{
-				progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_CELL", "Splitting cells..."));
-
-				// Establish bounding planes for cell
-				TArray<FPlane> boundingPlanes;
-				boundingPlanes.Add(FPlane(FVector(cellX * cellSize), FVector::ForwardVector));
-				boundingPlanes.Add(FPlane(FVector((cellX + 1) * cellSize), FVector::BackwardVector));
-				boundingPlanes.Add(FPlane(FVector(cellY * cellSize), FVector::RightVector));
-				boundingPlanes.Add(FPlane(FVector((cellY + 1) * cellSize), FVector::LeftVector));
-
-				// Clip the mesh by the planes into a new one
-				FMeshDescription cellMeshDesc = meshDesc;
-				FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
-
-				// Generate lightmap coords
+				for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
 				{
-					cellMeshDesc.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
-					FOverlappingCorners overlappingCorners;
-					FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, cellMeshDesc, 0.00001f);
-					FMeshDescriptionOperations::CreateLightMapUVLayout(cellMeshDesc, 0, 1, 128, ELightmapUVVersion::Latest, overlappingCorners);
-				}
+					progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_CELL", "Splitting cells..."));
 
-				// Clean again but this time weld - we do weld after lightmap uv layout because welded vertices sometimes break that algorithm for whatever reason
-				{
-					//FMeshCleanSettings cleanSettings = FMeshCleanSettings::Default;
-					//cleanSettings.WeldVertices = true;
-					//FMeshUtils::Clean(cellMeshDesc, cleanSettings);
-				}
+					// Establish bounding planes for cell
+					TArray<FPlane> boundingPlanes;
+					boundingPlanes.Add(FPlane(FVector(cellX * cellSize), FVector::ForwardVector));
+					boundingPlanes.Add(FPlane(FVector((cellX + 1) * cellSize), FVector::BackwardVector));
+					boundingPlanes.Add(FPlane(FVector(cellY * cellSize), FVector::RightVector));
+					boundingPlanes.Add(FPlane(FVector((cellY + 1) * cellSize), FVector::LeftVector));
 
-				// Check if it has anything
-				if (cellMeshDesc.Polygons().Num() > 0)
-				{
-					// Create a static mesh for it
-					AStaticMeshActor* staticMeshActor = RenderMeshToActor(cellMeshDesc, FString::Printf(TEXT("Cells/Cell_%d"), cellIndex++));
-					staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
-					out.Add(staticMeshActor);
+					// Clip the mesh by the planes into a new one
+					FMeshDescription cellMeshDesc = meshDesc;
+					FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
 
-					// TODO: Insert to VBSPInfo
+					// TODO: Evaluate mesh surface area and calculate an appropiate lightmap resolution
+					const int lightmapResolution = 256;
+
+					// Generate lightmap coords
+					{
+						cellMeshDesc.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
+						FOverlappingCorners overlappingCorners;
+						FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, cellMeshDesc, 1.0f / 256.0f);
+						FMeshDescriptionOperations::CreateLightMapUVLayout(cellMeshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+					}
+
+					// Clean again but this time weld - we do weld after lightmap uv layout because welded vertices sometimes break that algorithm for whatever reason
+					{
+						//FMeshCleanSettings cleanSettings = FMeshCleanSettings::Default;
+						//cleanSettings.WeldVertices = true;
+						//FMeshUtils::Clean(cellMeshDesc, cleanSettings);
+					}
+
+					// Check if it has anything
+					if (cellMeshDesc.Polygons().Num() > 0)
+					{
+						// Create a static mesh for it
+						AStaticMeshActor* staticMeshActor = RenderMeshToActor(cellMeshDesc, FString::Printf(TEXT("Cells/Cell_%d"), cellIndex++), lightmapResolution);
+						staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
+						out.Add(staticMeshActor);
+
+						// TODO: Insert to VBSPInfo
+					}
 				}
 			}
+		}
+		else
+		{
+			// Clean
+			FMeshCleanSettings cleanSettings = FMeshCleanSettings::None;
+			cleanSettings.Retriangulate = true;
+			FMeshUtils::Clean(meshDesc, cleanSettings);
+
+			// TODO: Evaluate mesh surface area and calculate an appropiate lightmap resolution
+			const int lightmapResolution = 256;
+
+			// Generate lightmap coords
+			{
+				meshDesc.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
+				FOverlappingCorners overlappingCorners;
+				FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, meshDesc, 0.00001f);
+				FMeshDescriptionOperations::CreateLightMapUVLayout(meshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+			}
+
+			// Create a static mesh for it
+			AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("WorldGeometry"), lightmapResolution);
+			staticMeshActor->SetActorLabel(TEXT("WorldGeometry"));
+			out.Add(staticMeshActor);
 		}
 	}
 
@@ -353,7 +353,7 @@ void FBSPImporter::RenderTreeToActors(TArray<AStaticMeshActor*>& out, uint32 nod
 		meshDesc.TriangulateMesh();
 
 		// Create actor for it
-		AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("SkyboxMesh"));
+		AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("SkyboxMesh"), 16);
 		staticMeshActor->SetActorLabel(TEXT("Skybox"));
 		staticMeshActor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
 		staticMeshActor->GetStaticMeshComponent()->CastShadow = false;
@@ -363,7 +363,7 @@ void FBSPImporter::RenderTreeToActors(TArray<AStaticMeshActor*>& out, uint32 nod
 	}
 }
 
-UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName)
+UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName, int lightmapResolution)
 {
 	FString packageName = TEXT("/Game/hl2/maps") / mapName / assetName;
 	UPackage* package = CreatePackage(nullptr, *packageName);
@@ -378,8 +378,8 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	settings.DstLightmapIndex = 1;
 	settings.bRemoveDegenerates = false;
 	settings.bUseFullPrecisionUVs = true;
-	settings.MinLightmapResolution = 128;
-	staticMesh->LightMapResolution = 128;
+	settings.MinLightmapResolution = lightmapResolution;
+	staticMesh->LightMapResolution = lightmapResolution;
 	FMeshDescription* worldModelMesh = staticMesh->CreateMeshDescription(0);
 	*worldModelMesh = meshDesc;
 	const auto& importedMaterialSlotNameAttr = worldModelMesh->PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
@@ -403,9 +403,9 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	return staticMesh;
 }
 
-AStaticMeshActor* FBSPImporter::RenderMeshToActor(const FMeshDescription& meshDesc, const FString& assetName)
+AStaticMeshActor* FBSPImporter::RenderMeshToActor(const FMeshDescription& meshDesc, const FString& assetName, int lightmapResolution)
 {
-	UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, assetName);
+	UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, assetName, lightmapResolution);
 
 	FTransform transform = FTransform::Identity;
 	transform.SetScale3D(FVector(1.0f, -1.0f, 1.0f));
@@ -419,50 +419,6 @@ AStaticMeshActor* FBSPImporter::RenderMeshToActor(const FMeshDescription& meshDe
 
 	staticMeshActor->PostEditChange();
 	return staticMeshActor;
-}
-
-AActor* FBSPImporter::ImportBrush(uint16 brushIndex)
-{
-	const Valve::BSP::dbrush_t& brush = bspFile.m_Brushes[brushIndex];
-
-	// Create and initialise brush actor
-	ABrush* brushActor = world->SpawnActor<ABrush>(FVector::ZeroVector, FRotator::ZeroRotator);
-	brushActor->SetActorLabel(FString::Printf(TEXT("Brush_%d"), brushIndex));
-	brushActor->Brush = NewObject<UModel>(brushActor, NAME_None, RF_Transactional);
-	brushActor->Brush->Initialize(nullptr, true);
-	brushActor->Brush->Polys = NewObject<UPolys>(brushActor->Brush, NAME_None, RF_Transactional);
-	brushActor->GetBrushComponent()->Brush = brushActor->Brush;
-
-	// Create and initialise brush builder
-	UVBSPBrushBuilder* brushBuilder = NewObject<UVBSPBrushBuilder>(brushActor);
-	brushActor->BrushBuilder = brushBuilder;
-	
-	// Add all planes to the brush builder
-	for (uint32 i = 0, l = brush.m_Numsides; i < l; ++i)
-	{
-		const Valve::BSP::dbrushside_t& brushSide = bspFile.m_Brushsides[brush.m_Firstside + i];
-		const Valve::BSP::cplane_t& plane = bspFile.m_Planes[brushSide.m_Planenum];
-
-		brushBuilder->Planes.Add(ValveToUnrealPlane(plane));
-	}
-
-	// Evaluate the geometric center of the brush and transform all planes to it
-	FVector origin = brushBuilder->EvaluateGeometricCenter();
-	FTransform transform = FTransform::Identity;
-	transform.SetLocation(-origin);
-	FMatrix transformMtx = transform.ToMatrixNoScale();
-	for (uint32 i = 0, l = brush.m_Numsides; i < l; ++i)
-	{
-		brushBuilder->Planes[i] = brushBuilder->Planes[i].TransformBy(transformMtx);
-	}
-
-	// Relocate the brush
-	brushActor->SetActorLocation(origin);
-
-	// Build brush geometry
-	brushBuilder->Build(world, brushActor);
-
-	return brushActor;
 }
 
 void FBSPImporter::GatherBrushes(uint32 nodeIndex, TArray<uint16>& out)
@@ -494,38 +450,36 @@ void FBSPImporter::GatherBrushes(uint32 nodeIndex, TArray<uint16>& out)
 	}
 }
 
-void FBSPImporter::GatherFaces(uint32 nodeIndex, TArray<uint16>& out, TSet<int16>* clusterFilter)
+void FBSPImporter::GatherFaces(uint32 nodeIndex, TArray<uint16>& out)
 {
 	const Valve::BSP::snode_t& node = bspFile.m_Nodes[nodeIndex];
+	/*for (uint32 i = 0; i < node.m_Numfaces; ++i)
+	{
+		out.AddUnique(node.m_Firstface + i);
+	}*/
 	if (node.m_Children[0] < 0)
 	{
 		const Valve::BSP::dleaf_t& leaf = bspFile.m_Leaves[-1 - node.m_Children[0]];
-		if (clusterFilter == nullptr || clusterFilter->Contains(leaf.m_Cluster))
+		for (uint32 i = 0; i < leaf.m_Numleaffaces; ++i)
 		{
-			for (uint32 i = 0; i < leaf.m_Numleaffaces; ++i)
-			{
-				out.AddUnique(bspFile.m_Leaffaces[leaf.m_Firstleafface + i]);
-			}
+			out.AddUnique(bspFile.m_Leaffaces[leaf.m_Firstleafface + i]);
 		}
 	}
 	else
 	{
-		GatherFaces((uint32)node.m_Children[0], out, clusterFilter);
+		GatherFaces((uint32)node.m_Children[0], out);
 	}
 	if (node.m_Children[1] < 0)
 	{
 		const Valve::BSP::dleaf_t& leaf = bspFile.m_Leaves[-1 - node.m_Children[1]];
-		if (clusterFilter == nullptr || clusterFilter->Contains(leaf.m_Cluster))
+		for (uint32 i = 0; i < leaf.m_Numleaffaces; ++i)
 		{
-			for (uint32 i = 0; i < leaf.m_Numleaffaces; ++i)
-			{
-				out.AddUnique(bspFile.m_Leaffaces[leaf.m_Firstleafface + i]);
-			}
+			out.AddUnique(bspFile.m_Leaffaces[leaf.m_Firstleafface + i]);
 		}
 	}
 	else
 	{
-		GatherFaces((uint32)node.m_Children[1], out, clusterFilter);
+		GatherFaces((uint32)node.m_Children[1], out);
 	}
 }
 
@@ -541,35 +495,6 @@ void FBSPImporter::GatherDisplacements(const TArray<uint16>& faceIndices, TArray
 	}
 }
 
-void FBSPImporter::GatherClusters(uint32 nodeIndex, TArray<int16>& out)
-{
-	const Valve::BSP::snode_t& node = bspFile.m_Nodes[nodeIndex];
-	if (node.m_Children[0] < 0)
-	{
-		const Valve::BSP::dleaf_t& leaf = bspFile.m_Leaves[-1 - node.m_Children[0]];
-		if (leaf.m_Numleaffaces > 0)
-		{
-			out.AddUnique(leaf.m_Cluster);
-		}
-	}
-	else
-	{
-		GatherClusters((uint32)node.m_Children[0], out);
-	}
-	if (node.m_Children[1] < 0)
-	{
-		const Valve::BSP::dleaf_t& leaf = bspFile.m_Leaves[-1 - node.m_Children[1]];
-		if (leaf.m_Numleaffaces > 0)
-		{
-			out.AddUnique(leaf.m_Cluster);
-		}
-	}
-	else
-	{
-		GatherClusters((uint32)node.m_Children[1], out);
-	}
-}
-
 FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 {
 	return FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
@@ -579,7 +504,7 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 {
 	// TMap<uint32, FVertexID> valveToUnrealVertexMap;
 	TMap<FName, FPolygonGroupID> materialToPolyGroupMap;
-	TMap<FPolygonID, uint16> polyToValveFaceMap;
+	TMap<FPolygonID, const Valve::BSP::dface_t*> polyToValveFaceMap;
 
 	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
 	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
@@ -598,10 +523,65 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 
 	int cnt = 0;
 
-	// Pass 1: Create geometry
+	// Analyse orig faces
+	TMap<uint16, TArray<uint16>> origToSplitFacesMap;
+	struct OrigFaceData { float TotalArea = 0.0f, SplitArea = 0.0f; };
+	TMap<uint16, OrigFaceData> origFacesArea;
+	TArray<const Valve::BSP::dface_t*> facesToRender;
+	int missingOrig = 0;
 	for (const uint16 faceIndex : faceIndices)
 	{
-		const Valve::BSP::dface_t& bspFace = bspFile.m_Surfaces[faceIndex];
+		const Valve::BSP::dface_t& bspSplitFace = bspFile.m_Surfaces[faceIndex];
+		if (bspSplitFace.m_OrigFace >= 0 && bspSplitFace.m_Dispinfo < 0)
+		{
+			const Valve::BSP::dface_t& bspOrigFace = bspFile.m_OrigSurfaces[bspSplitFace.m_OrigFace];
+			TArray<uint16>& splitFaces = origToSplitFacesMap.FindOrAdd(bspSplitFace.m_OrigFace);
+			splitFaces.Add(faceIndex);
+			OrigFaceData& origFaceData = origFacesArea.FindOrAdd(bspSplitFace.m_OrigFace);
+			if (origFaceData.TotalArea == 0.0f)
+			{
+				origFaceData.TotalArea = FindFaceArea(bspOrigFace);
+				// Special case: orig faces don't appear to have a valid texinfo set
+				// So we're just gonna hack one in
+				const_cast<Valve::BSP::dface_t*>(&bspOrigFace)->m_Texinfo = bspSplitFace.m_Texinfo;
+
+			}
+			//check(bspSplitFace.m_Area == FindFaceArea(bspSplitFace));
+			origFaceData.SplitArea += FindFaceArea(bspSplitFace);
+		}
+		else
+		{
+			//facesToRender.Add(&bspSplitFace);
+			++missingOrig;
+		}
+	}
+	for (const auto& pair : origFacesArea)
+	{
+		const Valve::BSP::dface_t& bspOrigFace = bspFile.m_OrigSurfaces[pair.Key];
+		//if (pair.Value.TotalArea < pair.Value.SplitArea - 1.0f)
+		//{
+		//	// Orig face doesn't cover the sum of the split faces
+		//	// If we just used the orig face, there would be holes
+		//	// So fall back to the split faces
+		//	const TArray<uint16>& splitFaces = origToSplitFacesMap[pair.Key];
+		//	for (const uint16 faceIndex : splitFaces)
+		//	{
+		//		const Valve::BSP::dface_t& bspSplitFace = bspFile.m_Surfaces[faceIndex];
+		//		facesToRender.AddUnique(&bspSplitFace);
+		//	}
+		//}
+		//else
+		{
+			// Orig face appears to cover the sum of the split faces so it's safe to use
+			facesToRender.AddUnique(&bspOrigFace);
+		}
+	}
+
+	// Create geometry
+	for (const Valve::BSP::dface_t* ptr : facesToRender)
+	{
+		const Valve::BSP::dface_t& bspFace = *ptr;
+		if (bspFace.m_Dispinfo >= 0) { continue; }
 		const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspFace.m_Texinfo];
 		const uint16 texDataIndex = (uint16)bspTexInfo.m_Texdata;
 		const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
@@ -626,7 +606,7 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 		}
 
 		TArray<FVertexInstanceID> polyVerts;
-		TSet<uint16> bspVerts; // track all vbsp verts we've visited as it likes to revisit them sometimes and cause degenerate polys
+		//TSet<uint16> bspVerts; // track all vbsp verts we've visited as it likes to revisit them sometimes and cause degenerate polys
 
 		// Iterate all edges
 		for (uint16 i = 0; i < bspFace.m_Numedges; ++i)
@@ -637,8 +617,8 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 			const Valve::BSP::dedge_t& bspEdge = bspFile.m_Edges[edgeIndex];
 			const uint16 vertIndex = surfEdge < 0 ? bspEdge.m_V[1] : bspEdge.m_V[0];
 
-			if (bspVerts.Contains(vertIndex)) { break; }
-			bspVerts.Add(vertIndex);
+			//if (bspVerts.Contains(vertIndex)) { continue; }
+			//bspVerts.Add(vertIndex);
 
 			// Create vertex
 			FVertexID vertID = meshDesc.CreateVertex();
@@ -683,14 +663,14 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 		{
 			FPolygonID poly = meshDesc.CreatePolygon(polyGroup, polyVerts);
 			FMeshPolygon& polygon = meshDesc.GetPolygon(poly);
-			polyToValveFaceMap.Add(poly, faceIndex);
+			polyToValveFaceMap.Add(poly, ptr);
 		}
 	}
 
-	// Pass 2: Set smoothing groups
+	// Set smoothing groups
 	for (const auto& pair : polyToValveFaceMap)
 	{
-		const Valve::BSP::dface_t& bspFace = bspFile.m_Surfaces[pair.Value];
+		const Valve::BSP::dface_t& bspFace = *pair.Value;
 
 		// Find all edges
 		TArray<FEdgeID> edges;
@@ -703,13 +683,57 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 			{
 				if (otherPoly != pair.Key)
 				{
-					const Valve::BSP::dface_t& bspOtherFace = bspFile.m_Surfaces[polyToValveFaceMap[otherPoly]];
+					const Valve::BSP::dface_t& bspOtherFace = *polyToValveFaceMap[otherPoly];
 					const bool isHard = !SharesSmoothingGroup(bspFace.m_SmoothingGroups, bspOtherFace.m_SmoothingGroups);
 					edgeAttrIsHard[edge] = isHard;
 					edgeCreaseSharpness[edge] = isHard ? 1.0f : 0.0f;
 				}
 			}
 		}
+	}
+}
+
+void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMeshDescription& meshDesc)
+{
+	for (const uint16 brushIndex : brushIndices)
+	{
+		const Valve::BSP::dbrush_t& bspBrush = bspFile.m_Brushes[brushIndex];
+		
+		FBSPBrush brush;
+		brush.Sides.Reserve(bspBrush.m_Numsides);
+		for (int i = 0; i < bspBrush.m_Numsides; ++i)
+		{
+			const Valve::BSP::dbrushside_t& bspBrushSide = bspFile.m_Brushsides[bspBrush.m_Firstside + i];
+
+			FBSPBrushSide side;
+			side.Plane = ValveToUnrealPlane(bspFile.m_Planes[bspBrushSide.m_Planenum]);
+			side.EmitGeometry = false;
+			if (bspBrushSide.m_Texinfo >= 0)
+			{
+				const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspBrushSide.m_Texinfo];
+				constexpr int32 rejectedSurfFlags = Valve::BSP::SURF_NODRAW | Valve::BSP::SURF_SKY | Valve::BSP::SURF_SKY2D | Valve::BSP::SURF_SKIP | Valve::BSP::SURF_HINT;
+				if (bspTexInfo.m_Texdata >= 0 && !(bspTexInfo.m_Flags & rejectedSurfFlags))
+				{
+					const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
+					const char* bspMaterialName = &bspFile.m_TexdataStringData[0] + bspFile.m_TexdataStringTable[bspTexData.m_NameStringTableID];
+					FString parsedMaterialName = ParseMaterialName(bspMaterialName);
+					side.TextureU = FVector4(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2], bspTexInfo.m_TextureVecs[0][3]);
+					side.TextureV = FVector4(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2], bspTexInfo.m_TextureVecs[1][3]);
+					side.TextureW = (uint16)bspTexData.m_Width;
+					side.TextureH = (uint16)bspTexData.m_Height;
+					side.Material = FName(*parsedMaterialName);
+					side.EmitGeometry = true;
+				}
+			}
+			if (bspBrushSide.m_Dispinfo > 0)
+			{
+				side.EmitGeometry = false;
+			}
+			side.SmoothingGroups = 0;
+			brush.Sides.Add(side);
+		}
+
+		FBSPBrushUtils::BuildBrushGeometry(brush, meshDesc);
 	}
 }
 
@@ -1001,6 +1025,27 @@ void FBSPImporter::RenderTreeToVBSPInfo(uint32 nodeIndex)
 	vbspInfo->MarkPackageDirty();
 }
 
+float FBSPImporter::FindFaceArea(const Valve::BSP::dface_t& bspFace)
+{
+	TArray<FVector> vertices;
+	for (int i = 0; i < bspFace.m_Numedges; ++i)
+	{
+		const int32 surfEdge = bspFile.m_Surfedges[bspFace.m_Firstedge + i];
+		const uint32 edgeIndex = (uint32)(surfEdge < 0 ? -surfEdge : surfEdge);
+		const Valve::BSP::dedge_t& bspEdge = bspFile.m_Edges[edgeIndex];
+		const uint16 vertIndex = surfEdge < 0 ? bspEdge.m_V[1] : bspEdge.m_V[0];
+		const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
+		const FVector pos(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
+		vertices.Add(pos);
+	}
+	float area = 0.0f;
+	for (int i = 2; i < vertices.Num(); ++i)
+	{
+		area += FMeshUtils::AreaOfTriangle(vertices[0], vertices[i - 1], vertices[i]);
+	}
+	return area;
+}
+
 FString FBSPImporter::ParseMaterialName(const char* bspMaterialName)
 {
 	// It might be something like "brick/brick06c" which is fine
@@ -1076,7 +1121,8 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const FHL2EntityData& entityData)
 			RenderFacesToMesh(faces, meshDesc, false);
 			meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
 			meshDesc.TriangulateMesh();
-			UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), modelIndex));
+			const int lightmapResolution = 128;
+			UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), modelIndex), lightmapResolution);
 			entity->WorldModel = staticMesh;
 		}
 	}

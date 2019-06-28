@@ -286,27 +286,17 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 					FMeshDescription cellMeshDesc = meshDesc;
 					FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
 
-					// TODO: Evaluate mesh surface area and calculate an appropiate lightmap resolution
-					const int lightmapResolution = 256;
-
-					// Generate lightmap coords
-					{
-						cellMeshDesc.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
-						FOverlappingCorners overlappingCorners;
-						FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, cellMeshDesc, 1.0f / 256.0f);
-						FMeshDescriptionOperations::CreateLightMapUVLayout(cellMeshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
-					}
-
-					// Clean again but this time weld - we do weld after lightmap uv layout because welded vertices sometimes break that algorithm for whatever reason
-					{
-						//FMeshCleanSettings cleanSettings = FMeshCleanSettings::Default;
-						//cleanSettings.WeldVertices = true;
-						//FMeshUtils::Clean(cellMeshDesc, cleanSettings);
-					}
-
 					// Check if it has anything
 					if (cellMeshDesc.Polygons().Num() > 0)
 					{
+						// Evaluate mesh surface area and calculate an appropiate lightmap resolution
+						const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(cellMeshDesc);
+						constexpr float luxelsPerSquareUnit = 1.0f / 8.0f;
+						const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
+
+						// Generate lightmap UVs
+						FMeshUtils::GenerateLightmapCoords(cellMeshDesc, lightmapResolution);
+
 						// Create a static mesh for it
 						AStaticMeshActor* staticMeshActor = RenderMeshToActor(cellMeshDesc, FString::Printf(TEXT("Cells/Cell_%d"), cellIndex++), lightmapResolution);
 						staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
@@ -327,13 +317,8 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 			// TODO: Evaluate mesh surface area and calculate an appropiate lightmap resolution
 			const int lightmapResolution = 256;
 
-			// Generate lightmap coords
-			{
-				meshDesc.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
-				FOverlappingCorners overlappingCorners;
-				FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, meshDesc, 0.00001f);
-				FMeshDescriptionOperations::CreateLightMapUVLayout(meshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
-			}
+			// Generate lightmap UVs
+			FMeshUtils::GenerateLightmapCoords(meshDesc, lightmapResolution);
 
 			// Create a static mesh for it
 			AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("WorldGeometry"), lightmapResolution);
@@ -502,7 +487,7 @@ FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 
 void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter)
 {
-	// TMap<uint32, FVertexID> valveToUnrealVertexMap;
+	TMap<uint32, FVertexID> valveToUnrealVertexMap;
 	TMap<FName, FPolygonGroupID> materialToPolyGroupMap;
 	TMap<FPolygonID, const Valve::BSP::dface_t*> polyToValveFaceMap;
 
@@ -523,58 +508,12 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 
 	int cnt = 0;
 
-	// Analyse orig faces
-	TMap<uint16, TArray<uint16>> origToSplitFacesMap;
-	struct OrigFaceData { float TotalArea = 0.0f, SplitArea = 0.0f; };
-	TMap<uint16, OrigFaceData> origFacesArea;
+	// Lookup faces
 	TArray<const Valve::BSP::dface_t*> facesToRender;
-	int missingOrig = 0;
 	for (const uint16 faceIndex : faceIndices)
 	{
 		const Valve::BSP::dface_t& bspSplitFace = bspFile.m_Surfaces[faceIndex];
-		if (bspSplitFace.m_OrigFace >= 0 && bspSplitFace.m_Dispinfo < 0)
-		{
-			const Valve::BSP::dface_t& bspOrigFace = bspFile.m_OrigSurfaces[bspSplitFace.m_OrigFace];
-			TArray<uint16>& splitFaces = origToSplitFacesMap.FindOrAdd(bspSplitFace.m_OrigFace);
-			splitFaces.Add(faceIndex);
-			OrigFaceData& origFaceData = origFacesArea.FindOrAdd(bspSplitFace.m_OrigFace);
-			if (origFaceData.TotalArea == 0.0f)
-			{
-				origFaceData.TotalArea = FindFaceArea(bspOrigFace);
-				// Special case: orig faces don't appear to have a valid texinfo set
-				// So we're just gonna hack one in
-				const_cast<Valve::BSP::dface_t*>(&bspOrigFace)->m_Texinfo = bspSplitFace.m_Texinfo;
-
-			}
-			//check(bspSplitFace.m_Area == FindFaceArea(bspSplitFace));
-			origFaceData.SplitArea += FindFaceArea(bspSplitFace);
-		}
-		else
-		{
-			//facesToRender.Add(&bspSplitFace);
-			++missingOrig;
-		}
-	}
-	for (const auto& pair : origFacesArea)
-	{
-		const Valve::BSP::dface_t& bspOrigFace = bspFile.m_OrigSurfaces[pair.Key];
-		//if (pair.Value.TotalArea < pair.Value.SplitArea - 1.0f)
-		//{
-		//	// Orig face doesn't cover the sum of the split faces
-		//	// If we just used the orig face, there would be holes
-		//	// So fall back to the split faces
-		//	const TArray<uint16>& splitFaces = origToSplitFacesMap[pair.Key];
-		//	for (const uint16 faceIndex : splitFaces)
-		//	{
-		//		const Valve::BSP::dface_t& bspSplitFace = bspFile.m_Surfaces[faceIndex];
-		//		facesToRender.AddUnique(&bspSplitFace);
-		//	}
-		//}
-		//else
-		{
-			// Orig face appears to cover the sum of the split faces so it's safe to use
-			facesToRender.AddUnique(&bspOrigFace);
-		}
+		facesToRender.Add(&bspSplitFace);
 	}
 
 	// Create geometry
@@ -606,7 +545,7 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 		}
 
 		TArray<FVertexInstanceID> polyVerts;
-		//TSet<uint16> bspVerts; // track all vbsp verts we've visited as it likes to revisit them sometimes and cause degenerate polys
+		TSet<uint16> bspVerts; // track all vbsp verts we've visited as it likes to revisit them sometimes and cause degenerate polys
 
 		// Iterate all edges
 		for (uint16 i = 0; i < bspFace.m_Numedges; ++i)
@@ -617,13 +556,25 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 			const Valve::BSP::dedge_t& bspEdge = bspFile.m_Edges[edgeIndex];
 			const uint16 vertIndex = surfEdge < 0 ? bspEdge.m_V[1] : bspEdge.m_V[0];
 
-			//if (bspVerts.Contains(vertIndex)) { continue; }
-			//bspVerts.Add(vertIndex);
+			if (bspVerts.Contains(vertIndex)) { continue; }
+			bspVerts.Add(vertIndex);
 
-			// Create vertex
-			FVertexID vertID = meshDesc.CreateVertex();
-			const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
-			vertexAttrPosition[vertID] = FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
+			// Find or create vertex
+			FVertexID vertID;
+			{
+				const FVertexID* ptr = valveToUnrealVertexMap.Find(vertIndex);
+				if (ptr != nullptr)
+				{
+					vertID = *ptr;
+				}
+				else
+				{
+					vertID = meshDesc.CreateVertex();
+					const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
+					vertexAttrPosition[vertID] = FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
+					valveToUnrealVertexMap.Add(vertIndex, vertID);
+				}
+			}
 
 			// Create vertex instance
 			FVertexInstanceID vertInstID = meshDesc.CreateVertexInstance(vertID);

@@ -7,7 +7,6 @@
 
 struct FMeshCleanSettings
 {
-	bool WeldVertices : 1;
 	bool RemoveDegeneratePolys : 1;
 	bool RemoveUnusedEdges : 1;
 	bool RemoveUnusedVertexInstances : 1;
@@ -20,7 +19,7 @@ struct FMeshCleanSettings
 	static const FMeshCleanSettings None;
 	static const FMeshCleanSettings All;
 
-	FMeshCleanSettings(bool weldVertices, bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate);
+	FMeshCleanSettings(bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate);
 };
 
 class FMeshUtils
@@ -44,6 +43,11 @@ public:
 	static void Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& settings = FMeshCleanSettings::Default);
 
 	/**
+	 * Generates lightmap coordinates into uv channel 1, using only topology (e.g. not using uvs).
+	 */
+	static void GenerateLightmapCoords(FMeshDescription& meshDesc, int lightmapResolution);
+
+	/**
 	 * Decomposes a UCX mesh into a body setup.
 	 */
 	static void DecomposeUCXMesh(const TArray<FVector>& CollisionVertices, const TArray<int32>& CollisionFaceIdx, UBodySetup* BodySetup);
@@ -53,10 +57,16 @@ public:
 	 */
 	static inline float AreaOfTriangle(const FVector& v0, const FVector& v1, const FVector& v2);
 
+	/**
+	 * Finds the total surface area of a mesh.
+	 */
+	static float FindSurfaceArea(const FMeshDescription& meshDesc);
+
 private:
 
 	static FVertexInstanceID ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& a, const FVertexInstanceID& b, const FPlane& clipPlane);
-
-	static void WeldVertices(FMeshDescription& meshDesc, const FVertexID& vertexAID, const FVertexID& vertexBID);
 	
+	static FPlane DerivePolygonPlane(const FMeshDescription& meshDesc, const FPolygonID polyID);
+
+	static void DerivePlanarProjection(const FPlane& plane, FMatrix& projectionMatrix);
 };

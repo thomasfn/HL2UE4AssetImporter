@@ -5,15 +5,17 @@
 #include "Model.h"
 #include "Engine/Polys.h"
 #include "BSPOps.h"
+#include "MeshDescriptionOperations.h"
+#include "MeshUtilitiesCommon.h"
+#include "OverlappingCorners.h"
 
-constexpr float equalThreshold = 0.001f;
+constexpr float equalThreshold = 1.0f / 512.0f;
 
-const FMeshCleanSettings FMeshCleanSettings::Default(false, true, true, true, true, true, true, true); // Everything except weld vertices
-const FMeshCleanSettings FMeshCleanSettings::None(false, false, false, false, false, false, false, false); // Nothing
-const FMeshCleanSettings FMeshCleanSettings::All(true, true, true, true, true, true, true, true); // Everything
+const FMeshCleanSettings FMeshCleanSettings::Default(true, true, true, true, true, true, true); // Everything except weld vertices
+const FMeshCleanSettings FMeshCleanSettings::None(false, false, false, false, false, false, false); // Nothing
+const FMeshCleanSettings FMeshCleanSettings::All(true, true, true, true, true, true, true); // Everything
 
-FMeshCleanSettings::FMeshCleanSettings(bool weldVertices, bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate) :
-	WeldVertices(weldVertices),
+FMeshCleanSettings::FMeshCleanSettings(bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate) :
 	RemoveDegeneratePolys(removeDegeneratePolys),
 	RemoveUnusedEdges(removeUnusedEdges),
 	RemoveUnusedVertexInstances(removeUnusedVertexInstances),
@@ -154,6 +156,9 @@ FVertexInstanceID FMeshUtils::ClipEdge(FMeshDescription& meshDesc, const FVertex
 	return newVertInstID;
 }
 
+/**
+ * Cleans a mesh, removing degenerate edges and polys, and removing unused elements.
+ */
 void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& settings)
 {
 	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
@@ -259,34 +264,6 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 		}
 	}
 
-	// Weld vertices
-	if (settings.WeldVertices)
-	{
-		FVertexArray& vertices = meshDesc.Vertices();
-		TArray<FVertexID> vertexIDs;
-		vertexIDs.Reserve(vertices.Num());
-		for (const FVertexID& vertexID : vertices.GetElementIDs())
-		{
-			vertexIDs.Add(vertexID);
-		}
-
-		// Discover equivalent pairs of vertices
-		for (int i = 0; i < vertexIDs.Num(); ++i)
-		{
-			const FVertexID& vertAID = vertexIDs[i];
-			FVector posA = vertexAttrPosition[vertAID];
-			for (int j = i + 1; j < vertexIDs.Num(); ++j)
-			{
-				const FVertexID& vertBID = vertexIDs[j];
-				FVector posB = vertexAttrPosition[vertBID];
-				if (posA.Equals(posB, equalThreshold))
-				{
-					WeldVertices(meshDesc, vertAID, vertBID);
-				}
-			}
-		}
-	}
-
 	// Delete unused edges
 	if (settings.RemoveUnusedEdges)
 	{
@@ -349,155 +326,171 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 	}
 }
 
-void FMeshUtils::WeldVertices(FMeshDescription& meshDesc, const FVertexID& vertexAID, const FVertexID& vertexBID)
+/**
+ * Generates lightmap coordinates into uv channel 1, using only topology (e.g. not using uvs).
+ */
+void FMeshUtils::GenerateLightmapCoords(FMeshDescription& meshDesc, int lightmapResolution)
 {
-	FMeshVertex& vertexA = meshDesc.GetVertex(vertexAID);
-	FMeshVertex& vertexB = meshDesc.GetVertex(vertexBID);
+	TMeshAttributesRef<FVertexID, FVector> posAttr = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+	TMeshAttributesRef<FVertexInstanceID, FVector2D> texCoordAttr = meshDesc.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
+	texCoordAttr.SetNumIndices(3);
+	TSet<FPolygonID> visitedPolys;
+	TArray<FEdgeID> edgeIDs;
 
-	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
-	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstAttrTexCoord = meshDesc.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
-	TMeshAttributesRef<FVertexInstanceID, FVector> vertexInstAttrNormal = meshDesc.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
-	TMeshAttributesRef<FVertexInstanceID, FVector> vertexInstAttrTangent = meshDesc.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Tangent);
-
-	// Move position of A to midpoint of AB
-	vertexAttrPosition[vertexAID] = FMath::Lerp(vertexAttrPosition[vertexAID], vertexAttrPosition[vertexBID], 0.5f);
-
-	// Find all polygons that contour through vertex B
-	TArray<FPolygonID> polyIDs;
-	meshDesc.GetVertexConnectedPolygons(vertexBID, polyIDs);
-	for (const FPolygonID polyID : polyIDs)
+	// Generate lightmap UVs into channel 2
+	FMatrix projection;
+	for (const FPolygonID polyID : meshDesc.Polygons().GetElementIDs())
 	{
-		TArray<FVertexInstanceID> contour = meshDesc.GetPolygonPerimeterVertexInstances(polyID);
-
-		// Reform the contour, changing any vertex instances that point at B to instead point at A
-		const FPolygonGroupID polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
-		meshDesc.DeletePolygon(polyID);
-		for (int i = 0; i < contour.Num(); ++i)
+		bool isAlreadyInSet;
+		visitedPolys.Add(polyID, &isAlreadyInSet);
+		if (!isAlreadyInSet)
 		{
-			const FVertexInstanceID oldVertInstID = contour[i];
-			if (meshDesc.GetVertexInstanceVertex(oldVertInstID) == vertexBID)
+			// Derive plane and create transformation
+			const FPlane basePlane = DerivePolygonPlane(meshDesc, polyID);
+			if (basePlane.IsNearlyZero()) { continue; } // for now skip degenerates
+			DerivePlanarProjection(basePlane, projection);
+
+			// Iterate all connected polys that are coplanar with this one
+			TArray<FPolygonID> explore;
+			explore.Push(polyID);
+			while (explore.Num() > 0)
 			{
-				const FVertexInstanceID newVertInstID = meshDesc.CreateVertexInstance(vertexAID);
+				const FPolygonID currentPolyID = explore.Pop();
+				const FPlane polyPlane = DerivePolygonPlane(meshDesc, currentPolyID);
+				if (!basePlane.Equals(polyPlane, equalThreshold)) { continue; }
+				visitedPolys.Add(currentPolyID);
 
-				// Preserve UV, normal and tangent
-				vertexInstAttrTexCoord[newVertInstID] = vertexInstAttrTexCoord[oldVertInstID];
-				vertexInstAttrNormal[newVertInstID] = vertexInstAttrNormal[oldVertInstID];
-				vertexInstAttrTangent[newVertInstID] = vertexInstAttrTangent[oldVertInstID];
+				// Transform UVs
+				const TArray<FVertexInstanceID>& vertexInstIDs = meshDesc.GetPolygonPerimeterVertexInstances(currentPolyID);
+				for (const FVertexInstanceID vertexInstID : vertexInstIDs)
+				{
+					const FVertexID vertexID = meshDesc.GetVertexInstanceVertex(vertexInstID);
+					const FVector projected = projection.TransformPosition(posAttr[vertexID]);
+					texCoordAttr.Set(vertexInstID, 2, FVector2D(projected.X, projected.Y));
+				}
 
-				contour[i] = newVertInstID;
+				// Discover neighbouring polys
+				edgeIDs.Empty(vertexInstIDs.Num());
+				meshDesc.GetPolygonEdges(polyID, edgeIDs);
+				for (const FEdgeID edgeID : edgeIDs)
+				{
+					const TArray<FPolygonID>& polyIDs = meshDesc.GetEdgeConnectedPolygons(edgeID);
+					for (const FPolygonID polyID : polyIDs)
+					{
+						if (!visitedPolys.Contains(polyID))
+						{
+							explore.Push(polyID);
+						}
+					}
+				}
 			}
 		}
-		meshDesc.CreatePolygonWithID(polyID, polyGroupID, contour);
 	}
-	//
 
-	//// Discover all edges that refer to B and change them to A
-	//for (const FEdgeID& edgeID : meshDesc.Edges().GetElementIDs())
+	// Pack lightmap UVs into channel 1 and delete channel 2
+	FOverlappingCorners overlappingCorners;
+	FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, meshDesc, equalThreshold);
+	FMeshDescriptionOperations::CreateLightMapUVLayout(meshDesc, 2, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+	texCoordAttr.SetNumIndices(2);
+}
+
+FPlane FMeshUtils::DerivePolygonPlane(const FMeshDescription& meshDesc, const FPolygonID polyID)
+{
+	// Stolen from FMeshDescription as it's private annoyingly
+
+	// NOTE: This polygon plane computation code is partially based on the implementation of "Newell's method" from Real-Time 
+	//       Collision Detection by Christer Ericson, published by Morgan Kaufmann Publishers, (c) 2005 Elsevier Inc
+
+	// @todo mesheditor perf: For polygons that are just triangles, use a cross product to get the normal fast!
+	// @todo mesheditor perf: We could skip computing the plane distance when we only need the normal
+	// @todo mesheditor perf: We could cache these computed polygon normals; or just use the normal of the first three vertices' triangle if it is satisfactory in all cases
+	// @todo mesheditor: For non-planar polygons, the result can vary. Ideally this should use the actual polygon triangulation as opposed to the arbitrary triangulation used here.
+
+	FVector Centroid = FVector::ZeroVector;
+	FVector Normal = FVector::ZeroVector;
+
+	static TArray<FVertexID> PerimeterVertexIDs;
+	meshDesc.GetPolygonPerimeterVertices(polyID, /* Out */ PerimeterVertexIDs);
+
+	// @todo Maybe this shouldn't be in FMeshDescription but in a utility class, as it references a specific attribute name
+	TVertexAttributesConstRef<FVector> VertexPositions = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+
+	// Use 'Newell's Method' to compute a robust 'best fit' plane from the vertices of this polygon
+	for (int32 VertexNumberI = PerimeterVertexIDs.Num() - 1, VertexNumberJ = 0; VertexNumberJ < PerimeterVertexIDs.Num(); VertexNumberI = VertexNumberJ, VertexNumberJ++)
+	{
+		const FVertexID VertexIDI = PerimeterVertexIDs[VertexNumberI];
+		const FVector PositionI = VertexPositions[VertexIDI];
+
+		const FVertexID VertexIDJ = PerimeterVertexIDs[VertexNumberJ];
+		const FVector PositionJ = VertexPositions[VertexIDJ];
+
+		Centroid += PositionJ;
+
+		Normal.X += (PositionJ.Y - PositionI.Y) * (PositionI.Z + PositionJ.Z);
+		Normal.Y += (PositionJ.Z - PositionI.Z) * (PositionI.X + PositionJ.X);
+		Normal.Z += (PositionJ.X - PositionI.X) * (PositionI.Y + PositionJ.Y);
+	}
+
+	Normal.Normalize();
+
+	// Construct a plane from the normal and centroid
+	return FPlane(Normal, FVector::DotProduct(Centroid, Normal) / (float)PerimeterVertexIDs.Num());
+}
+
+void FMeshUtils::DerivePlanarProjection(const FPlane& plane, FMatrix& projectionMatrix)
+{
+	FQuat quat = FQuat::FindBetweenNormals(plane, FVector::UpVector);
+	FTransform transform(quat, FVector::ZeroVector, FVector::OneVector);
+	projectionMatrix = transform.ToMatrixNoScale();
+	//FVector normal = plane.GetUnsafeNormal();
+
+	//// If the normal is close to up...
+	//FVector basis;
+	//if (FMath::Abs(FVector::DotProduct(normal, FVector::UpVector)) > 0.95f)
 	//{
-	//	FMeshEdge& edge = meshDesc.GetEdge(edgeID);
-	//	
-	//	// Check if the edge is AB or BA
-	//	if ((edge.VertexIDs[0] == vertexAID && edge.VertexIDs[1] == vertexBID) || (edge.VertexIDs[0] == vertexBID && edge.VertexIDs[1] == vertexAID))
-	//	{
-	//		// Note that this may cause degenerate polys or orphaned vertices, but we're going to ignore that and let Clean take care of it
-	//		edge.ConnectedPolygons.Empty();
-	//		vertexB.ConnectedEdgeIDs.Remove(edgeID);
-	//		meshDesc.DeleteEdge(edgeID);
-	//	}
-	//	else if (edge.VertexIDs[0] == vertexBID)
-	//	{
-	//		edge.VertexIDs[0] = vertexAID;
-	//		vertexA.ConnectedEdgeIDs.AddUnique(edgeID);
-	//		check(vertexB.ConnectedEdgeIDs.Remove(edgeID) == 1);
-	//	}
-	//	else if (edge.VertexIDs[1] == vertexBID)
-	//	{
-	//		edge.VertexIDs[1] = vertexAID;
-	//		vertexA.ConnectedEdgeIDs.AddUnique(edgeID);
-	//		check(vertexB.ConnectedEdgeIDs.Remove(edgeID) == 1);
-	//	}
+	//	// Pick forward as basis
+	//	basis = FVector::ForwardVector;
+	//}
+	//else
+	//{
+	//	// Pick up as basis
+	//	basis = FVector::UpVector;
 	//}
 
-	//// Identify duplicate edges
-	//{
-	//	TArray<FEdgeID> edgeIDs;
-	//	for (const FEdgeID& edgeID : meshDesc.Edges().GetElementIDs())
-	//	{
-	//		edgeIDs.Add(edgeID);
-	//	}
-	//	TSet<FEdgeID> toRemove;
-	//	for (int i = 0; i < edgeIDs.Num(); ++i)
-	//	{
-	//		const FEdgeID& edgeAID = edgeIDs[i];
-	//		const FMeshEdge& edgeA = meshDesc.GetEdge(edgeAID);
-	//		for (int j = i + 1; j < edgeIDs.Num(); ++j)
-	//		{
-	//			const FEdgeID& edgeBID = edgeIDs[j];
-	//			const FMeshEdge& edgeB = meshDesc.GetEdge(edgeBID);
-	//			if ((edgeA.VertexIDs[0] == edgeB.VertexIDs[0] && edgeA.VertexIDs[1] == edgeB.VertexIDs[1]) || (edgeA.VertexIDs[1] == edgeB.VertexIDs[0] && edgeA.VertexIDs[0] == edgeB.VertexIDs[1]))
-	//			{
-	//				toRemove.Add(edgeBID);
-	//			}
-	//		}
-	//	}
-	//	for (const FEdgeID& edgeID : toRemove)
-	//	{
-	//		meshDesc.DeleteEdge(edgeID);
-	//	}
-	//}
+	//// Cross normal with basis to determine U projection
+	//FVector uProj = FVector::CrossProduct(normal, basis).GetSafeNormal();
 
-	//// Discover all vertex instances that refer to B and change them to A
-	//for (const FVertexInstanceID& vertInstID : meshDesc.VertexInstances().GetElementIDs())
-	//{
-	//	FMeshVertexInstance& vertexInstance = meshDesc.GetVertexInstance(vertInstID);
+	//// Cross normal with U projection to determine V projection
+	//FVector vProj = FVector::CrossProduct(normal, uProj).GetSafeNormal();
 
-	//	if (vertexInstance.VertexID == vertexBID)
-	//	{
-	//		vertexInstance.VertexID = vertexAID;
-	//		vertexA.VertexInstanceIDs.Add(vertInstID);
-	//		check(vertexB.VertexInstanceIDs.Remove(vertInstID) == 1);
-	//	}
-	//}
-
-	//// Discover any polys that have a contour passing A twice (possible if previously it went *-A-B-*)
-	//TArray<FPolygonID> polyIDs;
-	//meshDesc.GetVertexConnectedPolygons(vertexAID, polyIDs);
-	//for (const FPolygonID& polyID : polyIDs)
-	//{
-	//	TSet<FVertexInstanceID> toDelete;
-	//	const FMeshPolygon& poly = meshDesc.GetPolygon(polyID);
-	//	for (int i = 0, n = poly.PerimeterContour.VertexInstanceIDs.Num(); i < n; ++i)
-	//	{
-	//		FVertexInstanceID vi0 = poly.PerimeterContour.VertexInstanceIDs[i];
-	//		FVertexInstanceID vi1 = poly.PerimeterContour.VertexInstanceIDs[(i + 1) % n];
-	//		FVertexID v0 = meshDesc.GetVertexInstanceVertex(vi0);
-	//		FVertexID v1 = meshDesc.GetVertexInstanceVertex(vi1);
-	//		if (v0 == vertexAID && v1 == vertexAID)
-	//		{
-	//			toDelete.Add(vi1);
-	//		}
-	//	}
-	//	if (poly.PerimeterContour.VertexInstanceIDs.Num() - toDelete.Num() < 3)
-	//	{
-	//		meshDesc.DeletePolygon(polyID);
-	//	}
-	//	else if (toDelete.Num() > 0)
-	//	{
-	//		TArray<FVertexInstanceID> newPerimeterContour = poly.PerimeterContour.VertexInstanceIDs;
-	//		for (const FVertexInstanceID& vertInstID : toDelete)
-	//		{
-	//			newPerimeterContour.Remove(vertInstID);
-	//		}
-	//		const FPolygonGroupID polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
-	//		meshDesc.DeletePolygon(polyID);
-	//		meshDesc.CreatePolygonWithID(polyID, polyGroupID, newPerimeterContour);
-	//	}
-	//}
+	//// Assemble final projection
+	//projectionMatrix.SetIdentity();
+	//projectionMatrix.SetAxes(&uProj, &vProj, &normal);
+	//projectionMatrix.Inverse();
 }
 
 inline float FMeshUtils::AreaOfTriangle(const FVector& v0, const FVector& v1, const FVector& v2)
 {
 	return FVector::CrossProduct(v1 - v0, v2 - v0).Size() * 0.5f;
+}
+
+/**
+ * Finds the total surface area of a mesh.
+ */
+float FMeshUtils::FindSurfaceArea(const FMeshDescription& meshDesc)
+{
+	TMeshAttributesConstRef<FVertexID, FVector> posAttr = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+	float totalArea = 0.0f;
+	for (const FPolygonID polyID : meshDesc.Polygons().GetElementIDs())
+	{
+		TArray<FVertexID> vertices;
+		meshDesc.GetPolygonPerimeterVertices(polyID, vertices);
+		for (int i = 2; i < vertices.Num(); ++i)
+		{
+			totalArea += AreaOfTriangle(posAttr[vertices[0]], posAttr[vertices[i - 1]], posAttr[vertices[i]]);
+		}
+	}
+	return totalArea;
 }
 
 struct FMeshConnectivityVertex

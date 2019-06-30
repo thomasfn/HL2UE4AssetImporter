@@ -7,6 +7,7 @@
 
 struct FMeshCleanSettings
 {
+	bool SplitNonCoplanarPolys : 1;
 	bool RemoveDegeneratePolys : 1;
 	bool RemoveUnusedEdges : 1;
 	bool RemoveUnusedVertexInstances : 1;
@@ -19,7 +20,7 @@ struct FMeshCleanSettings
 	static const FMeshCleanSettings None;
 	static const FMeshCleanSettings All;
 
-	FMeshCleanSettings(bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate);
+	FMeshCleanSettings(bool splitNonCoplanarPolys, bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate);
 };
 
 class FMeshUtils
@@ -68,5 +69,7 @@ private:
 	
 	static FPlane DerivePolygonPlane(const FMeshDescription& meshDesc, const FPolygonID polyID);
 
-	static void DerivePlanarProjection(const FPlane& plane, FMatrix& projectionMatrix);
+	static FMatrix DerivePlanarProjection(const FPlane& plane);
+
+	static FVector GetTriangleNormal(const FMeshDescription& meshDesc, const FMeshTriangle& tri, FVector* outCentroid = nullptr);
 };

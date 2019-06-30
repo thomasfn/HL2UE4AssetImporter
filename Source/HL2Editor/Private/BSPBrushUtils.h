@@ -30,6 +30,10 @@ public:
 
 	static void BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription& meshDesc);
 
+private:
+
+	static inline void SnapVertex(FVector& vertex);
+
 };
 
 

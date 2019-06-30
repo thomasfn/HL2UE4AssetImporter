@@ -4,9 +4,7 @@
 #include "Engine/Polys.h"
 #include "IHL2Runtime.h"
 
-constexpr float snapThreshold = 1.0f / 128.0f;
-constexpr float containsThreshold = 1.0f / 256.0f;
-constexpr float lineParallelThreshold = 1.0f / 256.0f;
+constexpr float snapThreshold = 1.0f / 4.0f;
 
 FBSPBrushUtils::FBSPBrushUtils()
 {
@@ -29,6 +27,10 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 	{
 		const FBSPBrushSide& side = brush.Sides[i];
 		if (!side.EmitGeometry) { continue; }
+
+		// Check that the texture is aligned to the face - if not, discard the face
+		const FVector textureNorm = FVector::CrossProduct(side.TextureU, side.TextureV).GetUnsafeNormal();
+		if (FMath::Abs(FVector::DotProduct(textureNorm, side.Plane)) < 0.1f) { continue; }
 
 		// Create a poly for this side
 		FPoly poly = FPoly::BuildInfiniteFPoly(side.Plane);
@@ -77,6 +79,10 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 		TArray<FVertexInstanceID> polyContour;
 		TSet<FVertexID> visited;
 		visited.Reserve(poly.Vertices.Num());
+		/*for (FVector& pos : poly.Vertices)
+		{
+			SnapVertex(pos);
+		}*/
 		for (const FVector& pos : poly.Vertices)
 		{
 			// Get or create vertex
@@ -155,4 +161,11 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 			}
 		}
 	}
+}
+
+inline void FBSPBrushUtils::SnapVertex(FVector& vertex)
+{
+	vertex.X = FMath::GridSnap(vertex.X, snapThreshold);
+	vertex.Y = FMath::GridSnap(vertex.Y, snapThreshold);
+	vertex.Z = FMath::GridSnap(vertex.Z, snapThreshold);
 }

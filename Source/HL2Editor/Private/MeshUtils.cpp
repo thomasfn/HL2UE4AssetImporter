@@ -11,11 +11,12 @@
 
 constexpr float equalThreshold = 1.0f / 512.0f;
 
-const FMeshCleanSettings FMeshCleanSettings::Default(true, true, true, true, true, true, true); // Everything except weld vertices
-const FMeshCleanSettings FMeshCleanSettings::None(false, false, false, false, false, false, false); // Nothing
-const FMeshCleanSettings FMeshCleanSettings::All(true, true, true, true, true, true, true); // Everything
+const FMeshCleanSettings FMeshCleanSettings::Default(false, true, true, true, true, true, true, true);
+const FMeshCleanSettings FMeshCleanSettings::None(false, false, false, false, false, false, false, false);
+const FMeshCleanSettings FMeshCleanSettings::All(true, true, true, true, true, true, true, true);
 
-FMeshCleanSettings::FMeshCleanSettings(bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate) :
+FMeshCleanSettings::FMeshCleanSettings(bool splitNonCoplanarPolys, bool removeDegeneratePolys, bool removeUnusedEdges, bool removeUnusedVertexInstances, bool removeUnusedVertices, bool removeEmptyPolyGroups, bool compact, bool retriangulate) :
+	SplitNonCoplanarPolys(splitNonCoplanarPolys),
 	RemoveDegeneratePolys(removeDegeneratePolys),
 	RemoveUnusedEdges(removeUnusedEdges),
 	RemoveUnusedVertexInstances(removeUnusedVertexInstances),
@@ -175,13 +176,13 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 			TSet<FVertexInstanceID> toDelete;
 			for (int i = 0; i < numVerts; ++i)
 			{
-				const FVertexInstanceID& vertAinstID = poly.PerimeterContour.VertexInstanceIDs[i];
-				const FVertexID& vertAID = meshDesc.GetVertexInstanceVertex(vertAinstID);
+				const FVertexInstanceID vertAinstID = poly.PerimeterContour.VertexInstanceIDs[i];
+				const FVertexID vertAID = meshDesc.GetVertexInstanceVertex(vertAinstID);
 				const FVector& vertAPos = vertexAttrPosition[vertAID];
 				for (int j = i + 1; j < numVerts; ++j)
 				{
-					const FVertexInstanceID& vertBinstID = poly.PerimeterContour.VertexInstanceIDs[j];
-					const FVertexID& vertBID = meshDesc.GetVertexInstanceVertex(vertBinstID);
+					const FVertexInstanceID vertBinstID = poly.PerimeterContour.VertexInstanceIDs[j];
+					const FVertexID vertBID = meshDesc.GetVertexInstanceVertex(vertBinstID);
 					const FVector& vertBPos = vertexAttrPosition[vertBID];
 					if (vertAPos.Equals(vertBPos, equalThreshold))
 					{
@@ -196,7 +197,7 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 			else if (toDelete.Num() > 0)
 			{
 				TArray<FVertexInstanceID> newPerimeterContour = poly.PerimeterContour.VertexInstanceIDs;
-				for (const FVertexInstanceID& vertInstID : toDelete)
+				for (const FVertexInstanceID vertInstID : toDelete)
 				{
 					newPerimeterContour.Remove(vertInstID);
 				}
@@ -227,7 +228,7 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 					triangleToDelete.Add(triangleID);
 				}
 			}
-			for (const FVertexInstanceID& vertInstID : poly.PerimeterContour.VertexInstanceIDs)
+			for (const FVertexInstanceID vertInstID : poly.PerimeterContour.VertexInstanceIDs)
 			{
 				// If this vertex instance belongs ONLY to triangles marked for deletion, mark the vertex instance for deletion also
 				bool deleteMe = true;
@@ -253,7 +254,7 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 			else if (toDelete.Num() > 0)
 			{
 				TArray<FVertexInstanceID> newPerimeterContour = poly.PerimeterContour.VertexInstanceIDs;
-				for (const FVertexInstanceID& vertInstID : toDelete)
+				for (const FVertexInstanceID vertInstID : toDelete)
 				{
 					newPerimeterContour.Remove(vertInstID);
 				}
@@ -264,10 +265,93 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 		}
 	}
 
+	// Remove colinear vertices
+	/*{
+		for (const FPolygonID polyID : meshDesc.Polygons().GetElementIDs())
+		{
+			FMeshPolygon& poly = meshDesc.GetPolygon(polyID);
+			const int numVerts = poly.PerimeterContour.VertexInstanceIDs.Num();
+			TSet<FVertexInstanceID> toDelete;
+			for (int i = 2; i < numVerts; ++i)
+			{
+				const FVertexInstanceID vertAinstID = poly.PerimeterContour.VertexInstanceIDs[i - 2];
+				const FVertexID vertAID = meshDesc.GetVertexInstanceVertex(vertAinstID);
+				const FVector& vertAPos = vertexAttrPosition[vertAID];
+
+				const FVertexInstanceID vertBinstID = poly.PerimeterContour.VertexInstanceIDs[i - 1];
+				const FVertexID vertBID = meshDesc.GetVertexInstanceVertex(vertBinstID);
+				const FVector& vertBPos = vertexAttrPosition[vertBID];
+
+				const FVertexInstanceID vertCinstID = poly.PerimeterContour.VertexInstanceIDs[i];
+				const FVertexID vertCID = meshDesc.GetVertexInstanceVertex(vertBinstID);
+				const FVector& vertCPos = vertexAttrPosition[vertBID];
+
+				const FVector AB = (vertBPos - vertAPos).GetUnsafeNormal();
+				const FVector BC = (vertCPos - vertBPos).GetUnsafeNormal();
+				if (FVector::DotProduct(AB, BC) >= (1.0f - equalThreshold))
+				{
+					toDelete.Add(vertBinstID);
+				}
+				
+			}
+			if (numVerts - toDelete.Num() < 3)
+			{
+				meshDesc.DeletePolygon(polyID);
+			}
+			else if (toDelete.Num() > 0)
+			{
+				TArray<FVertexInstanceID> newPerimeterContour = poly.PerimeterContour.VertexInstanceIDs;
+				for (const FVertexInstanceID vertInstID : toDelete)
+				{
+					newPerimeterContour.Remove(vertInstID);
+				}
+				const FPolygonGroupID polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
+				meshDesc.DeletePolygon(polyID);
+				meshDesc.CreatePolygonWithID(polyID, polyGroupID, newPerimeterContour);
+			}
+		}
+	}*/
+
+	// Split non-coplanar polys
+	if (settings.SplitNonCoplanarPolys)
+	{
+		TArray<FVertexInstanceID> newContour;
+		for (const FPolygonID& polyID : meshDesc.Polygons().GetElementIDs())
+		{
+			TArray<FMeshTriangle> tris;
+			meshDesc.ComputePolygonTriangulation(polyID, tris);
+			check(tris.Num() > 0);
+			const FVector refNormal = GetTriangleNormal(meshDesc, tris[0]);
+			bool shouldSplit = false;
+			for (int i = 1; i < tris.Num(); ++i)
+			{
+				const FVector normal = GetTriangleNormal(meshDesc, tris[1]);
+				if (FVector::DotProduct(refNormal, normal) < (1.0f - equalThreshold))
+				{
+					shouldSplit = true;
+					break;
+				}
+			}
+			if (shouldSplit)
+			{
+				const FPolygonGroupID polyGroupID = meshDesc.GetPolygonPolygonGroup(polyID);
+				meshDesc.DeletePolygon(polyID);
+				for (const FMeshTriangle& tri : tris)
+				{
+					newContour.Empty(3);
+					newContour.Add(tri.VertexInstanceID0);
+					newContour.Add(tri.VertexInstanceID1);
+					newContour.Add(tri.VertexInstanceID2);
+					meshDesc.CreatePolygon(polyGroupID, newContour);
+				}
+			}
+		}
+	}
+
 	// Delete unused edges
 	if (settings.RemoveUnusedEdges)
 	{
-		for (const FEdgeID& edgeID : meshDesc.Edges().GetElementIDs())
+		for (const FEdgeID edgeID : meshDesc.Edges().GetElementIDs())
 		{
 			if (meshDesc.GetEdge(edgeID).ConnectedPolygons.Num() == 0)
 			{
@@ -279,7 +363,7 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 	// Delete unused vertex instances
 	if (settings.RemoveUnusedVertexInstances)
 	{
-		for (const FVertexInstanceID& vertInstID : meshDesc.VertexInstances().GetElementIDs())
+		for (const FVertexInstanceID vertInstID : meshDesc.VertexInstances().GetElementIDs())
 		{
 			if (meshDesc.GetVertexInstance(vertInstID).ConnectedPolygons.Num() == 0)
 			{
@@ -291,7 +375,7 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 	// Delete unused vertices
 	if (settings.RemoveUnusedVertices)
 	{
-		for (const FVertexID& vertID : meshDesc.Vertices().GetElementIDs())
+		for (const FVertexID vertID : meshDesc.Vertices().GetElementIDs())
 		{
 			if (meshDesc.GetVertex(vertID).VertexInstanceIDs.Num() == 0)
 			{
@@ -303,7 +387,7 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 	// Delete any empty polygon groups
 	if (settings.RemoveEmptyPolyGroups)
 	{
-		for (const FPolygonGroupID& polyGroupID : meshDesc.PolygonGroups().GetElementIDs())
+		for (const FPolygonGroupID polyGroupID : meshDesc.PolygonGroups().GetElementIDs())
 		{
 			if (meshDesc.GetPolygonGroup(polyGroupID).Polygons.Num() == 0)
 			{
@@ -347,8 +431,8 @@ void FMeshUtils::GenerateLightmapCoords(FMeshDescription& meshDesc, int lightmap
 		{
 			// Derive plane and create transformation
 			const FPlane basePlane = DerivePolygonPlane(meshDesc, polyID);
-			if (basePlane.IsNearlyZero()) { continue; } // for now skip degenerates
-			DerivePlanarProjection(basePlane, projection);
+			//check(!basePlane.IsNearlyZero());
+			projection = DerivePlanarProjection(basePlane);
 
 			// Iterate all connected polys that are coplanar with this one
 			TArray<FPolygonID> explore;
@@ -370,7 +454,7 @@ void FMeshUtils::GenerateLightmapCoords(FMeshDescription& meshDesc, int lightmap
 				}
 
 				// Discover neighbouring polys
-				edgeIDs.Empty(vertexInstIDs.Num());
+				/*edgeIDs.Empty(vertexInstIDs.Num());
 				meshDesc.GetPolygonEdges(polyID, edgeIDs);
 				for (const FEdgeID edgeID : edgeIDs)
 				{
@@ -382,7 +466,7 @@ void FMeshUtils::GenerateLightmapCoords(FMeshDescription& meshDesc, int lightmap
 							explore.Push(polyID);
 						}
 					}
-				}
+				}*/
 			}
 		}
 	}
@@ -391,82 +475,73 @@ void FMeshUtils::GenerateLightmapCoords(FMeshDescription& meshDesc, int lightmap
 	FOverlappingCorners overlappingCorners;
 	FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, meshDesc, equalThreshold);
 	FMeshDescriptionOperations::CreateLightMapUVLayout(meshDesc, 2, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
-	texCoordAttr.SetNumIndices(2);
+	//texCoordAttr.SetNumIndices(2);
 }
 
 FPlane FMeshUtils::DerivePolygonPlane(const FMeshDescription& meshDesc, const FPolygonID polyID)
 {
-	// Stolen from FMeshDescription as it's private annoyingly
+	TVertexAttributesConstRef<FVector> posAttr = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
 
-	// NOTE: This polygon plane computation code is partially based on the implementation of "Newell's method" from Real-Time 
-	//       Collision Detection by Christer Ericson, published by Morgan Kaufmann Publishers, (c) 2005 Elsevier Inc
+	FVector sumNormal = FVector::ZeroVector, sumCentroid = FVector::ZeroVector;
 
-	// @todo mesheditor perf: For polygons that are just triangles, use a cross product to get the normal fast!
-	// @todo mesheditor perf: We could skip computing the plane distance when we only need the normal
-	// @todo mesheditor perf: We could cache these computed polygon normals; or just use the normal of the first three vertices' triangle if it is satisfactory in all cases
-	// @todo mesheditor: For non-planar polygons, the result can vary. Ideally this should use the actual polygon triangulation as opposed to the arbitrary triangulation used here.
+	const TArray<FMeshTriangle>& tris = meshDesc.GetPolygonTriangles(polyID);
+	check(tris.Num() > 0);
 
-	FVector Centroid = FVector::ZeroVector;
-	FVector Normal = FVector::ZeroVector;
-
-	static TArray<FVertexID> PerimeterVertexIDs;
-	meshDesc.GetPolygonPerimeterVertices(polyID, /* Out */ PerimeterVertexIDs);
-
-	// @todo Maybe this shouldn't be in FMeshDescription but in a utility class, as it references a specific attribute name
-	TVertexAttributesConstRef<FVector> VertexPositions = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
-
-	// Use 'Newell's Method' to compute a robust 'best fit' plane from the vertices of this polygon
-	for (int32 VertexNumberI = PerimeterVertexIDs.Num() - 1, VertexNumberJ = 0; VertexNumberJ < PerimeterVertexIDs.Num(); VertexNumberI = VertexNumberJ, VertexNumberJ++)
+	for (const FMeshTriangle& tri : tris)
 	{
-		const FVertexID VertexIDI = PerimeterVertexIDs[VertexNumberI];
-		const FVector PositionI = VertexPositions[VertexIDI];
-
-		const FVertexID VertexIDJ = PerimeterVertexIDs[VertexNumberJ];
-		const FVector PositionJ = VertexPositions[VertexIDJ];
-
-		Centroid += PositionJ;
-
-		Normal.X += (PositionJ.Y - PositionI.Y) * (PositionI.Z + PositionJ.Z);
-		Normal.Y += (PositionJ.Z - PositionI.Z) * (PositionI.X + PositionJ.X);
-		Normal.Z += (PositionJ.X - PositionI.X) * (PositionI.Y + PositionJ.Y);
+		const FVector& pos0 = posAttr[meshDesc.GetVertexInstanceVertex(tri.VertexInstanceID0)];
+		const FVector& pos1 = posAttr[meshDesc.GetVertexInstanceVertex(tri.VertexInstanceID1)];
+		const FVector& pos2 = posAttr[meshDesc.GetVertexInstanceVertex(tri.VertexInstanceID2)];
+		sumNormal += FVector::CrossProduct(pos1 - pos0, pos2 - pos0);
+		sumCentroid += (pos0 + pos1 + pos2) / 3.0f;
 	}
 
-	Normal.Normalize();
-
-	// Construct a plane from the normal and centroid
-	return FPlane(Normal, FVector::DotProduct(Centroid, Normal) / (float)PerimeterVertexIDs.Num());
+	return FPlane(sumCentroid / tris.Num(), sumNormal.GetUnsafeNormal());
 }
 
-void FMeshUtils::DerivePlanarProjection(const FPlane& plane, FMatrix& projectionMatrix)
+FMatrix FMeshUtils::DerivePlanarProjection(const FPlane& plane)
 {
-	FQuat quat = FQuat::FindBetweenNormals(plane, FVector::UpVector);
+	/*FQuat quat = FQuat::FindBetweenNormals(plane, FVector::UpVector);
 	FTransform transform(quat, FVector::ZeroVector, FVector::OneVector);
-	projectionMatrix = transform.ToMatrixNoScale();
-	//FVector normal = plane.GetUnsafeNormal();
+	projectionMatrix = transform.ToMatrixNoScale();*/
+	FVector normal = plane.GetUnsafeNormal();
 
-	//// If the normal is close to up...
-	//FVector basis;
-	//if (FMath::Abs(FVector::DotProduct(normal, FVector::UpVector)) > 0.95f)
-	//{
-	//	// Pick forward as basis
-	//	basis = FVector::ForwardVector;
-	//}
-	//else
-	//{
-	//	// Pick up as basis
-	//	basis = FVector::UpVector;
-	//}
+	// If the normal is close to up...
+	FVector basis;
+	if (FMath::Abs(FVector::DotProduct(normal, FVector::UpVector)) > 0.95f)
+	{
+		// Pick forward as basis
+		basis = FVector::ForwardVector;
+	}
+	else
+	{
+		// Pick up as basis
+		basis = FVector::UpVector;
+	}
 
-	//// Cross normal with basis to determine U projection
-	//FVector uProj = FVector::CrossProduct(normal, basis).GetSafeNormal();
+	// Cross normal with basis to determine U projection
+	FVector uProj = FVector::CrossProduct(normal, basis).GetSafeNormal();
 
-	//// Cross normal with U projection to determine V projection
-	//FVector vProj = FVector::CrossProduct(normal, uProj).GetSafeNormal();
+	// Cross normal with U projection to determine V projection
+	FVector vProj = FVector::CrossProduct(normal, uProj).GetSafeNormal();
 
-	//// Assemble final projection
-	//projectionMatrix.SetIdentity();
-	//projectionMatrix.SetAxes(&uProj, &vProj, &normal);
-	//projectionMatrix.Inverse();
+	// Assemble final projection
+	FMatrix tmp = FMatrix::Identity;
+	tmp.SetAxes(&uProj, &vProj, &normal);
+	return tmp.Inverse();
+}
+
+FVector FMeshUtils::GetTriangleNormal(const FMeshDescription& meshDesc, const FMeshTriangle& tri, FVector* outCentroid)
+{
+	TVertexAttributesConstRef<FVector> posAttr = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+	const FVector& pos0 = posAttr[meshDesc.GetVertexInstanceVertex(tri.VertexInstanceID0)];
+	const FVector& pos1 = posAttr[meshDesc.GetVertexInstanceVertex(tri.VertexInstanceID1)];
+	const FVector& pos2 = posAttr[meshDesc.GetVertexInstanceVertex(tri.VertexInstanceID2)];
+	if (outCentroid != nullptr)
+	{
+		*outCentroid = (pos0 + pos1 + pos2) / 3.0f;
+	}
+	return FVector::CrossProduct(pos1 - pos0, pos2 - pos0).GetUnsafeNormal();
 }
 
 inline float FMeshUtils::AreaOfTriangle(const FVector& v0, const FVector& v1, const FVector& v2)

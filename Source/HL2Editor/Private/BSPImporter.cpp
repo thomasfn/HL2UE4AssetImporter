@@ -249,8 +249,8 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 	{
 		faces.Add(bspModel.m_Firstface + i);
 	}
-	//TArray<uint16> brushes;
-	//GatherBrushes(nodeIndex, brushes);
+	TArray<uint16> brushes;
+	GatherBrushes(bspModel.m_Headnode, brushes);
 	TArray<uint16> displacements;
 	GatherDisplacements(faces, displacements);
 
@@ -259,8 +259,8 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_GENERATE", "Generating map geometry..."));
 		FMeshDescription meshDesc;
 		UStaticMesh::RegisterMeshAttributes(meshDesc);
-		RenderFacesToMesh(faces, meshDesc, false);
-		//RenderBrushesToMesh(brushes, meshDesc);
+		//RenderFacesToMesh(faces, meshDesc, false);
+		RenderBrushesToMesh(brushes, meshDesc);
 		RenderDisplacementsToMesh(displacements, meshDesc);
 		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
 		//FMeshUtils::Clean(meshDesc, FMeshCleanSettings::All);
@@ -310,12 +310,15 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		else
 		{
 			// Clean
-			FMeshCleanSettings cleanSettings = FMeshCleanSettings::None;
-			cleanSettings.Retriangulate = true;
-			FMeshUtils::Clean(meshDesc, cleanSettings);
+			//FMeshCleanSettings cleanSettings = FMeshCleanSettings::None;
+			//cleanSettings.Retriangulate = true;
+			FMeshUtils::Clean(meshDesc);
 
 			// TODO: Evaluate mesh surface area and calculate an appropiate lightmap resolution
-			const int lightmapResolution = 256;
+			// Evaluate mesh surface area and calculate an appropiate lightmap resolution
+			const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(meshDesc);
+			constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
+			const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
 
 			// Generate lightmap UVs
 			FMeshUtils::GenerateLightmapCoords(meshDesc, lightmapResolution);
@@ -545,7 +548,9 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 		}
 
 		TArray<FVertexInstanceID> polyVerts;
-		TSet<uint16> bspVerts; // track all vbsp verts we've visited as it likes to revisit them sometimes and cause degenerate polys
+		polyVerts.Reserve(bspFace.m_Numedges);
+		TSet<uint16> bspVerts;
+		bspVerts.Reserve(bspFace.m_Numedges);
 
 		// Iterate all edges
 		for (uint16 i = 0; i < bspFace.m_Numedges; ++i)
@@ -556,16 +561,17 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 			const Valve::BSP::dedge_t& bspEdge = bspFile.m_Edges[edgeIndex];
 			const uint16 vertIndex = surfEdge < 0 ? bspEdge.m_V[1] : bspEdge.m_V[0];
 
-			if (bspVerts.Contains(vertIndex)) { continue; }
-			bspVerts.Add(vertIndex);
+			bool wasAlreadyInSet;
+			bspVerts.Add(vertIndex, &wasAlreadyInSet);
+			if (wasAlreadyInSet) { continue; }
 
 			// Find or create vertex
 			FVertexID vertID;
 			{
-				const FVertexID* ptr = valveToUnrealVertexMap.Find(vertIndex);
-				if (ptr != nullptr)
+				const FVertexID* vertPtr = valveToUnrealVertexMap.Find(vertIndex);
+				if (vertPtr != nullptr)
 				{
-					vertID = *ptr;
+					vertID = *vertPtr;
 				}
 				else
 				{
@@ -612,6 +618,25 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 		// Create poly
 		if (polyVerts.Num() > 2)
 		{
+			// Sort vertices to be convex
+			const FPlane plane = ValveToUnrealPlane(bspFile.m_Planes[bspFace.m_Planenum]);
+			const FQuat rot = FQuat::FindBetweenNormals(plane, FVector::UpVector);
+			FVector centroid = FVector::ZeroVector;
+			for (const FVertexInstanceID vertInstID : polyVerts)
+			{
+				centroid += vertexAttrPosition[meshDesc.GetVertexInstanceVertex(vertInstID)];
+			}
+			centroid /= polyVerts.Num();
+			centroid = rot * centroid;
+			polyVerts.Sort([&rot, &meshDesc, vertexAttrPosition, &centroid](FVertexInstanceID vertInstAID, FVertexInstanceID vertInstBID)
+				{
+					// a > b
+					const FVector toA = (rot * vertexAttrPosition[meshDesc.GetVertexInstanceVertex(vertInstAID)]) - centroid;
+					const FVector toB = (rot * vertexAttrPosition[meshDesc.GetVertexInstanceVertex(vertInstBID)]) - centroid;
+					return FMath::Atan2(toA.Y, toA.X) > FMath::Atan2(toB.Y, toB.X);
+				});
+
+			// Create poly
 			FPolygonID poly = meshDesc.CreatePolygon(polyGroup, polyVerts);
 			FMeshPolygon& polygon = meshDesc.GetPolygon(poly);
 			polyToValveFaceMap.Add(poly, ptr);
@@ -619,12 +644,13 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 	}
 
 	// Set smoothing groups
+	TArray<FEdgeID> edges;
 	for (const auto& pair : polyToValveFaceMap)
 	{
 		const Valve::BSP::dface_t& bspFace = *pair.Value;
 
 		// Find all edges
-		TArray<FEdgeID> edges;
+		edges.Empty(3);
 		meshDesc.GetPolygonEdges(pair.Key, edges);
 		for (const FEdgeID& edge : edges)
 		{
@@ -656,32 +682,40 @@ void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMesh
 		{
 			const Valve::BSP::dbrushside_t& bspBrushSide = bspFile.m_Brushsides[bspBrush.m_Firstside + i];
 
-			FBSPBrushSide side;
-			side.Plane = ValveToUnrealPlane(bspFile.m_Planes[bspBrushSide.m_Planenum]);
-			side.EmitGeometry = false;
-			if (bspBrushSide.m_Texinfo >= 0)
+			if (bspBrushSide.m_Bevel == 0)
 			{
-				const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspBrushSide.m_Texinfo];
-				constexpr int32 rejectedSurfFlags = Valve::BSP::SURF_NODRAW | Valve::BSP::SURF_SKY | Valve::BSP::SURF_SKY2D | Valve::BSP::SURF_SKIP | Valve::BSP::SURF_HINT;
-				if (bspTexInfo.m_Texdata >= 0 && !(bspTexInfo.m_Flags & rejectedSurfFlags))
-				{
-					const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
-					const char* bspMaterialName = &bspFile.m_TexdataStringData[0] + bspFile.m_TexdataStringTable[bspTexData.m_NameStringTableID];
-					FString parsedMaterialName = ParseMaterialName(bspMaterialName);
-					side.TextureU = FVector4(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2], bspTexInfo.m_TextureVecs[0][3]);
-					side.TextureV = FVector4(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2], bspTexInfo.m_TextureVecs[1][3]);
-					side.TextureW = (uint16)bspTexData.m_Width;
-					side.TextureH = (uint16)bspTexData.m_Height;
-					side.Material = FName(*parsedMaterialName);
-					side.EmitGeometry = true;
-				}
-			}
-			if (bspBrushSide.m_Dispinfo > 0)
-			{
+				FBSPBrushSide side;
+				side.Plane = ValveToUnrealPlane(bspFile.m_Planes[bspBrushSide.m_Planenum]);
 				side.EmitGeometry = false;
+				side.TextureU = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+				side.TextureV = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+				side.TextureW = 0;
+				side.TextureH = 0;
+				side.Material = NAME_None;
+				if (bspBrushSide.m_Texinfo >= 0)
+				{
+					const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspBrushSide.m_Texinfo];
+					constexpr int32 rejectedSurfFlags = Valve::BSP::SURF_NODRAW | Valve::BSP::SURF_SKY | Valve::BSP::SURF_SKY2D | Valve::BSP::SURF_SKIP | Valve::BSP::SURF_HINT;
+					if (bspTexInfo.m_Texdata >= 0 && !(bspTexInfo.m_Flags & rejectedSurfFlags))
+					{
+						const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
+						const char* bspMaterialName = &bspFile.m_TexdataStringData[0] + bspFile.m_TexdataStringTable[bspTexData.m_NameStringTableID];
+						FString parsedMaterialName = ParseMaterialName(bspMaterialName);
+						side.TextureU = FVector4(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2], bspTexInfo.m_TextureVecs[0][3]);
+						side.TextureV = FVector4(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2], bspTexInfo.m_TextureVecs[1][3]);
+						side.TextureW = (uint16)bspTexData.m_Width;
+						side.TextureH = (uint16)bspTexData.m_Height;
+						side.Material = FName(*parsedMaterialName);
+						side.EmitGeometry = true;
+					}
+				}
+				if (bspBrushSide.m_Dispinfo > 0)
+				{
+					side.EmitGeometry = false;
+				}
+				side.SmoothingGroups = 0;
+				brush.Sides.Add(side);
 			}
-			side.SmoothingGroups = 0;
-			brush.Sides.Add(side);
 		}
 
 		FBSPBrushUtils::BuildBrushGeometry(brush, meshDesc);

@@ -3,8 +3,7 @@
 #include "VMTFactory.h"
 #include "MaterialUtils.h"
 #include "Runtime/Core/Public/Misc/FeedbackContext.h"
-
-#include "VTFLib/VTFLib.h"
+#include "ValveKeyValues.h"
 
 UVMTFactory::UVMTFactory()
 {
@@ -94,15 +93,14 @@ UVMTMaterial* UVMTFactory::CreateMaterial(UObject* InParent, FName Name, EObject
 
 UVMTMaterial* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FName Name, EObjectFlags Flags, const TCHAR* Type, const TCHAR*& Buffer, const TCHAR* BufferEnd, FFeedbackContext* Warn)
 {
-	// Convert to ANSI string
-	const auto data = StringCast<ANSICHAR, TCHAR>(Buffer, BufferEnd - Buffer);
+	// Convert to string
+	const FString text(BufferEnd - Buffer, Buffer);
 
-	// Throw it at VTFLib
-	VTFLib::CVMTFile vmtFile;
-	if (!vmtFile.Load(data.Get(), data.Length()))
+	// Parse to a document
+	UValveDocument* document = UValveDocument::Parse(text);
+	if (document == nullptr)
 	{
-		FString err = VTFLib::LastError.Get();
-		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to load VMT: %s"), *err);
+		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to parse VMT"));
 		return nullptr;
 	}
 
@@ -110,7 +108,14 @@ UVMTMaterial* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FNam
 	UVMTMaterial* material = CreateMaterial(InParent, Name, Flags);
 
 	// Attempt to import it
-	FMaterialUtils::SetFromVMT(material, *vmtFile.GetRoot());
+	if (!FMaterialUtils::SetFromVMT(material, document))
+	{
+		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to import VMT"));
+		return nullptr;
+	}
+
+	// Clean up
+	document->MarkPendingKill();
 
 	return material;
 }

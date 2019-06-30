@@ -1,7 +1,6 @@
 #include "HL2RuntimePrivatePCH.h"
 
 #include "ValveKeyValues.h"
-
 #include "Internationalization/Regex.h"
 
 DEFINE_LOG_CATEGORY(LogValveKeyValuesParser);

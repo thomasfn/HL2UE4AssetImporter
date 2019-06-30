@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "VMTMaterial.h"
-#include "VTFLib/VMTGroupNode.h"
+#include "ValveKeyValues.h"
 
 class FMaterialUtils
 {
@@ -12,7 +12,7 @@ private:
 
 public:
 	
-	static bool SetFromVMT(UVMTMaterial* mtl, const VTFLib::Nodes::CVMTGroupNode& groupNode);
+	static bool SetFromVMT(UVMTMaterial* mtl, const UValveDocument* document);
 
 	static void TryResolveTextures(UVMTMaterial* mtl);
 
@@ -25,16 +25,14 @@ private:
 		const TArray<FMaterialParameterInfo>& vectorParams,
 		const TArray<FMaterialParameterInfo>& staticSwitchParams,
 		FStaticParameterSet& staticParamSet,
-		const VTFLib::Nodes::CVMTNode* node
+		const FValveGroupKeyValue& kv
 	);
 
-	static FName GetVMTKeyAsParameterName(const char* key);
-	static FName GetVMTKeyAsParameterName(const char* key, const FString& postfix);
+	static FName GetVMTKeyAsParameterName(const FName key);
+	static FName GetVMTKeyAsParameterName(const FName key, const FString& postfix);
 
 	static bool GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParameters, const char* key, FMaterialParameterInfo& out);
 	static bool GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParameters, FName key, FMaterialParameterInfo& out);
-
-	static bool GetVMTKeyAsBool(const VTFLib::Nodes::CVMTGroupNode& groupNode, const char* key, bool defaultValue = false);
 
 	static bool ParseFloatVec3(const FString& value, FVector& out);
 	static bool ParseFloatVec3(const FString& value, FLinearColor& out);

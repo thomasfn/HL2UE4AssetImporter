@@ -2,6 +2,10 @@
 
 #include "ValveKeyValues.h"
 
+#include "Internationalization/Regex.h"
+
+DEFINE_LOG_CATEGORY(LogValveKeyValuesParser);
+
 #pragma region UValveGroupValue
 
 UValveValue* UValveGroupValue::GetItem(FName key)
@@ -135,6 +139,185 @@ FString UValveStringValue::AsString() const
 
 #pragma region UValveDocument
 
+enum class TokenType
+{
+	Whitespace,
+	OpenGroup,
+	CloseGroup,
+	String,
+	TokenType_Count
+};
+
+struct Token
+{
+	TokenType type;
+	int start;
+	int end;
+};
+
+const FString tokenTypeNames[] =
+{
+	TEXT("Whitespace"),
+	TEXT("OpenGroup"),
+	TEXT("CloseGroup"),
+	TEXT("String")
+};
+
+bool Tokenise(const FString& src, TArray<Token>& out)
+{
+	const static FRegexPattern patterns[] =
+	{
+		FRegexPattern(TEXT("[\\s\\n\\r]+")), // Whitespace
+		FRegexPattern(TEXT("\\{")), // OpenGroup
+		FRegexPattern(TEXT("\\}")), // CloseGroup
+		FRegexPattern(TEXT("\"((?:\\\\\"|[^\"])*)\"")) // String
+	};
+	constexpr int numPatterns = sizeof(patterns) / sizeof(FRegexPattern);
+	static_assert(numPatterns == (int)TokenType::TokenType_Count, "ValueKeyValues.cpp: Each token must have a regex pattern");
+	int curPos = 0;
+	while (curPos < src.Len())
+	{
+		bool matched = false;
+		for (int i = 0; i < numPatterns; ++i)
+		{
+			FRegexMatcher matcher(patterns[i], src);
+			matcher.SetLimits(curPos, src.Len());
+			if (matcher.FindNext() && matcher.GetMatchBeginning() == curPos)
+			{
+				matched = true;
+				if (i > 0) // ignore whitespace
+				{
+					Token token;
+					token.type = (TokenType)i;
+					token.start = curPos;
+					token.end = matcher.GetMatchEnding();
+					out.Add(token);
+				}
+				curPos = matcher.GetMatchEnding();
+				break;
+			}
+		}
+		if (!matched)
+		{
+			UE_LOG(LogValveKeyValuesParser, Error, TEXT("Unexpected '%c' at %d"), src[curPos], curPos);
+			return false;
+		}
+	}
+	return true;
+}
+
+void ReadToken(const FString& src, const Token& token, FString& out)
+{
+	out = FString(token.end - token.start, *src + token.start);
+}
+
+UValveValue* ParseValue(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer);
+UValveGroupValue* ParseGroup(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer);
+
+// Parses any kind of value from the token stream
+UValveValue* ParseValue(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer)
+{
+	// Peek
+	switch (tokens[nextToken].type)
+	{
+		case TokenType::String:
+		{
+			UValveStringValue *stringValue = NewObject<UValveStringValue>(outer);
+			ReadToken(src, tokens[nextToken++], stringValue->Value); // Consume
+			return stringValue;
+		}
+		case TokenType::OpenGroup:
+			return ParseGroup(src, tokens, nextToken, outer);
+		default:
+			return nullptr;
+	}
+}
+
+// Parses a group value from the token stream
+UValveGroupValue* ParseGroup(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer)
+{
+	// OpenGroup
+	if (tokens[nextToken++].type != TokenType::OpenGroup) { return nullptr; }
+
+	UValveGroupValue* groupValue = NewObject<UValveGroupValue>(outer);
+
+	// String | CloseGroup
+	while (tokens[nextToken].type != TokenType::CloseGroup)
+	{
+		// Key-value
+		const Token& keyToken = tokens[nextToken++];
+		if (keyToken.type == TokenType::String)
+		{
+			// Key
+			FString keyStr;
+			ReadToken(src, keyToken, keyStr);
+			keyStr.RemoveFromStart(TEXT("\""));
+			keyStr.RemoveFromEnd(TEXT("\""));
+
+			// Value
+			UValveValue* value = ParseValue(src, tokens, nextToken, outer);
+			if (value == nullptr)
+			{
+				groupValue->MarkPendingKill();
+				return nullptr;
+			}
+
+			// Insert
+			FValveGroupKeyValue keyValue;
+			keyValue.Key = FName(*keyStr);
+			keyValue.Value = value;
+			groupValue->Items.Add(keyValue);
+		}
+		else
+		{
+			UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting key-value or value, got '%s' at %d"), *tokenTypeNames[(int)keyToken.type], keyToken.start);
+			groupValue->MarkPendingKill();
+			return nullptr;
+		}
+	}
+
+	// CloseGroup
+	nextToken++;
+
+	return groupValue;
+}
+
+UValveDocument* UValveDocument::Parse(const FString& text, UObject* outer)
+{
+	TArray<Token> tokens;
+	if (!Tokenise(text, tokens)) { return nullptr; }
+
+	if (outer == nullptr) { outer = (UObject*)GetTransientPackage(); }
+
+	UValveDocument* doc = NewObject<UValveDocument>(outer);
+
+	int pos = 0;
+	TArray<UValveValue*> items;
+	while (pos < tokens.Num())
+	{
+		UValveValue* value = ParseValue(text, tokens, pos, outer);
+		if (value == nullptr) { break; }
+		items.Add(value);
+	}
+
+	if (items.Num() == 0)
+	{
+		doc->Root = nullptr;
+	}
+	else if (items.Num() == 1)
+	{
+		doc->Root = items[0];
+	}
+	else
+	{
+		UValveArrayValue* arrayValue = NewObject<UValveArrayValue>(doc);
+		arrayValue->Items.Append(items);
+		doc->Root = arrayValue;
+	}
+
+	return doc;
+}
+
 struct CompiledPath
 {
 	enum Flags
@@ -208,11 +391,6 @@ const CompiledPath& GetCompiledPath(const FName path)
 		}
 	}
 	return compiledPath;
-}
-
-UValveDocument* UValveDocument::Parse(const FString& text, UObject* outer)
-{
-	return nullptr;
 }
 
 UValveValue* UValveDocument::GetValue(FName path) const

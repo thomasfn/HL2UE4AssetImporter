@@ -5,6 +5,8 @@
 
 #include "ValveKeyValues.generated.h"
 
+DECLARE_LOG_CATEGORY_EXTERN(LogValveKeyValuesParser, Log, All);
+
 UCLASS()
 class HL2RUNTIME_API UValveValue : public UObject
 {

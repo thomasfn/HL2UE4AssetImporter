@@ -6,9 +6,190 @@
 
 DEFINE_LOG_CATEGORY(LogValveKeyValuesParser);
 
+#pragma region UValveComplexValue
+
+struct CompiledPath
+{
+	enum Flags
+	{
+		None,
+		ArrayIndexer
+	};
+	struct Segment
+	{
+		FName Key;
+		int Data;
+		Flags Flags;
+	};
+	TArray<Segment> Segments;
+};
+static TMap<FName, CompiledPath> CompiledPathMap;
+const CompiledPath& GetCompiledPath(const FName path)
+{
+	CompiledPath* ptr = CompiledPathMap.Find(path);
+	if (ptr != nullptr) { return *ptr; }
+	CompiledPath& compiledPath = CompiledPathMap.FindOrAdd(path);
+	FString pathStr = path.ToString();
+	pathStr.TrimStartAndEndInline();
+	if (pathStr.IsEmpty()) { return compiledPath; }
+	TArray<FString> segments;
+	pathStr.ParseIntoArray(segments, TEXT("."), true);
+	compiledPath.Segments.Reserve(segments.Num());
+	for (int i = 0; i < segments.Num(); ++i)
+	{
+		FString segmentStr = segments[i];
+
+		// Emit a standard segment
+		int arrayIndexerIndex;
+		if (!segmentStr.FindChar('[', arrayIndexerIndex))
+		{
+			arrayIndexerIndex = segmentStr.Len();
+		}
+		FString beforeArrayIndexer = segmentStr.Left(arrayIndexerIndex);
+		beforeArrayIndexer.TrimStartAndEndInline();
+		if (beforeArrayIndexer.Len() > 0)
+		{
+			CompiledPath::Segment segment;
+			segment.Key = FName(*beforeArrayIndexer);
+			segment.Flags = CompiledPath::None;
+			segment.Data = 0;
+			compiledPath.Segments.Add(segment);
+			segmentStr = segmentStr.RightChop(arrayIndexerIndex);
+		}
+
+		// Iterate array indexers
+		while (segmentStr.FindChar('[', arrayIndexerIndex))
+		{
+			// Find end of array indexer
+			int arrayIndexerIndexEnd;
+			check(segmentStr.FindChar(']', arrayIndexerIndexEnd));
+			FString arrayIndexerStr = segmentStr.Mid(arrayIndexerIndex + 1, arrayIndexerIndexEnd - arrayIndexerIndex - 1);
+
+			// Emit an array indexer segment
+			{
+				CompiledPath::Segment segment;
+				segment.Key = FName(*arrayIndexerStr);
+				segment.Flags = CompiledPath::ArrayIndexer;
+				segment.Data = FCString::Atoi(*arrayIndexerStr);
+				compiledPath.Segments.Add(segment);
+			}
+
+			segmentStr = segmentStr.RightChop(arrayIndexerIndexEnd + 1);
+		}
+	}
+	return compiledPath;
+}
+
+UValveValue* UValveComplexValue::GetValue(FName path) const
+{
+	const CompiledPath& compiledPath = GetCompiledPath(path);
+	UValveValue* curValue = (UValveValue*)this;
+	for (int i = 0; i < compiledPath.Segments.Num(); ++i)
+	{
+		if (curValue == nullptr) { return nullptr; }
+		const CompiledPath::Segment& segment = compiledPath.Segments[i];
+		if (segment.Flags == CompiledPath::Flags::ArrayIndexer)
+		{
+			const UValveArrayValue* arrayValue = Cast<UValveArrayValue>(curValue);
+			if (arrayValue == nullptr) { return nullptr; }
+			if (!arrayValue->Items.IsValidIndex(segment.Data)) { return nullptr; }
+			curValue = arrayValue->Items[segment.Data];
+		}
+		else
+		{
+			const UValveGroupValue* groupValue = Cast<UValveGroupValue>(curValue);
+			if (groupValue == nullptr) { return nullptr; }
+			TArray<UValveValue*> items;
+			groupValue->GetItems(segment.Key, items);
+			if (items.Num() == 0) { return nullptr; }
+
+			// Special case: there could be multiple items with the same key in the group, so peek ahead for an array indexer
+			if (i < compiledPath.Segments.Num() - 1 && compiledPath.Segments[i + 1].Flags == CompiledPath::Flags::ArrayIndexer)
+			{
+				// Use the array indexer to select a key
+				const CompiledPath::Segment& arrayIndexerSegment = compiledPath.Segments[++i];
+				if (!items.IsValidIndex(arrayIndexerSegment.Data)) { return nullptr; }
+				curValue = items[arrayIndexerSegment.Data];
+			}
+			else
+			{
+				// Otherwise, just select the first one
+				curValue = items[0];
+			}
+		}
+	}
+	return curValue;
+}
+
+bool UValveComplexValue::GetInt(FName path, int& outValue) const
+{
+	const UValveValue* rawValue = GetValue(path);
+	if (rawValue == nullptr) { return false; }
+	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsInt();
+	return true;
+}
+
+bool UValveComplexValue::GetFloat(FName path, float& outValue) const
+{
+	const UValveValue* rawValue = GetValue(path);
+	if (rawValue == nullptr) { return false; }
+	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsFloat();
+	return true;
+}
+
+bool UValveComplexValue::GetBool(FName path, bool& outValue) const
+{
+	const UValveValue* rawValue = GetValue(path);
+	if (rawValue == nullptr) { return false; }
+	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsBool();
+	return true;
+}
+
+bool UValveComplexValue::GetString(FName path, FString& outValue) const
+{
+	const UValveValue* rawValue = GetValue(path);
+	if (rawValue == nullptr) { return false; }
+	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsString();
+	return true;
+}
+
+bool UValveComplexValue::GetName(FName path, FName& outValue) const
+{
+	const UValveValue* rawValue = GetValue(path);
+	if (rawValue == nullptr) { return false; }
+	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsName();
+	return true;
+}
+
+UValveGroupValue* UValveComplexValue::GetGroup(FName path) const
+{
+	UValveValue* rawValue = GetValue(path);
+	if (rawValue == nullptr) { return false; }
+	return Cast<UValveGroupValue>(rawValue);
+}
+
+UValveArrayValue* UValveComplexValue::GetArray(FName path) const
+{
+	UValveValue* rawValue = GetValue(path);
+	if (rawValue == nullptr) { return false; }
+	return Cast<UValveArrayValue>(rawValue);
+}
+
+#pragma endregion
+
 #pragma region UValveGroupValue
 
-UValveValue* UValveGroupValue::GetItem(FName key)
+UValveValue* UValveGroupValue::GetItem(FName key) const
 {
 	for (const FValveGroupKeyValue& kv : Items)
 	{
@@ -20,7 +201,7 @@ UValveValue* UValveGroupValue::GetItem(FName key)
 	return nullptr;
 }
 
-int UValveGroupValue::GetItems(FName key, TArray<UValveValue*>& outItems)
+int UValveGroupValue::GetItems(FName key, TArray<UValveValue*>& outItems) const
 {
 	int num = 0;
 	for (const FValveGroupKeyValue& kv : Items)
@@ -142,9 +323,12 @@ FString UValveStringValue::AsString() const
 enum class TokenType
 {
 	Whitespace,
+	SingleLineComment,
 	OpenGroup,
 	CloseGroup,
-	String,
+	Number,
+	QuotedString,
+	UnquotedString,
 	TokenType_Count
 };
 
@@ -158,22 +342,31 @@ struct Token
 const FString tokenTypeNames[] =
 {
 	TEXT("Whitespace"),
+	TEXT("SingleLineComment"),
 	TEXT("OpenGroup"),
 	TEXT("CloseGroup"),
-	TEXT("String")
+	TEXT("Number"),
+	TEXT("QuotedString"),
+	TEXT("UnquotedString")
 };
+
+constexpr int numTokenTypeNames = sizeof(tokenTypeNames) / sizeof(FString);
+static_assert(numTokenTypeNames == (int)TokenType::TokenType_Count, "ValueKeyValues.cpp: Each token type must have a name");
 
 bool Tokenise(const FString& src, TArray<Token>& out)
 {
 	const static FRegexPattern patterns[] =
 	{
 		FRegexPattern(TEXT("[\\s\\n\\r]+")), // Whitespace
+		FRegexPattern(TEXT("//[^\\n]*")), // SingleLineComment
 		FRegexPattern(TEXT("\\{")), // OpenGroup
 		FRegexPattern(TEXT("\\}")), // CloseGroup
-		FRegexPattern(TEXT("\"((?:\\\\\"|[^\"])*)\"")) // String
+		FRegexPattern(TEXT("(-?(?:\\d*\\.)?\\d+)")), // Number
+		FRegexPattern(TEXT("\"((?:\\\\\"|[^\"])*)\"")), // QuotedString
+		FRegexPattern(TEXT("((?:\\\\\"|[^\\s])*)")) // UnquotedString
 	};
 	constexpr int numPatterns = sizeof(patterns) / sizeof(FRegexPattern);
-	static_assert(numPatterns == (int)TokenType::TokenType_Count, "ValueKeyValues.cpp: Each token must have a regex pattern");
+	static_assert(numPatterns == (int)TokenType::TokenType_Count, "ValueKeyValues.cpp: Each token type must have a regex pattern");
 	int curPos = 0;
 	while (curPos < src.Len())
 	{
@@ -185,7 +378,7 @@ bool Tokenise(const FString& src, TArray<Token>& out)
 			if (matcher.FindNext() && matcher.GetMatchBeginning() == curPos)
 			{
 				matched = true;
-				if (i > 0) // ignore whitespace
+				if (i > 1) // ignore whitespace and comments
 				{
 					Token token;
 					token.type = (TokenType)i;
@@ -212,7 +405,7 @@ void ReadToken(const FString& src, const Token& token, FString& out)
 }
 
 UValveValue* ParseValue(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer);
-UValveGroupValue* ParseGroup(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer);
+UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer);
 
 // Parses any kind of value from the token stream
 UValveValue* ParseValue(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer)
@@ -220,42 +413,93 @@ UValveValue* ParseValue(const FString& src, const TArray<Token>& tokens, int& ne
 	// Peek
 	switch (tokens[nextToken].type)
 	{
-		case TokenType::String:
+		case TokenType::QuotedString:
 		{
-			UValveStringValue *stringValue = NewObject<UValveStringValue>(outer);
+			UValveStringValue* stringValue = NewObject<UValveStringValue>(outer);
+			FString tmp;
+			ReadToken(src, tokens[nextToken++], tmp); // Consume
+			tmp.RemoveFromStart(TEXT("\""));
+			tmp.RemoveFromEnd(TEXT("\""));
+			stringValue->Value = tmp;
+			return stringValue;
+		}
+		case TokenType::UnquotedString:
+		{
+			UValveStringValue* stringValue = NewObject<UValveStringValue>(outer);
 			ReadToken(src, tokens[nextToken++], stringValue->Value); // Consume
 			return stringValue;
 		}
+		case TokenType::Number:
+		{
+			// Is it a decimal?
+			FString tmp;
+			ReadToken(src, tokens[nextToken++], tmp); // Consume
+			int decIdx;
+			if (tmp.FindChar('.', decIdx))
+			{
+				UValveFloatValue* floatValue = NewObject<UValveFloatValue>(outer);
+				floatValue->Value = FCString::Atof(*tmp);
+				return floatValue;
+			}
+			else
+			{
+				UValveIntegerValue* intValue = NewObject<UValveIntegerValue>(outer);
+				intValue->Value = FCString::Atoi(*tmp);
+				return intValue;
+			}
+		}
 		case TokenType::OpenGroup:
+		{
 			return ParseGroup(src, tokens, nextToken, outer);
+		}
 		default:
+		{
+			UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting value, got '%s' at %d"), *tokenTypeNames[(int)tokens[nextToken].type], tokens[nextToken].start);
 			return nullptr;
+		}
 	}
 }
 
 // Parses a group value from the token stream
-UValveGroupValue* ParseGroup(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer)
+UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer)
 {
 	// OpenGroup
 	if (tokens[nextToken++].type != TokenType::OpenGroup) { return nullptr; }
 
-	UValveGroupValue* groupValue = NewObject<UValveGroupValue>(outer);
+	UValveGroupValue* groupValue = nullptr;
+	UValveArrayValue* arrayValue = nullptr;
 
 	// String | CloseGroup
 	while (tokens[nextToken].type != TokenType::CloseGroup)
 	{
-		// Key-value
-		const Token& keyToken = tokens[nextToken++];
-		if (keyToken.type == TokenType::String)
+		const Token& peekToken = tokens[nextToken]; // Peek
+		if (peekToken.type == TokenType::QuotedString || peekToken.type == TokenType::UnquotedString)
 		{
+			if (arrayValue != nullptr)
+			{
+				arrayValue->MarkPendingKill();
+				UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting value for array-group, got key at %d"), peekToken.start);
+				return nullptr;
+			}
+			if (groupValue == nullptr)
+			{
+				groupValue = NewObject<UValveGroupValue>(outer);
+			}
+
+			// Consume
+			++nextToken;
+
 			// Key
 			FString keyStr;
-			ReadToken(src, keyToken, keyStr);
-			keyStr.RemoveFromStart(TEXT("\""));
-			keyStr.RemoveFromEnd(TEXT("\""));
+			ReadToken(src, peekToken, keyStr);
+			if (peekToken.type == TokenType::QuotedString)
+			{
+				keyStr.RemoveFromStart(TEXT("\""));
+				keyStr.RemoveFromEnd(TEXT("\""));
+			}
 
 			// Value
-			UValveValue* value = ParseValue(src, tokens, nextToken, outer);
+			UValveValue* value = ParseValue(src, tokens, nextToken, groupValue);
 			if (value == nullptr)
 			{
 				groupValue->MarkPendingKill();
@@ -268,10 +512,35 @@ UValveGroupValue* ParseGroup(const FString& src, const TArray<Token>& tokens, in
 			keyValue.Value = value;
 			groupValue->Items.Add(keyValue);
 		}
+		else if (peekToken.type == TokenType::OpenGroup)
+		{
+			if (groupValue != nullptr)
+			{
+				groupValue->MarkPendingKill();
+				UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting key for keyvalue-group, got group at %d"), peekToken.start);
+				return nullptr;
+			}
+			if (arrayValue == nullptr)
+			{
+				arrayValue = NewObject<UValveArrayValue>(outer);
+			}
+
+			// Value
+			UValveValue* value = ParseValue(src, tokens, nextToken, arrayValue);
+			if (value == nullptr)
+			{
+				arrayValue->MarkPendingKill();
+				return nullptr;
+			}
+
+			// Insert
+			arrayValue->Items.Add(value);
+		}
 		else
 		{
-			UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting key-value or value, got '%s' at %d"), *tokenTypeNames[(int)keyToken.type], keyToken.start);
-			groupValue->MarkPendingKill();
+			UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting key-value or value, got '%s' at %d"), *tokenTypeNames[(int)peekToken.type], peekToken.start);
+			if (groupValue != nullptr) { groupValue->MarkPendingKill(); }
+			if (arrayValue != nullptr) { arrayValue->MarkPendingKill(); }
 			return nullptr;
 		}
 	}
@@ -279,223 +548,65 @@ UValveGroupValue* ParseGroup(const FString& src, const TArray<Token>& tokens, in
 	// CloseGroup
 	nextToken++;
 
-	return groupValue;
+	return groupValue != nullptr ? (UValveComplexValue*)groupValue : (UValveComplexValue*)arrayValue;
 }
 
 UValveDocument* UValveDocument::Parse(const FString& text, UObject* outer)
 {
 	TArray<Token> tokens;
+	{ Token token; token.start = 0; token.end = 0; token.type = TokenType::OpenGroup; tokens.Add(token); }
 	if (!Tokenise(text, tokens)) { return nullptr; }
+	{ Token token; token.start = 0; token.end = 0; token.type = TokenType::CloseGroup; tokens.Add(token); }
 
 	if (outer == nullptr) { outer = (UObject*)GetTransientPackage(); }
 
-	UValveDocument* doc = NewObject<UValveDocument>(outer);
-
 	int pos = 0;
-	TArray<UValveValue*> items;
-	while (pos < tokens.Num())
-	{
-		UValveValue* value = ParseValue(text, tokens, pos, outer);
-		if (value == nullptr) { break; }
-		items.Add(value);
-	}
+	UValveComplexValue* value = ParseGroup(text, tokens, pos, outer);
+	if (value == nullptr) { return nullptr; }
 
-	if (items.Num() == 0)
-	{
-		doc->Root = nullptr;
-	}
-	else if (items.Num() == 1)
-	{
-		doc->Root = items[0];
-	}
-	else
-	{
-		UValveArrayValue* arrayValue = NewObject<UValveArrayValue>(doc);
-		arrayValue->Items.Append(items);
-		doc->Root = arrayValue;
-	}
-
+	UValveDocument* doc = NewObject<UValveDocument>(outer);
+	doc->Root = value;
 	return doc;
-}
-
-struct CompiledPath
-{
-	enum Flags
-	{
-		None,
-		ArrayIndexer
-	};
-	struct Segment
-	{
-		FName Key;
-		int Data;
-		Flags Flags;
-	};
-	TArray<Segment> Segments;
-};
-static TMap<FName, CompiledPath> CompiledPathMap;
-const CompiledPath& GetCompiledPath(const FName path)
-{
-	CompiledPath* ptr = CompiledPathMap.Find(path);
-	if (ptr != nullptr) { return *ptr; }
-	CompiledPath& compiledPath = CompiledPathMap.FindOrAdd(path);
-	FString pathStr = path.ToString();
-	pathStr.TrimStartAndEndInline();
-	if (pathStr.IsEmpty()) { return compiledPath; }
-	TArray<FString> segments;
-	pathStr.ParseIntoArray(segments, TEXT("."), true);
-	compiledPath.Segments.Reserve(segments.Num());
-	for (int i = 0; i < segments.Num(); ++i)
-	{
-		const FString& segmentStr = segments[i];
-
-		// See if it contains an array indexer
-		int arrayIndexerIndex;
-		if (segmentStr.FindChar('[', arrayIndexerIndex))
-		{
-			// Emit a standard segment
-			FString beforeArrayIndexer = segmentStr.Left(arrayIndexerIndex);
-			beforeArrayIndexer.TrimStartAndEndInline();
-			if (beforeArrayIndexer.Len() > 0)
-			{
-				CompiledPath::Segment segment;
-				segment.Key = FName(*beforeArrayIndexer);
-				segment.Flags = CompiledPath::None;
-				segment.Data = 0;
-				compiledPath.Segments.Add(segment);
-			}
-
-			// Find end of array indexer
-			int arrayIndexerIndexEnd;
-			check(segmentStr.FindChar(']', arrayIndexerIndexEnd));
-			FString arrayIndexerStr = segmentStr.Mid(arrayIndexerIndex + 1, arrayIndexerIndexEnd - arrayIndexerIndex - 1);
-
-			// Emit an array indexer segment
-			{
-				CompiledPath::Segment segment;
-				segment.Key = FName(*arrayIndexerStr);
-				segment.Flags = CompiledPath::ArrayIndexer;
-				segment.Data = FCString::Atoi(*arrayIndexerStr);
-				compiledPath.Segments.Add(segment);
-			}
-
-			check(arrayIndexerIndexEnd == segmentStr.Len() - 1);
-		}
-		else
-		{
-			CompiledPath::Segment segment;
-			segment.Key = FName(*segmentStr);
-			segment.Flags = CompiledPath::None;
-			segment.Data = 0;
-			compiledPath.Segments.Add(segment);
-		}
-	}
-	return compiledPath;
 }
 
 UValveValue* UValveDocument::GetValue(FName path) const
 {
-	const CompiledPath& compiledPath = GetCompiledPath(path);
-	UValveValue* curValue = Root;
-	for (int i = 0; i < compiledPath.Segments.Num(); ++i)
-	{
-		if (curValue == nullptr) { return nullptr; }
-		const CompiledPath::Segment& segment = compiledPath.Segments[i];
-		if (segment.Flags == CompiledPath::Flags::ArrayIndexer)
-		{
-			UValveArrayValue* arrayValue = Cast<UValveArrayValue>(curValue);
-			if (arrayValue == nullptr) { return nullptr; }
-			if (!arrayValue->Items.IsValidIndex(segment.Data)) { return nullptr; }
-			curValue = arrayValue->Items[segment.Data];
-		}
-		else
-		{
-			UValveGroupValue* groupValue = Cast<UValveGroupValue>(curValue);
-			if (groupValue == nullptr) { return nullptr; }
-			TArray<UValveValue*> items;
-			groupValue->GetItems(segment.Key, items);
-			if (items.Num() == 0) { return nullptr; }
-
-			// Special case: there could be multiple items with the same key in the group, so peek ahead for an array indexer
-			if (i < compiledPath.Segments.Num() - 1 && compiledPath.Segments[i + 1].Flags == CompiledPath::Flags::ArrayIndexer)
-			{
-				// Use the array indexer to select a key
-				const CompiledPath::Segment& arrayIndexerSegment = compiledPath.Segments[i++];
-				if (!items.IsValidIndex(arrayIndexerSegment.Data)) { return nullptr; }
-				curValue = items[arrayIndexerSegment.Data];
-			}
-			else
-			{
-				// Otherwise, just select the first one
-				curValue = items[0];
-			}
-		}
-	}
-	return curValue;
+	return Root->GetValue(path);
 }
 
 bool UValveDocument::GetInt(FName path, int& outValue) const
 {
-	UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsInt();
-	return true;
+	return Root->GetInt(path, outValue);
 }
 
 bool UValveDocument::GetFloat(FName path, float& outValue) const
 {
-	UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsFloat();
-	return true;
+	return Root->GetFloat(path, outValue);
 }
 
 bool UValveDocument::GetBool(FName path, bool& outValue) const
 {
-	UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsBool();
-	return true;
+	return Root->GetBool(path, outValue);
 }
 
 bool UValveDocument::GetString(FName path, FString& outValue) const
 {
-	UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsString();
-	return true;
+	return Root->GetString(path, outValue);
 }
 
 bool UValveDocument::GetName(FName path, FName& outValue) const
 {
-	UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsName();
-	return true;
+	return Root->GetName(path, outValue);
 }
 
 UValveGroupValue* UValveDocument::GetGroup(FName path) const
 {
-	UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	return Cast<UValveGroupValue>(rawValue);
+	return Root->GetGroup(path);
 }
 
 UValveArrayValue* UValveDocument::GetArray(FName path) const
 {
-	UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	return Cast<UValveArrayValue>(rawValue);
+	return Root->GetArray(path);
 }
 
 #pragma endregion

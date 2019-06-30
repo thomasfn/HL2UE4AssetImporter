@@ -16,8 +16,43 @@ public:
 
 };
 
+class UValveGroupValue;
+class UValveArrayValue;
+
 UCLASS()
-class HL2RUNTIME_API UValveArrayValue : public UValveValue
+class HL2RUNTIME_API UValveComplexValue : public UValveValue
+{
+	GENERATED_BODY()
+
+public:
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual UValveValue* GetValue(FName path) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual bool GetInt(FName path, int& outValue) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual bool GetFloat(FName path, float& outValue) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual bool GetBool(FName path, bool& outValue) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual bool GetString(FName path, FString& outValue) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual bool GetName(FName path, FName& outValue) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual UValveGroupValue* GetGroup(FName path) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual UValveArrayValue* GetArray(FName path) const;
+};
+
+UCLASS()
+class HL2RUNTIME_API UValveArrayValue : public UValveComplexValue
 {
 	GENERATED_BODY()
 
@@ -43,7 +78,7 @@ public:
 };
 
 UCLASS()
-class HL2RUNTIME_API UValveGroupValue : public UValveValue
+class HL2RUNTIME_API UValveGroupValue : public UValveComplexValue
 {
 	GENERATED_BODY()
 
@@ -55,10 +90,10 @@ public:
 public:
 
 	UFUNCTION(BlueprintCallable)
-	UValveValue* GetItem(FName key);
+	UValveValue* GetItem(FName key) const;
 
 	UFUNCTION(BlueprintCallable)
-	int GetItems(FName key, TArray<UValveValue*>& outItems);
+	int GetItems(FName key, TArray<UValveValue*>& outItems) const;
 
 };
 
@@ -154,7 +189,7 @@ class HL2RUNTIME_API UValveDocument : public UObject
 public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Valve Key Values - Document")
-	UValveValue* Root;
+	UValveComplexValue* Root;
 
 public:
 

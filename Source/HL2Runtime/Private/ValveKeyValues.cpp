@@ -120,54 +120,11 @@ UValveValue* UValveComplexValue::GetValue(FName path) const
 	return curValue;
 }
 
-bool UValveComplexValue::GetInt(FName path, int& outValue) const
+UValvePrimitiveValue* UValveComplexValue::GetPrimitive(FName path) const
 {
-	const UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsInt();
-	return true;
-}
-
-bool UValveComplexValue::GetFloat(FName path, float& outValue) const
-{
-	const UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsFloat();
-	return true;
-}
-
-bool UValveComplexValue::GetBool(FName path, bool& outValue) const
-{
-	const UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsBool();
-	return true;
-}
-
-bool UValveComplexValue::GetString(FName path, FString& outValue) const
-{
-	const UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsString();
-	return true;
-}
-
-bool UValveComplexValue::GetName(FName path, FName& outValue) const
-{
-	const UValveValue* rawValue = GetValue(path);
-	if (rawValue == nullptr) { return false; }
-	const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(rawValue);
-	if (primValue == nullptr) { return false; }
-	outValue = primValue->AsName();
-	return true;
+	UValveValue* value = GetValue(path);
+	if (value == nullptr) { return nullptr; }
+	return Cast<UValvePrimitiveValue>(value);
 }
 
 UValveGroupValue* UValveComplexValue::GetGroup(FName path) const
@@ -182,6 +139,46 @@ UValveArrayValue* UValveComplexValue::GetArray(FName path) const
 	UValveValue* rawValue = GetValue(path);
 	if (rawValue == nullptr) { return false; }
 	return Cast<UValveArrayValue>(rawValue);
+}
+
+bool UValveComplexValue::GetInt(FName path, int& outValue) const
+{
+	UValvePrimitiveValue* primValue = GetPrimitive(path);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsInt();
+	return true;
+}
+
+bool UValveComplexValue::GetFloat(FName path, float& outValue) const
+{
+	UValvePrimitiveValue* primValue = GetPrimitive(path);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsFloat();
+	return true;
+}
+
+bool UValveComplexValue::GetBool(FName path, bool& outValue) const
+{
+	UValvePrimitiveValue* primValue = GetPrimitive(path);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsBool();
+	return true;
+}
+
+bool UValveComplexValue::GetString(FName path, FString& outValue) const
+{
+	UValvePrimitiveValue* primValue = GetPrimitive(path);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsString();
+	return true;
+}
+
+bool UValveComplexValue::GetName(FName path, FName& outValue) const
+{
+	UValvePrimitiveValue* primValue = GetPrimitive(path);
+	if (primValue == nullptr) { return false; }
+	outValue = primValue->AsName();
+	return true;
 }
 
 #pragma endregion
@@ -220,99 +217,27 @@ int UValveGroupValue::GetItems(FName key, TArray<UValveValue*>& outItems) const
 
 float UValvePrimitiveValue::AsFloat(float defaultValue) const
 {
-	return defaultValue;
+	return FCString::Atof(*Value); // todo: handle unparseable
 }
 
 int UValvePrimitiveValue::AsInt(int defaultValue) const
 {
-	return defaultValue;
+	return FCString::Atoi(*Value); // todo: handle unparseable
 }
 
 bool UValvePrimitiveValue::AsBool(bool defaultValue) const
 {
-	return defaultValue;
+	return Value.ToBool(); // todo: handle unparseable
 }
 
 FString UValvePrimitiveValue::AsString() const
 {
-	return TEXT("");
+	return Value;
 }
 
 FName UValvePrimitiveValue::AsName() const
 {
-	return FName(*AsString());
-}
-
-#pragma endregion
-
-#pragma region UValveIntegerValue
-
-float UValveIntegerValue::AsFloat(float defaultValue) const
-{
-	return Value;
-}
-
-int UValveIntegerValue::AsInt(int defaultValue) const
-{
-	return Value;
-}
-
-bool UValveIntegerValue::AsBool(bool defaultValue) const
-{
-	return Value > 0;
-}
-
-FString UValveIntegerValue::AsString() const
-{
-	return FString::Printf(TEXT("%d"), Value);
-}
-
-#pragma endregion
-
-#pragma region UValveFloatValue
-
-float UValveFloatValue::AsFloat(float defaultValue) const
-{
-	return Value;
-}
-
-int UValveFloatValue::AsInt(int defaultValue) const
-{
-	return (int)Value;
-}
-
-bool UValveFloatValue::AsBool(bool defaultValue) const
-{
-	return Value > 0.0f;
-}
-
-FString UValveFloatValue::AsString() const
-{
-	return FString::Printf(TEXT("%f"), Value);
-}
-
-#pragma endregion
-
-#pragma region UValveStringValue
-
-float UValveStringValue::AsFloat(float defaultValue) const
-{
-	return FCString::Atof(*Value); // todo: handle unparseable
-}
-
-int UValveStringValue::AsInt(int defaultValue) const
-{
-	return FCString::Atoi(*Value); // todo: handle unparseable
-}
-
-bool UValveStringValue::AsBool(bool defaultValue) const
-{
-	return Value.ToBool(); // todo: handle unparseable
-}
-
-FString UValveStringValue::AsString() const
-{
-	return Value;
+	return FName(*Value);
 }
 
 #pragma endregion
@@ -323,9 +248,9 @@ enum class TokenType
 {
 	Whitespace,
 	SingleLineComment,
+	Newline,
 	OpenGroup,
 	CloseGroup,
-	Number,
 	QuotedString,
 	UnquotedString,
 	TokenType_Count
@@ -342,9 +267,9 @@ const FString tokenTypeNames[] =
 {
 	TEXT("Whitespace"),
 	TEXT("SingleLineComment"),
+	TEXT("Newline"),
 	TEXT("OpenGroup"),
 	TEXT("CloseGroup"),
-	TEXT("Number"),
 	TEXT("QuotedString"),
 	TEXT("UnquotedString")
 };
@@ -356,13 +281,13 @@ bool Tokenise(const FString& src, TArray<Token>& out)
 {
 	const static FRegexPattern patterns[] =
 	{
-		FRegexPattern(TEXT("[\\s\\n\\r]+")), // Whitespace
+		FRegexPattern(TEXT("[ \\t\\r]+")), // Whitespace
 		FRegexPattern(TEXT("//[^\\n]*")), // SingleLineComment
+		FRegexPattern(TEXT("\\n+")), // Newline
 		FRegexPattern(TEXT("\\{")), // OpenGroup
 		FRegexPattern(TEXT("\\}")), // CloseGroup
-		FRegexPattern(TEXT("(-?(?:\\d*\\.)?\\d+)")), // Number
-		FRegexPattern(TEXT("\"((?:\\\\\"|[^\"])*)\"")), // QuotedString
-		FRegexPattern(TEXT("((?:\\\\\"|[^\\s])*)")) // UnquotedString
+		FRegexPattern(TEXT("\"((?:\\\\\"|[^\"\n])*)\"")), // QuotedString
+		FRegexPattern(TEXT("((?:\\\\\"|[^\"\\s\\{\\}])*)")) // UnquotedString
 	};
 	constexpr int numPatterns = sizeof(patterns) / sizeof(FRegexPattern);
 	static_assert(numPatterns == (int)TokenType::TokenType_Count, "ValueKeyValues.cpp: Each token type must have a regex pattern");
@@ -374,7 +299,7 @@ bool Tokenise(const FString& src, TArray<Token>& out)
 		{
 			FRegexMatcher matcher(patterns[i], src);
 			matcher.SetLimits(curPos, src.Len());
-			if (matcher.FindNext() && matcher.GetMatchBeginning() == curPos)
+			if (matcher.FindNext() && matcher.GetMatchBeginning() == curPos && matcher.GetMatchEnding() > curPos)
 			{
 				matched = true;
 				if (i > 1) // ignore whitespace and comments
@@ -409,12 +334,14 @@ UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, 
 // Parses any kind of value from the token stream
 UValveValue* ParseValue(const FString& src, const TArray<Token>& tokens, int& nextToken, UObject* outer)
 {
-	// Peek
-	switch (tokens[nextToken].type)
+	// Allow some newlines
+	while (tokens[nextToken].type == TokenType::Newline) { ++nextToken; }
+
+	switch (tokens[nextToken].type) // Peek
 	{
 		case TokenType::QuotedString:
 		{
-			UValveStringValue* stringValue = NewObject<UValveStringValue>(outer);
+			UValvePrimitiveValue* stringValue = NewObject<UValvePrimitiveValue>(outer);
 			FString tmp;
 			ReadToken(src, tokens[nextToken++], tmp); // Consume
 			tmp.RemoveFromStart(TEXT("\""));
@@ -424,28 +351,18 @@ UValveValue* ParseValue(const FString& src, const TArray<Token>& tokens, int& ne
 		}
 		case TokenType::UnquotedString:
 		{
-			UValveStringValue* stringValue = NewObject<UValveStringValue>(outer);
-			ReadToken(src, tokens[nextToken++], stringValue->Value); // Consume
+			// Special case: multiple unquoted strings in sequence should be considered as one and concatenated
+			TArray<FString> segments;
+			while (tokens[nextToken].type == TokenType::UnquotedString)
+			{
+				FString segment;
+				ReadToken(src, tokens[nextToken++], segment); // Consume
+				segments.Add(segment);
+			}
+			UValvePrimitiveValue* stringValue = NewObject<UValvePrimitiveValue>(outer);
+			stringValue->Value = FString::Join(segments, TEXT(" "));
+			stringValue->Value.TrimStartAndEndInline();
 			return stringValue;
-		}
-		case TokenType::Number:
-		{
-			// Is it a decimal?
-			FString tmp;
-			ReadToken(src, tokens[nextToken++], tmp); // Consume
-			int decIdx;
-			if (tmp.FindChar('.', decIdx))
-			{
-				UValveFloatValue* floatValue = NewObject<UValveFloatValue>(outer);
-				floatValue->Value = FCString::Atof(*tmp);
-				return floatValue;
-			}
-			else
-			{
-				UValveIntegerValue* intValue = NewObject<UValveIntegerValue>(outer);
-				intValue->Value = FCString::Atoi(*tmp);
-				return intValue;
-			}
 		}
 		case TokenType::OpenGroup:
 		{
@@ -469,10 +386,14 @@ UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, 
 	UValveArrayValue* arrayValue = nullptr;
 
 	// String | CloseGroup
-	while (tokens[nextToken].type != TokenType::CloseGroup)
+	while (tokens.IsValidIndex(nextToken) && tokens[nextToken].type != TokenType::CloseGroup)
 	{
 		const Token& peekToken = tokens[nextToken]; // Peek
-		if (peekToken.type == TokenType::QuotedString || peekToken.type == TokenType::UnquotedString)
+		if (peekToken.type == TokenType::Newline)
+		{
+			++nextToken; // Consume
+		}
+		else if (peekToken.type == TokenType::QuotedString || peekToken.type == TokenType::UnquotedString)
 		{
 			if (arrayValue != nullptr)
 			{
@@ -547,7 +468,11 @@ UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, 
 	// CloseGroup
 	nextToken++;
 
-	return groupValue != nullptr ? (UValveComplexValue*)groupValue : (UValveComplexValue*)arrayValue;
+	if (groupValue != nullptr) { return groupValue; }
+	if (arrayValue != nullptr) { return arrayValue; }
+
+	// If we got this far, the group is empty (e.g. "{}") so create and return an empty group
+	return NewObject<UValveGroupValue>(outer);
 }
 
 UValveDocument* UValveDocument::Parse(const FString& text, UObject* outer)

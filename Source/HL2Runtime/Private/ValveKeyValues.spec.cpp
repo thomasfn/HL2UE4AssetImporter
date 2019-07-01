@@ -12,10 +12,19 @@ void ValveKeyValuesSpec::Define()
 		{
 			Describe("Parse", [this]()
 				{
-					It("will return null when parsing a blank string", [this]()
+					It("will return an empty group when parsing a blank string", [this]()
 						{
 							Document = UValveDocument::Parse(TEXT(""));
-							TestNull("Document", Document);
+							TestNotNull("Document", Document);
+							if (Document == nullptr) { return; }
+							TestNotNull("Document->Root", Document->Root);
+							if (Document->Root == nullptr) { return; }
+
+							const UValveGroupValue* root = Cast<UValveGroupValue>(Document->Root);
+							TestNotNull("(UValveGroupValue*)Document->Root", root);
+							if (root == nullptr) { return; }
+
+							TestEqual("Document->Root->Items.Num()", root->Items.Num(), 0);
 						});
 
 					It("will return a non-empty group when parsing a single key-value pair", [this]()
@@ -36,10 +45,10 @@ void ValveKeyValuesSpec::Define()
 							static const FName fnKey(TEXT("key"));
 							TestEqual("Document->Root->Items[0].Key", root->Items[0].Key, fnKey);
 							TestNotNull("Document->Root->Items[0].Value", root->Items[0].Value);
-							const UValveStringValue* stringValue = Cast<UValveStringValue>(root->Items[0].Value);
-							TestNotNull("(UValveStringValue*)Document->Root->Items[0].Value", stringValue);
-							if (stringValue == nullptr) { return; }
-							TestEqual("Document->Root->Items[0].Value->Value", stringValue->Value, TEXT("test"));
+							const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(root->Items[0].Value);
+							TestNotNull("(UValveStringValue*)Document->Root->Items[0].Value", primValue);
+							if (primValue == nullptr) { return; }
+							TestEqual("Document->Root->Items[0].Value->Value", primValue->Value, TEXT("test"));
 						});
 
 					It("will ignore single-line comments", [this]()
@@ -60,60 +69,7 @@ void ValveKeyValuesSpec::Define()
 
 					It("will parse quoted and unquoted strings as keys and values", [this]()
 						{
-							Document = UValveDocument::Parse(TEXT("key1 \"test1\"  \"key2\" \"test2\"  key3 test3  \"key4\" test4"));
-							TestNotNull("Document", Document);
-							if (Document == nullptr) { return; }
-							TestNotNull("Document->Root", Document->Root);
-							if (Document->Root == nullptr) { return; }
-
-							const UValveGroupValue* root = Cast<UValveGroupValue>(Document->Root);
-							TestNotNull("(UValveGroupValue*)Document->Root", root);
-							if (root == nullptr) { return; }
-
-							TestEqual("Document->Root->Items.Num()", root->Items.Num(), 4);
-							if (root->Items.Num() < 4) { return; }
-
-							{
-								static const FName fnKey(TEXT("key1"));
-								TestEqual("Document->Root->Items[0].Key", root->Items[0].Key, fnKey);
-								TestNotNull("Document->Root->Items[0].Value", root->Items[0].Value);
-								const UValveStringValue* stringValue = Cast<UValveStringValue>(root->Items[0].Value);
-								TestNotNull("(UValveStringValue*)Document->Root->Items[0].Value", stringValue);
-								if (stringValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[0].Value->Value", stringValue->Value, TEXT("test1"));
-							}
-							{
-								static const FName fnKey(TEXT("key2"));
-								TestEqual("Document->Root->Items[1].Key", root->Items[1].Key, fnKey);
-								TestNotNull("Document->Root->Items[1].Value", root->Items[1].Value);
-								const UValveStringValue* stringValue = Cast<UValveStringValue>(root->Items[1].Value);
-								TestNotNull("(UValveStringValue*)Document->Root->Items[1].Value", stringValue);
-								if (stringValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[1].Value->Value", stringValue->Value, TEXT("test2"));
-							}
-							{
-								static const FName fnKey(TEXT("key3"));
-								TestEqual("Document->Root->Items[2].Key", root->Items[2].Key, fnKey);
-								TestNotNull("Document->Root->Items[2].Value", root->Items[2].Value);
-								const UValveStringValue* stringValue = Cast<UValveStringValue>(root->Items[2].Value);
-								TestNotNull("(UValveStringValue*)Document->Root->Items[2].Value", stringValue);
-								if (stringValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[2].Value->Value", stringValue->Value, TEXT("test3"));
-							}
-							{
-								static const FName fnKey(TEXT("key4"));
-								TestEqual("Document->Root->Items[3].Key", root->Items[3].Key, fnKey);
-								TestNotNull("Document->Root->Items[3].Value", root->Items[3].Value);
-								const UValveStringValue* stringValue = Cast<UValveStringValue>(root->Items[3].Value);
-								TestNotNull("(UValveStringValue*)Document->Root->Items[3].Value", stringValue);
-								if (stringValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[3].Value->Value", stringValue->Value, TEXT("test4"));
-							}
-						});
-
-					It("will parse integers and floats as values", [this]()
-						{
-							Document = UValveDocument::Parse(TEXT("key1 10  key2 -10  key3 12.5  key4 -12.5  key5 .3  key6 -.3"));
+							Document = UValveDocument::Parse(TEXT("key1 \"test1\"  \"key2\" \"test2\"  key3 test3  \"key4\" .3 .3 .3  \"key5\" test4 \n key6 test5"));
 							TestNotNull("Document", Document);
 							if (Document == nullptr) { return; }
 							TestNotNull("Document->Root", Document->Root);
@@ -130,61 +86,61 @@ void ValveKeyValuesSpec::Define()
 								static const FName fnKey(TEXT("key1"));
 								TestEqual("Document->Root->Items[0].Key", root->Items[0].Key, fnKey);
 								TestNotNull("Document->Root->Items[0].Value", root->Items[0].Value);
-								const UValveIntegerValue* intValue = Cast<UValveIntegerValue>(root->Items[0].Value);
-								TestNotNull("(UValveIntegerValue*)Document->Root->Items[0].Value", intValue);
-								if (intValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[0].Value->Value", intValue->Value, 10);
+								const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(root->Items[0].Value);
+								TestNotNull("(UValveStringValue*)Document->Root->Items[0].Value", primValue);
+								if (primValue == nullptr) { return; }
+								TestEqual("Document->Root->Items[0].Value->Value", primValue->Value, TEXT("test1"));
 							}
 							{
 								static const FName fnKey(TEXT("key2"));
 								TestEqual("Document->Root->Items[1].Key", root->Items[1].Key, fnKey);
 								TestNotNull("Document->Root->Items[1].Value", root->Items[1].Value);
-								const UValveIntegerValue* intValue = Cast<UValveIntegerValue>(root->Items[1].Value);
-								TestNotNull("(UValveIntegerValue*)Document->Root->Items[1].Value", intValue);
-								if (intValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[1].Value->Value", intValue->Value, -10);
+								const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(root->Items[1].Value);
+								TestNotNull("(UValveStringValue*)Document->Root->Items[1].Value", primValue);
+								if (primValue == nullptr) { return; }
+								TestEqual("Document->Root->Items[1].Value->Value", primValue->Value, TEXT("test2"));
 							}
 							{
 								static const FName fnKey(TEXT("key3"));
 								TestEqual("Document->Root->Items[2].Key", root->Items[2].Key, fnKey);
 								TestNotNull("Document->Root->Items[2].Value", root->Items[2].Value);
-								const UValveFloatValue* floatValue = Cast<UValveFloatValue>(root->Items[2].Value);
-								TestNotNull("(UValveFloatValue*)Document->Root->Items[2].Value", floatValue);
-								if (floatValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[2].Value->Value", floatValue->Value, 12.5f);
+								const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(root->Items[2].Value);
+								TestNotNull("(UValveStringValue*)Document->Root->Items[2].Value", primValue);
+								if (primValue == nullptr) { return; }
+								TestEqual("Document->Root->Items[2].Value->Value", primValue->Value, TEXT("test3"));
 							}
 							{
 								static const FName fnKey(TEXT("key4"));
 								TestEqual("Document->Root->Items[3].Key", root->Items[3].Key, fnKey);
 								TestNotNull("Document->Root->Items[3].Value", root->Items[3].Value);
-								const UValveFloatValue* floatValue = Cast<UValveFloatValue>(root->Items[3].Value);
-								TestNotNull("(UValveFloatValue*)Document->Root->Items[3].Value", floatValue);
-								if (floatValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[3].Value->Value", floatValue->Value, -12.5f);
+								const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(root->Items[3].Value);
+								TestNotNull("(UValveStringValue*)Document->Root->Items[3].Value", primValue);
+								if (primValue == nullptr) { return; }
+								TestEqual("Document->Root->Items[3].Value->Value", primValue->Value, TEXT(".3 .3 .3"));
 							}
 							{
 								static const FName fnKey(TEXT("key5"));
 								TestEqual("Document->Root->Items[4].Key", root->Items[4].Key, fnKey);
 								TestNotNull("Document->Root->Items[4].Value", root->Items[4].Value);
-								const UValveFloatValue* floatValue = Cast<UValveFloatValue>(root->Items[4].Value);
-								TestNotNull("(UValveFloatValue*)Document->Root->Items[4].Value", floatValue);
-								if (floatValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[4].Value->Value", floatValue->Value, 0.3f);
+								const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(root->Items[4].Value);
+								TestNotNull("(UValveStringValue*)Document->Root->Items[4].Value", primValue);
+								if (primValue == nullptr) { return; }
+								TestEqual("Document->Root->Items[4].Value->Value", primValue->Value, TEXT("test4"));
 							}
 							{
 								static const FName fnKey(TEXT("key6"));
 								TestEqual("Document->Root->Items[5].Key", root->Items[5].Key, fnKey);
 								TestNotNull("Document->Root->Items[5].Value", root->Items[5].Value);
-								const UValveFloatValue* floatValue = Cast<UValveFloatValue>(root->Items[5].Value);
-								TestNotNull("(UValveFloatValue*)Document->Root->Items[5].Value", floatValue);
-								if (floatValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[5].Value->Value", floatValue->Value, -0.3f);
+								const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(root->Items[5].Value);
+								TestNotNull("(UValveStringValue*)Document->Root->Items[5].Value", primValue);
+								if (primValue == nullptr) { return; }
+								TestEqual("Document->Root->Items[5].Value->Value", primValue->Value, TEXT("test5"));
 							}
 						});
 
 					It("will parse groups as values", [this]()
 						{
-							Document = UValveDocument::Parse(TEXT("key1 { innerkey1 10 }"));
+							Document = UValveDocument::Parse(TEXT("key1\n{\ninnerkey1 10\n}"));
 							TestNotNull("Document", Document);
 							if (Document == nullptr) { return; }
 							TestNotNull("Document->Root", Document->Root);
@@ -210,10 +166,10 @@ void ValveKeyValuesSpec::Define()
 							static const FName fnInnerKey(TEXT("innerkey1"));
 							TestEqual("Document->Root->Items[0].Value->Items[0].Key", groupValue->Items[0].Key, fnInnerKey);
 							TestNotNull("Document->Root->Items[0].Value->Items[0].Value", groupValue->Items[0].Value);
-							const UValveIntegerValue* intValue = Cast<UValveIntegerValue>(groupValue->Items[0].Value);
-							TestNotNull("(UValveIntegerValue*)Document->Root->Items[0].Value->Items[0].Value", intValue);
-							if (intValue == nullptr) { return; }
-							TestEqual("Document->Root->Items[0].Value->Items[0].Value->Value", intValue->Value, 10);
+							const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(groupValue->Items[0].Value);
+							TestNotNull("(UValveIntegerValue*)Document->Root->Items[0].Value->Items[0].Value", primValue);
+							if (primValue == nullptr) { return; }
+							TestEqual("Document->Root->Items[0].Value->Items[0].Value->Value", primValue->Value, FString(TEXT("10")));
 							
 						});
 
@@ -243,10 +199,10 @@ void ValveKeyValuesSpec::Define()
 								static const FName fnInnerKey(TEXT("innerkey1"));
 								TestEqual("Document->Root->Items[0]->Items[0].Key", groupValue->Items[0].Key, fnInnerKey);
 								TestNotNull("Document->Root->Items[0]->Items[0].Value", groupValue->Items[0].Value);
-								const UValveIntegerValue* intValue = Cast<UValveIntegerValue>(groupValue->Items[0].Value);
-								TestNotNull("(UValveIntegerValue*)Document->Root->Items[0]->Items[0].Value", intValue);
-								if (intValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[0]->Items[0].Value->Value", intValue->Value, 10);
+								const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(groupValue->Items[0].Value);
+								TestNotNull("(UValveIntegerValue*)Document->Root->Items[0]->Items[0].Value", primValue);
+								if (primValue == nullptr) { return; }
+								TestEqual("Document->Root->Items[0]->Items[0].Value->Value", primValue->Value, FString(TEXT("10")));
 							}
 							{
 								const UValveGroupValue* groupValue = Cast<UValveGroupValue>(root->Items[1]);
@@ -259,16 +215,16 @@ void ValveKeyValuesSpec::Define()
 								static const FName fnInnerKey(TEXT("innerkey2"));
 								TestEqual("Document->Root->Items[1]->Items[0].Key", groupValue->Items[0].Key, fnInnerKey);
 								TestNotNull("Document->Root->Items[1]->Items[0].Value", groupValue->Items[0].Value);
-								const UValveIntegerValue* intValue = Cast<UValveIntegerValue>(groupValue->Items[0].Value);
-								TestNotNull("(UValveIntegerValue*)Document->Root->Items[1]->Items[0].Value", intValue);
-								if (intValue == nullptr) { return; }
-								TestEqual("Document->Root->Items[1]->Items[0].Value->Value", intValue->Value, 20);
+								const UValvePrimitiveValue* primValue = Cast<UValvePrimitiveValue>(groupValue->Items[0].Value);
+								TestNotNull("(UValveIntegerValue*)Document->Root->Items[1]->Items[0].Value", primValue);
+								if (primValue == nullptr) { return; }
+								TestEqual("Document->Root->Items[1]->Items[0].Value->Value", primValue->Value, FString(TEXT("20")));
 							}
 						});
 
 					It("will query primitive top-level values", [this]()
 						{
-							Document = UValveDocument::Parse(TEXT("intkey 10  floatkey 12.5  stringkey hello"));
+							Document = UValveDocument::Parse(TEXT("\"intkey\" 10  \"floatkey\" 12.5  \"stringkey\" hello"));
 							TestNotNull("Document", Document);
 							if (Document == nullptr) { return; }
 							TestNotNull("Document->Root", Document->Root);
@@ -303,7 +259,7 @@ void ValveKeyValuesSpec::Define()
 								TestTrue("string:intkey", Document->GetString(fnIntKey, value));
 								TestEqual("string:intkey", value, FString(TEXT("10")));
 								TestTrue("string:floatkey", Document->GetString(fnFloatKey, value));
-								TestEqual("string:floatkey", value, FString(TEXT("12.500000")));
+								TestEqual("string:floatkey", value, FString(TEXT("12.5")));
 								TestTrue("string:stringkey", Document->GetString(fnStringKey, value));
 								TestEqual("string:floatkey", value, FString(TEXT("hello")));
 								TestFalse("string:badkey", Document->GetString(fnBadKey, value));
@@ -313,7 +269,7 @@ void ValveKeyValuesSpec::Define()
 								TestTrue("name:intkey", Document->GetName(fnIntKey, value));
 								TestEqual("name:intkey", value, FName(TEXT("10")));
 								TestTrue("name:floatkey", Document->GetName(fnFloatKey, value));
-								TestEqual("name:floatkey", value, FName(TEXT("12.500000")));
+								TestEqual("name:floatkey", value, FName(TEXT("12.5")));
 								TestTrue("name:stringkey", Document->GetName(fnStringKey, value));
 								TestEqual("name:floatkey", value, FName(TEXT("hello")));
 								TestFalse("name:badkey", Document->GetName(fnBadKey, value));
@@ -322,7 +278,7 @@ void ValveKeyValuesSpec::Define()
 
 					It("will query into key-value groups", [this]()
 						{
-							Document = UValveDocument::Parse(TEXT("group1 { intkey 10 }  group2 { intkey 20  innergroup { intkey 30 } }"));
+							Document = UValveDocument::Parse(TEXT("group1 { \"intkey\" 10 }  group2 { \"intkey\" 20  \"innergroup\" { intkey 30 } }"));
 							TestNotNull("Document", Document);
 							if (Document == nullptr) { return; }
 							TestNotNull("Document->Root", Document->Root);
@@ -379,7 +335,7 @@ void ValveKeyValuesSpec::Define()
 
 					It("will query non-unique keys in key-value groups", [this]()
 						{
-							Document = UValveDocument::Parse(TEXT("intkey 10  intkey 20"));
+							Document = UValveDocument::Parse(TEXT("intkey 10 \n intkey 20"));
 							TestNotNull("Document", Document);
 							if (Document == nullptr) { return; }
 							TestNotNull("Document->Root", Document->Root);

@@ -14,8 +14,28 @@ bool FMaterialUtils::SetFromVMT(UVMTMaterial* mtl, const UValveDocument* documen
 	const FString shaderName = rootGroupValue->Items[0].Key.ToString();
 	const UValveGroupValue* groupValue = CastChecked<UValveGroupValue>(rootGroupValue->Items[0].Value);
 
+	// Check for subrect
+	if (shaderName.Equals(TEXT("Subrect"), ESearchCase::IgnoreCase))
+	{
+		// TODO: This
+		UE_LOG(LogHL2Editor, Warning, TEXT("Shader 'Subrect' not yet supported"));
+		return false;
+	}
+
+	// Check for decal
+	bool isDecal;
+	const static FName fnDecal(TEXT("$decal"));
+	if (!groupValue->GetBool(fnDecal, isDecal))
+	{
+		isDecal = false;
+	}
+	if (shaderName.Equals(TEXT("DecalModulate"), ESearchCase::IgnoreCase))
+	{
+		isDecal = true;
+	}
+
 	// Try resolve shader
-	mtl->Parent = hl2Runtime.TryResolveHL2Shader(shaderName);
+	mtl->Parent = hl2Runtime.TryResolveHL2Shader(isDecal ? TEXT("Decal") : shaderName);
 	if (mtl->Parent == nullptr)
 	{
 		UE_LOG(LogHL2Editor, Error, TEXT("Shader '%s' not found"), *shaderName);
@@ -56,6 +76,11 @@ bool FMaterialUtils::SetFromVMT(UVMTMaterial* mtl, const UValveDocument* documen
 		{
 			overrides.TwoSided = true;
 			overrides.bOverride_TwoSided = true;
+		}
+		if (isDecal && shaderName.Equals(TEXT("DecalModulate"), ESearchCase::IgnoreCase))
+		{
+			overrides.BlendMode = EBlendMode::BLEND_Modulate;
+			overrides.bOverride_BlendMode = true;
 		}
 		mtl->UpdateOverridableBaseProperties();
 	}
@@ -169,40 +194,11 @@ void FMaterialUtils::ProcessVMTNode(
 	FMaterialParameterInfo info;
 	const FName key = GetVMTKeyAsParameterName(kv.Key);
 
-	const UValveIntegerValue* valueAsInt = Cast<UValveIntegerValue>(kv.Value);
-	const UValveFloatValue* valueAsFloat = Cast<UValveFloatValue>(kv.Value);
-	const UValveStringValue* valueAsString = Cast<UValveStringValue>(kv.Value);
+	const UValvePrimitiveValue* valueAsPrim = Cast<UValvePrimitiveValue>(kv.Value);
 
-	if (valueAsInt != nullptr)
+	if (valueAsPrim != nullptr)
 	{
-		const int value = valueAsInt->Value;
-
-		// Scalar
-		if (GetMaterialParameterByKey(scalarParams, key, info))
-		{
-			mtl->SetScalarParameterValueEditorOnly(info, (float)value);
-		}
-		// Static switch
-		else if (GetMaterialParameterByKey(staticSwitchParams, key, info))
-		{
-			FStaticSwitchParameter staticSwitchParam;
-			staticSwitchParam.bOverride = true;
-			staticSwitchParam.ParameterInfo = info;
-			staticSwitchParam.Value = value != 0;
-			staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
-		}
-		// Vector
-		else if (GetMaterialParameterByKey(vectorParams, key, info))
-		{
-			FLinearColor tmp;
-			tmp.R = tmp.G = tmp.G = value / 255.0f;
-			tmp.A = 1.0f;
-			mtl->SetVectorParameterValueEditorOnly(info, tmp);
-		}
-	}
-	else if (valueAsString != nullptr)
-	{
-		const FString& value = valueAsString->Value;
+		const FString& value = valueAsPrim->Value;
 
 		// Scalar
 		if (GetMaterialParameterByKey(scalarParams, key, info))
@@ -260,24 +256,6 @@ void FMaterialUtils::ProcessVMTNode(
 			{
 				UE_LOG(LogHL2Editor, Warning, TEXT("Material key '%s' ('%s') was of unexpected type (expecting transform)"), *kv.Key.ToString(), *value);
 			}
-		}
-	}
-	else if (valueAsFloat != nullptr)
-	{
-		const float value = valueAsFloat->Value;
-
-		// Scalar
-		if (GetMaterialParameterByKey(scalarParams, kv.Key, info))
-		{
-			mtl->SetScalarParameterValueEditorOnly(info, value);
-		}
-		// Vector
-		else if (GetMaterialParameterByKey(staticSwitchParams, key, info))
-		{
-			FLinearColor tmp;
-			tmp.R = tmp.G = tmp.G = value;
-			tmp.A = 1.0f;
-			mtl->SetVectorParameterValueEditorOnly(info, tmp);
 		}
 	}
 }
@@ -345,7 +323,7 @@ bool FMaterialUtils::GetMaterialParameterByKey(const TArray<FMaterialParameterIn
 
 bool FMaterialUtils::ParseFloatVec3(const FString& value, FVector& out)
 {
-	const static FRegexPattern patternFloatVector(TEXT("^\\s*\\[\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s*\\]\\s*$"));
+	const static FRegexPattern patternFloatVector(TEXT("^\\s*\\[?\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s*\\]?\\s*$"));
 	FRegexMatcher matchFloatVector(patternFloatVector, value);
 	if (matchFloatVector.FindNext())
 	{

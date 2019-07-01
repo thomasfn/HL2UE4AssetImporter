@@ -18,6 +18,7 @@ public:
 
 class UValveGroupValue;
 class UValveArrayValue;
+class UValvePrimitiveValue;
 
 UCLASS()
 class HL2RUNTIME_API UValveComplexValue : public UValveValue
@@ -28,6 +29,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
 	virtual UValveValue* GetValue(FName path) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual UValvePrimitiveValue* GetPrimitive(FName path) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual UValveGroupValue* GetGroup(FName path) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
+	virtual UValveArrayValue* GetArray(FName path) const;
 
 	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
 	virtual bool GetInt(FName path, int& outValue) const;
@@ -43,12 +53,6 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
 	virtual bool GetName(FName path, FName& outValue) const;
-
-	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
-	virtual UValveGroupValue* GetGroup(FName path) const;
-
-	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Complex")
-	virtual UValveArrayValue* GetArray(FName path) const;
 };
 
 UCLASS()
@@ -104,81 +108,25 @@ class HL2RUNTIME_API UValvePrimitiveValue : public UValveValue
 
 public:
 
-	UFUNCTION(BlueprintCallable)
-	virtual float AsFloat(float defaultValue = 0.0f) const;
-	
-	UFUNCTION(BlueprintCallable)
-	virtual int AsInt(int defaultValue = 0) const;
-
-	UFUNCTION(BlueprintCallable)
-	virtual bool AsBool(bool defaultValue = false) const;
-
-	UFUNCTION(BlueprintCallable)
-	virtual FString AsString() const;
-
-	UFUNCTION(BlueprintCallable)
-	virtual FName AsName() const;
-};
-
-UCLASS()
-class HL2RUNTIME_API UValveIntegerValue : public UValvePrimitiveValue
-{
-	GENERATED_BODY()
-
-public:
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Valve Key Values - Integer")
-	int32 Value;
-
-	virtual float AsFloat(float defaultValue = 0.0f) const override;
-
-	virtual int AsInt(int defaultValue = 0) const override;
-
-	virtual bool AsBool(bool defaultValue = false) const override;
-
-	virtual FString AsString() const override;
-};
-
-UCLASS()
-class HL2RUNTIME_API UValveFloatValue : public UValvePrimitiveValue
-{
-	GENERATED_BODY()
-
-public:
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Valve Key Values - Float")
-	float Value;
-
-public:
-
-	virtual float AsFloat(float defaultValue = 0.0f) const override;
-
-	virtual int AsInt(int defaultValue = 0) const override;
-
-	virtual bool AsBool(bool defaultValue = false) const override;
-
-	virtual FString AsString() const override;
-};
-
-UCLASS()
-class HL2RUNTIME_API UValveStringValue : public UValvePrimitiveValue
-{
-	GENERATED_BODY()
-
-public:
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Valve Key Values - String")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Valve Key Values - Primitive")
 	FString Value;
 
 public:
 
-	virtual float AsFloat(float defaultValue = 0.0f) const override;
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Primitive")
+	virtual float AsFloat(float defaultValue = 0.0f) const;
+	
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Primitive")
+	virtual int AsInt(int defaultValue = 0) const;
 
-	virtual int AsInt(int defaultValue = 0) const override;
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Primitive")
+	virtual bool AsBool(bool defaultValue = false) const;
 
-	virtual bool AsBool(bool defaultValue = false) const override;
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Primitive")
+	virtual FString AsString() const;
 
-	virtual FString AsString() const override;
+	UFUNCTION(BlueprintCallable, Category = "Valve Key Values - Primitive")
+	virtual FName AsName() const;
 };
 
 UCLASS()

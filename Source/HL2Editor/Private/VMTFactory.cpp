@@ -110,8 +110,8 @@ UVMTMaterial* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FNam
 	// Attempt to import it
 	if (!FMaterialUtils::SetFromVMT(material, document))
 	{
-		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to import VMT"));
-		return nullptr;
+		//Warn->Logf(ELogVerbosity::Error, TEXT("Failed to import VMT"));
+		//return nullptr;
 	}
 
 	// Clean up

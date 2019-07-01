@@ -14,6 +14,7 @@
 #include "MeshDescriptionOperations.h"
 #include "MeshUtilitiesCommon.h"
 #include "OverlappingCorners.h"
+#include "ValveKeyValues.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -879,7 +880,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	skeletalMesh->AddAssetUserData(modelData);
 
 	// Load bones into skeleton
-	FReferenceSkeleton refSkel;
+	FReferenceSkeleton refSkel(false);
 	{
 		FReferenceSkeletonModifier refSkelMod(refSkel, skeleton);
 		refSkel.Empty(bones.Num());
@@ -898,7 +899,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		}
 	}
 	skeletalMesh->RefSkeleton = refSkel;
-	skeleton->MergeAllBonesToBoneTree(skeletalMesh);
+	skeleton->RecreateBoneTree(skeletalMesh);
 
 	// Prepare mesh geometry
 	FSkeletalMeshModel* meshModel = skeletalMesh->GetImportedModel();
@@ -1185,6 +1186,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		// Create phys asset
 		UPhysicsAsset* physicsAsset = CreatePhysAsset(inPhysAssetParent, inPhysAssetName, flags);
 
+		// Read solids
 		uint8* curPtr = ((uint8*)phyHeader) + phyHeader->size;
 		for (int i = 0; i < phyHeader->solidCount; ++i)
 		{
@@ -1196,13 +1198,75 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 				const FPHYSection& section = sections[sectionIndex];
 
 				USkeletalBodySetup* bodySetup = NewObject<USkeletalBodySetup>(physicsAsset, FName(*FString::Printf(TEXT("%d:%d"), i, sectionIndex)));
-				bodySetup->BoneName = FName(*bones[section.BoneIndex]->GetName());
+				bodySetup->BoneName = FName(*bones[0]->GetName());
 				bodySetup->bGenerateMirroredCollision = true;
 				bodySetup->bConsiderForBounds = true;
 				FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, bodySetup);
 				physicsAsset->SkeletalBodySetups.Add(bodySetup);
 			}
 		}
+
+		// Read text section
+		UValveDocument* doc;
+		{
+			const auto rawStr = StringCast<TCHAR, ANSICHAR>((const char*)curPtr);
+			const FString textSection(rawStr.Length(), rawStr.Get());
+			doc = UValveDocument::Parse(textSection);
+			if (doc == nullptr)
+			{
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Failed to parse PHY text section"));
+				return nullptr;
+			}
+		}
+		const UValveGroupValue* root = CastChecked<UValveGroupValue>(doc->Root);
+
+		// Parse solids
+		TArray<UValveValue*> solidValues;
+		static const FName fnSolid(TEXT("solid"));
+		root->GetItems(fnSolid, solidValues);
+		for (const UValveValue* solidValue : solidValues)
+		{
+			const UValveGroupValue* solidGroupValue = CastChecked<UValveGroupValue>(solidValue);
+			int index;
+			static const FName fnIndex(TEXT("index"));
+			if (!solidGroupValue->GetInt(fnIndex, index))
+			{
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid missing index"));
+				continue;
+			}
+			if (!physicsAsset->SkeletalBodySetups.IsValidIndex(index))
+			{
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid refers to invalid index %i"), index);
+				continue;
+			}
+			FName name;
+			static const FName fnName(TEXT("name"));
+			if (!solidGroupValue->GetName(fnName, name))
+			{
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid %i missing name"), index);
+				continue;
+			}
+			USkeletalBodySetup* bodySetup = physicsAsset->SkeletalBodySetups[index];
+			bodySetup->BoneName = name;
+			FName surfaceProp;
+			static const FName fnSurfaceProp(TEXT("surfaceprop"));
+			if (solidGroupValue->GetName(fnSurfaceProp, surfaceProp))
+			{
+				bodySetup->PhysMaterial = IHL2Runtime::Get().TryResolveHL2SurfaceProp(surfaceProp);
+			}
+		}
+
+		// Parse constraints
+		TArray<UValveValue*> constraintValues;
+		static const FName fnRagdollConstraint(TEXT("ragdollconstraint"));
+		root->GetItems(fnRagdollConstraint, constraintValues);
+		for (const UValveValue* constraintValue : constraintValues)
+		{
+			const UValveGroupValue* constraintGroupValue = CastChecked<UValveGroupValue>(constraintValue);
+
+			// TODO: Actually create the constraint
+		}
+
 		physicsAsset->PreviewSkeletalMesh = skeletalMesh;
 		skeletalMesh->PhysicsAsset = physicsAsset;
 	}

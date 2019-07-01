@@ -181,6 +181,252 @@ namespace Valve
 			void GetModels(TArray<const mstudiomodel_t*>& out) const { return ReadArray<mstudiomodel_t>(this, modelindex, nummodels, out); }
 		};
 
+		struct mstudiomovement_t
+		{
+			int					endframe;
+			int					motionflags;
+			float				v0;			// velocity at start of block
+			float				v1;			// velocity at end of block
+			float				angle;		// YAW rotation at end of this blocks movement
+			FVector				vector;		// movement vector relative to this blocks initial angle
+			FVector				position;	// relative to start of animation???
+		};
+
+		union mstudioanimvalue_t
+		{
+			struct
+			{
+				uint8	valid;
+				uint8	total;
+			} num;
+			short		value;
+		};
+
+		struct mstudioanim_valueptr_t
+		{
+			short	offset[3];
+			const mstudioanimvalue_t* GetAnimValue(int i) const { return offset[i] > 0 ? (const mstudioanimvalue_t*)(((uint8*)this) + offset[i]) : nullptr; };
+		};
+
+		enum class mstudioanim_flag : uint8
+		{
+			STUDIO_ANIM_RAWPOS = 0x01, // Vector48
+			STUDIO_ANIM_RAWROT = 0x02, // Quaternion48
+			STUDIO_ANIM_ANIMPOS = 0x04, // mstudioanim_valueptr_t
+			STUDIO_ANIM_ANIMROT = 0x08, // mstudioanim_valueptr_t
+			STUDIO_ANIM_DELTA = 0x10,
+			STUDIO_ANIM_RAWROT2 = 0x20 // Quaternion64
+		};
+
+		// per bone per animation DOF and weight pointers
+		struct mstudioanim_t
+		{
+			uint8				bone;
+			uint8				flags;		// weighing options
+			bool HasFlag(mstudioanim_flag flag) const { return (flags & (int)flag) != 0; }
+
+			const uint8* GetDataPtr() const { return (((uint8*)this) + sizeof(mstudioanim_t)); }
+
+			// valid for animating data only
+			const mstudioanim_valueptr_t* GetRotValue() const { return (mstudioanim_valueptr_t*)GetDataPtr(); }
+			const mstudioanim_valueptr_t* GetPosValue() const { return (mstudioanim_valueptr_t*)GetDataPtr() + (HasFlag(mstudioanim_flag::STUDIO_ANIM_ANIMROT) ? 1 : 0); }
+
+			//// valid if animation unvaring over timeline
+			//inline Quaternion48* pQuat48(void) const { return (Quaternion48*)(pData()); };
+			//inline Quaternion64* pQuat64(void) const { return (Quaternion64*)(pData()); };
+			//inline Vector48* pPos(void) const { return (Vector48*)(pData() + ((flags & STUDIO_ANIM_RAWROT) != 0) * sizeof(*pQuat48()) + ((flags & STUDIO_ANIM_RAWROT2) != 0) * sizeof(*pQuat64())); };
+
+			short				nextoffset;
+		};
+
+		struct mstudioanimblock_t
+		{
+			int					datastart;
+			int					dataend;
+		};
+
+		struct mstudioanimsections_t
+		{
+			int					animblock;
+			int					animindex;
+		};
+
+		struct studiohdr_t;
+
+		enum class mstudioanimdesc_flag : int32
+		{
+			LOOPING = 0x0001,		// ending frame should be the same as the starting frame
+			SNAP = 0x0002,		// do not interpolate between previous animation and this one
+			ADDDELTA = 0x0004,		// this sequence "adds" to the base sequences, not slerp blends
+			AUTOPLAY = 0x0008,		// temporary flag that forces the sequence to always play
+			POST = 0x0010,		// 
+			ALLZEROS = 0x0020,		// this animation/sequence has no real animation data
+			CYCLEPOSE = 0x0080,		// cycle index is taken from a pose parameter index
+			REALTIME = 0x0100,		// cycle index is taken from a real-time clock, not the animations cycle index
+			LOCAL = 0x0200,		// sequence has a local context sequence
+			HIDDEN = 0x0400,		// don't show in default selection views
+			OVERRIDE = 0x0800,		// a forward declared sequence (empty)
+			ACTIVITY = 0x1000,		// Has been updated at runtime to activity index
+			EVENT = 0x2000,		// Has been updated at runtime to event index
+			WORLD = 0x4000		// sequence blends in worldspace
+		};
+
+		struct mstudioanimdesc_t
+		{
+			int					baseptr;
+
+			int					sznameindex;
+			FString GetName() const { return ReadString(this, sznameindex); }
+
+			float				fps;		// frames per second	
+			int					flags;		// looping/non-looping flags
+			bool HasFlag(mstudioanimdesc_flag flag) const { return (flags & (int)flag) != 0; }
+
+			int					numframes;
+
+			// piecewise movement
+			int					nummovements;
+			int					movementindex;
+			void GetMovements(TArray<const mstudiomovement_t*>& out) const { return ReadArray<mstudiomovement_t>(this, movementindex, nummovements, out); }
+
+			int					unused1[6];			// remove as appropriate (and zero if loading older versions)	
+
+			int					animblock;
+			int					animindex;	 // non-zero when anim data isn't in sections
+
+
+			int					numikrules;
+			int					ikruleindex;	// non-zero when IK data is stored in the mdl
+			int					animblockikruleindex; // non-zero when IK data is stored in animblock file
+			//mstudioikrule_t* pIKRule(int i) const;
+
+			int					numlocalhierarchy;
+			int					localhierarchyindex;
+			//mstudiolocalhierarchy_t* pHierarchy(int i) const;
+
+			int					sectionindex;
+			int					sectionframes; // number of frames used in each fast lookup section, zero if not used
+			void GetSections(TArray<const mstudioanimsections_t*>& out) const { return ReadArray<mstudioanimsections_t>(this, sectionindex, (numframes / sectionframes) + 2, out); }
+
+			short				zeroframespan;	// frames per span
+			short				zeroframecount; // number of spans
+			int					zeroframeindex;
+			//byte* pZeroFrameData() const { if (zeroframeindex) return (((byte*)this) + zeroframeindex); else return NULL; };
+			mutable float		zeroframestalltime;		// saved during read stalls
+		};
+
+		
+
+		struct mstudioseqdesc_t
+		{
+			int					baseptr;
+
+			int					szlabelindex;
+			FString GetLabel() const { return szlabelindex > 0 ? ReadString(this, szlabelindex) : FString(); }
+
+			int					szactivitynameindex;
+			FString GetActivityName() const { return szactivitynameindex > 0 ? ReadString(this, szactivitynameindex) : FString(); }
+
+			int					flags;		// looping/non-looping flags
+			
+
+			int					activity;	// initialized at loadtime to game DLL values
+			int					actweight;
+
+			int					numevents;
+			int					eventindex;
+			//inline mstudioevent_t* pEvent(int i) const { Assert(i >= 0 && i < numevents); return (mstudioevent_t*)(((byte*)this) + eventindex) + i; };
+
+			FVector				bbmin;		// per sequence bounding box
+			FVector				bbmax;
+
+			int					numblends;
+
+			// Index into array of shorts which is groupsize[0] x groupsize[1] in length
+			int					animindexindex;
+
+			void GetAnimIndices(TArray<TArray<int>>& out) const
+			{
+				out.AddDefaulted(groupsize[0]);
+				short* ptr = (short*)(((uint8*)this) + animindexindex);
+				for (int x = 0; x < out.Num(); ++x)
+				{
+					TArray<int>& arr = out[x];
+					arr.Reserve(groupsize[1]);
+					for (int y = 0; y < out.Num(); ++y)
+					{
+						arr.Add((int)ptr[y * groupsize[0] + x]);
+					}
+				}
+			}
+
+			/*inline int			anim(int x, int y) const
+			{
+				if (x >= groupsize[0])
+				{
+					x = groupsize[0] - 1;
+				}
+
+				if (y >= groupsize[1])
+				{
+					y = groupsize[1] - 1;
+				}
+
+				int offset = y * groupsize[0] + x;
+				short* blends = (short*)(((byte*)this) + animindexindex);
+				int value = (int)blends[offset];
+				return value;
+			}*/
+
+			int					movementindex;	// [blend] float array for blended movement
+			int					groupsize[2];
+			int					paramindex[2];	// X, Y, Z, XR, YR, ZR
+			float				paramstart[2];	// local (0..1) starting value
+			float				paramend[2];	// local (0..1) ending value
+			int					paramparent;
+
+			float				fadeintime;		// ideal cross fate in time (0.2 default)
+			float				fadeouttime;	// ideal cross fade out time (0.2 default)
+
+			int					localentrynode;		// transition node at entry
+			int					localexitnode;		// transition node at exit
+			int					nodeflags;		// transition rules
+
+			float				entryphase;		// used to match entry gait
+			float				exitphase;		// used to match exit gait
+
+			float				lastframe;		// frame that should generation EndOfSequence
+
+			int					nextseq;		// auto advancing sequences
+			int					pose;			// index of delta animation between end and nextseq
+
+			int					numikrules;
+
+			int					numautolayers;	//
+			int					autolayerindex;
+			//inline mstudioautolayer_t* pAutolayer(int i) const { Assert(i >= 0 && i < numautolayers); return (mstudioautolayer_t*)(((byte*)this) + autolayerindex) + i; };
+
+			int					weightlistindex;
+			inline float		GetWeight(int i) const { return *(((float*)(((uint8*)this) + weightlistindex) + i)); };
+
+			// FIXME: make this 2D instead of 2x1D arrays
+			int					posekeyindex;
+			float				GetPoseKey(int iParam, int iAnim) const { return *((float*)(((uint8*)this) + posekeyindex) + iParam * groupsize[0] + iAnim); }
+
+			int					numiklocks;
+			int					iklockindex;
+			//inline mstudioiklock_t* pIKLock(int i) const { Assert(i >= 0 && i < numiklocks); return (mstudioiklock_t*)(((byte*)this) + iklockindex) + i; };
+
+			// Key values
+			int					keyvalueindex;
+			int					keyvaluesize;
+			//inline const char* KeyValueText(void) const { return keyvaluesize != 0 ? ((char*)this) + keyvalueindex : NULL; }
+
+			int					cycleposeindex;		// index of pose parameter to use as cycle index
+
+			int					unused[7];		// remove/add as appropriate (grow back to 8 ints on version change!)
+		};
+
 		struct studiohdr_t
 		{
 			int		id;		// Model format ID, such as "IDST" (0x49 0x44 0x53 0x54)
@@ -228,10 +474,12 @@ namespace Valve
 			// mstudioanimdesc_t
 			int		localanim_count;
 			int		localanim_offset;
+			void GetLocalAnims(TArray<const mstudioanimdesc_t*>& out) const { ReadArray<mstudioanimdesc_t>(this, localanim_offset, localanim_count, out); }
 
 			// mstudioseqdesc_t
 			int		localseq_count;
 			int		localseq_offset;
+			void GetLocalSequences(TArray<const mstudioseqdesc_t*>& out) const { ReadArray<mstudioseqdesc_t>(this, localseq_offset, localseq_count, out); }
 
 			int		activitylistversion; // ??
 			int		eventsindexed;	// ??
@@ -343,6 +591,8 @@ namespace Valve
 			int		animblocks_name_index;
 			int		animblocks_count;
 			int		animblocks_index;
+			const mstudioanimblock_t* GetAnimBlock(int index) const { check(index > 0 && index < animblocks_count); return (mstudioanimblock_t*)(((uint8*)this) + animblocks_index) + index; }
+			void GetAnimBlocks(TArray<const mstudioanimblock_t*>& out) const { return ReadArray<mstudioanimblock_t>(this, animblocks_index, animblocks_count, out); }
 
 			int		animblockModel; // Placeholder for mutable-void*
 

@@ -8,6 +8,7 @@
 #include "IHL2Runtime.h"
 #include "MeshUtils.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "PhysicsEngine/PhysicsConstraintTemplate.h"
 #include "Rendering/SkeletalMeshModel.h"
 #include "HL2ModelData.h"
 #include "MeshUtilities.h"
@@ -280,7 +281,32 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	{
 		phyHeader = nullptr;
 	}
-	
+
+	// Load ani
+	TArray<uint8> aniData;
+	Valve::MDL::studiohdr_t* aniHeader;
+	if (FFileHelper::LoadFileToArray(aniData, *(path / baseFileName + TEXT(".ani"))))
+	{
+		aniHeader = (Valve::MDL::studiohdr_t*)&aniData[0];
+
+		// IDAG
+		if (aniHeader->id != 0x47414449)
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: ANI header has invalid ID (expecting 'IDAG')"));
+			return result;
+		}
+
+		// Version
+		if (aniHeader->version < 44 || aniHeader->version > 48)
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: ANI header has invalid version (expecting 44-48, got %d)"), aniHeader->version);
+			return result;
+		}
+	}
+	else
+	{
+		aniHeader = nullptr;
+	}
 
 	// Static mesh
 	if (header.HasFlag(Valve::MDL::studiohdr_flag::STATIC_PROP))
@@ -320,7 +346,19 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 		result.PhysicsAsset->MarkPackageDirty();
 	}
 
-	// TODO: Animations
+	// Sequences
+	FString animPackagePath = inParent->GetPathName();
+	animPackagePath.Append(TEXT("_a_"));
+	ImportSequences(header, result.SkeletalMesh, animPackagePath, aniHeader, result.Animations, warn);
+
+	// TODO: Search for other mdl files that might contain animation data (e.g. alyx.mdl -> alyx_animations.mdl, alyx_gestures.mdl, alyx_postures.mdl)
+
+	for (UAnimSequence* sequence : result.Animations)
+	{
+		sequence->PostEditChange();
+		FAssetRegistryModule::AssetCreated(sequence);
+		sequence->MarkPackageDirty();
+	}
 
 	return result;
 }
@@ -1264,7 +1302,37 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		{
 			const UValveGroupValue* constraintGroupValue = CastChecked<UValveGroupValue>(constraintValue);
 
-			// TODO: Actually create the constraint
+			int parent;
+			static const FName fnParent(TEXT("parent"));
+			if (!constraintGroupValue->GetInt(fnParent, parent))
+			{
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY constraint missing parent"));
+				continue;
+			}
+
+			int child;
+			static const FName fnChild(TEXT("child"));
+			if (!constraintGroupValue->GetInt(fnChild, child))
+			{
+				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY constraint missing child"));
+				continue;
+			}
+
+			USkeletalBodySetup* parentBodySetup = physicsAsset->SkeletalBodySetups[parent];
+			USkeletalBodySetup* childBodySetup = physicsAsset->SkeletalBodySetups[child];
+
+			const FTransform& parentBoneTransform = skeletalMesh->RefSkeleton.GetRefBonePose()[parent];
+			const FTransform& childBoneTransform = skeletalMesh->RefSkeleton.GetRefBonePose()[child];
+
+			const FVector loc = FMath::Lerp(parentBoneTransform.GetLocation(), childBoneTransform.GetLocation(), 0.5f);
+
+			UPhysicsConstraintTemplate* constraintTemplate = NewObject<UPhysicsConstraintTemplate>(physicsAsset);
+			FConstraintInstance& constraint = constraintTemplate->DefaultInstance;
+
+			constraint.ConstraintBone1 = refSkel.GetBoneName(parent);
+			constraint.ConstraintBone2 = refSkel.GetBoneName(child);
+
+			constraint.ConstraintIndex = physicsAsset->ConstraintSetup.Add(constraintTemplate);
 		}
 
 		physicsAsset->PreviewSkeletalMesh = skeletalMesh;
@@ -1305,6 +1373,193 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 	// Done
 	return skeletalMesh;
+}
+
+void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkeletalMesh* skeletalMesh, const FString& basePath, const Valve::MDL::studiohdr_t* aniHeader, TArray<UAnimSequence*>& outSequences, FFeedbackContext* warn)
+{
+	TArray<const Valve::MDL::mstudioanimdesc_t*> localAnims;
+	header.GetLocalAnims(localAnims);
+	TArray<const Valve::MDL::mstudioseqdesc_t*> localSequences;
+	header.GetLocalSequences(localSequences);
+	TArray<const Valve::MDL::mstudioanimblock_t*> animBlocks;
+	header.GetAnimBlocks(animBlocks);
+
+	for (const Valve::MDL::mstudioanimdesc_t* animDesc : localAnims)
+	{
+		FString name = animDesc->GetName();
+		name.RemoveFromStart(TEXT("@"));
+
+		UPackage* package = CreatePackage(nullptr, *(basePath + name));
+		UAnimSequence* sequence = CreateAnimSequence(package, FName(*FPaths::GetBaseFilename(basePath + name)), RF_Public | RF_Standalone);
+		sequence->SetSkeleton(skeletalMesh->Skeleton);
+		sequence->SetRawNumberOfFrame(animDesc->numframes);
+		sequence->SequenceLength = animDesc->numframes / (float)animDesc->fps;
+
+		if (!animDesc->HasFlag(Valve::MDL::mstudioanimdesc_flag::ALLZEROS))
+		{
+			TArray<TArray<const Valve::MDL::mstudioanim_t*>> anims;
+
+			if (animDesc->sectionindex != 0 && animDesc->sectionframes > 0)
+			{
+				TArray<const Valve::MDL::mstudioanimsections_t*> sections;
+				animDesc->GetSections(sections);
+				anims.AddDefaulted(sections.Num());
+				if (animDesc->animblock == 0)
+				{
+					for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
+					{
+						const Valve::MDL::mstudioanimsections_t* section = sections[sectionIndex];
+						TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims = anims[sectionIndex];
+						const uint8* basePtr = ((uint8*)animDesc) + section->animindex;
+						int sectionFrameCount;
+						if (sectionIndex < sections.Num() - 2)
+						{
+							sectionFrameCount = animDesc->sectionframes;
+						}
+						else
+						{
+							sectionFrameCount = animDesc->numframes - ((sections.Num() - 2) * animDesc->sectionframes);
+						}
+						ReadAnimData(basePtr, animDesc, sectionFrameCount, sectionAnims, aniHeader, skeletalMesh);
+					}
+				}
+				else
+				{
+					check(aniHeader != nullptr);
+					const Valve::MDL::mstudioanimblock_t* block = animBlocks[animDesc->animblock];
+					// TODO: Load from ani
+					// Can we ever get here?
+				}
+			}
+			else
+			{
+				const uint8* basePtr;
+				if (animDesc->animblock == 0)
+				{
+					basePtr = ((uint8*)animDesc) + animDesc->animindex;
+				}
+				else
+				{
+					check(aniHeader != nullptr);
+					const Valve::MDL::mstudioanimblock_t* block = animBlocks[animDesc->animblock];
+					basePtr = ((uint8*)aniHeader) + block->datastart;
+				}
+				anims.AddDefaulted();
+				ReadAnimData(basePtr, animDesc, animDesc->numframes, anims[0], aniHeader, skeletalMesh);
+			}
+
+			// Load anims into sequence
+			int frameIndex = 0;
+			TMap<uint8, FRawAnimSequenceTrack> boneTrackMap;
+			for (const TArray<const Valve::MDL::mstudioanim_t*>& frameBones : anims)
+			{
+				for (const Valve::MDL::mstudioanim_t* anim : frameBones)
+				{
+					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(anim->bone);
+					
+					// We might not have seen any data for this bone for a while, so play catchup
+					const FVector& lastPos = track.PosKeys.Num() > 0 ? track.PosKeys.Last(0) : FVector::ZeroVector;
+					const FQuat& lastRot = track.RotKeys.Num() > 0 ? track.RotKeys.Last(0) : FQuat::Identity;
+					for (int i = track.PosKeys.Num() + 1; i < frameIndex - 1; ++i)
+					{
+						track.PosKeys.Add(lastPos);
+					}
+					for (int i = track.RotKeys.Num() + 1; i < frameIndex - 1; ++i)
+					{
+						track.RotKeys.Add(lastRot);
+					}
+
+					// Rotation
+					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_ANIMROT))
+					{
+						const Valve::MDL::mstudioanimvalue_t* rotValue = anim->GetRotValue()->GetAnimValue(0);
+						track.RotKeys.Add(lastRot);
+					}
+					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_RAWROT))
+					{
+						track.RotKeys.Add(lastRot);
+					}
+					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_RAWROT2))
+					{
+						track.RotKeys.Add(lastRot);
+					}
+					else
+					{
+						track.RotKeys.Add(lastRot);
+					}
+
+					// Position
+					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_ANIMPOS))
+					{
+						const Valve::MDL::mstudioanimvalue_t* posValue = anim->GetPosValue()->GetAnimValue(0);
+						track.PosKeys.Add(lastPos);
+
+					}
+					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_RAWPOS))
+					{
+						track.PosKeys.Add(lastPos);
+					}
+					else
+					{
+						track.PosKeys.Add(lastPos);
+					}
+				}
+				++frameIndex;
+			}
+			sequence->RemoveAllTracks();
+			for (auto& pair : boneTrackMap)
+			{
+				sequence->AddNewRawTrack(skeletalMesh->RefSkeleton.GetBoneName(pair.Key), &pair.Value);
+			}
+		}
+
+		outSequences.Add(sequence);
+	}
+
+	/*for (const Valve::MDL::mstudioseqdesc_t* localSeq : localSequences)
+	{
+		FString label = localSeq->GetLabel();
+		FString activityName = localSeq->GetActivityName();
+
+		TArray<TArray<int>> animIndices;
+		localSeq->GetAnimIndices(animIndices);
+
+		for (int x = 0; x < animIndices.Num(); ++x)
+		{
+			const TArray<int>& indices = animIndices[x];
+			for (int y = 0; y < animIndices.Num(); ++y)
+			{
+				const int idx = indices[y];
+				const Valve::MDL::mstudioanimdesc_t* animDesc = localAnims[idx];
+
+
+			}
+		}
+
+
+	}*/
+}
+
+void UMDLFactory::ReadAnimData(const uint8* basePtr, const Valve::MDL::mstudioanimdesc_t* animDesc, int frameCount, TArray<const Valve::MDL::mstudioanim_t*>& out, const Valve::MDL::studiohdr_t* aniHeader, USkeletalMesh* skeletalMesh)
+{
+	const int numBones = skeletalMesh->RefSkeleton.GetRawBoneNum();
+	for (int i = 0; i < numBones; ++i)
+	{
+		const Valve::MDL::mstudioanim_t* anim = (const Valve::MDL::mstudioanim_t*)basePtr;
+		if (anim->bone == 255 || anim->bone > numBones || anim->nextoffset == 0) { break; }
+		out.Add(anim);
+		if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_ANIMROT))
+		{
+			const Valve::MDL::mstudioanim_valueptr_t* rotValuePtr = anim->GetRotValue();
+
+		}
+		if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_ANIMPOS))
+		{
+			const Valve::MDL::mstudioanim_valueptr_t* posValuePtr = anim->GetPosValue();
+
+		}
+		basePtr += anim->nextoffset;
+	}
 }
 
 void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)

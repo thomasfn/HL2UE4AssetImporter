@@ -32,9 +32,9 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
             return false;
         }
 
-		if ( !parse_vis( bsp_binary ) ) {
+		/*if ( !parse_vis( bsp_binary ) ) {
 			return false;
-		}
+		}*/
 
 		parse_lump_data( bsp_binary, LUMP_ENTITIES, m_Entities );
 

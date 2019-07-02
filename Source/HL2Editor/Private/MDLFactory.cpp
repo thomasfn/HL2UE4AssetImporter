@@ -348,7 +348,7 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 
 	// Sequences
 	FString animPackagePath = inParent->GetPathName();
-	animPackagePath.Append(TEXT("_a_"));
+	animPackagePath.Append(TEXT("_anims/"));
 	ImportSequences(header, result.SkeletalMesh, animPackagePath, aniHeader, result.Animations, warn);
 
 	// TODO: Search for other mdl files that might contain animation data (e.g. alyx.mdl -> alyx_animations.mdl, alyx_gestures.mdl, alyx_postures.mdl)
@@ -926,7 +926,15 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		{
 			const Valve::MDL::mstudiobone_t& bone = *bones[i];
 			FMeshBoneInfo meshBoneInfo;
-			meshBoneInfo.ParentIndex = bone.parent;
+			if (bone.parent < 0)
+			{
+				// Only accept it as root bone if it's the first one
+				meshBoneInfo.ParentIndex = i == 0 ? -1 : 0;
+			}
+			else
+			{
+				meshBoneInfo.ParentIndex = bone.parent;
+			}
 			meshBoneInfo.ExportName = bone.GetName();
 			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
 
@@ -1226,22 +1234,11 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 		// Read solids
 		uint8* curPtr = ((uint8*)phyHeader) + phyHeader->size;
+		TArray<TArray<FPHYSection>> solids;
 		for (int i = 0; i < phyHeader->solidCount; ++i)
 		{
-			TArray<FPHYSection> sections;
+			TArray<FPHYSection>& sections = solids[solids.AddDefaulted()];
 			ReadPHYSolid(curPtr, sections);
-
-			for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
-			{
-				const FPHYSection& section = sections[sectionIndex];
-
-				USkeletalBodySetup* bodySetup = NewObject<USkeletalBodySetup>(physicsAsset, FName(*FString::Printf(TEXT("%d:%d"), i, sectionIndex)));
-				bodySetup->BoneName = FName(*bones[0]->GetName());
-				bodySetup->bGenerateMirroredCollision = true;
-				bodySetup->bConsiderForBounds = true;
-				FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, bodySetup);
-				physicsAsset->SkeletalBodySetups.Add(bodySetup);
-			}
 		}
 
 		// Read text section
@@ -1262,9 +1259,12 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		TArray<UValveValue*> solidValues;
 		static const FName fnSolid(TEXT("solid"));
 		root->GetItems(fnSolid, solidValues);
+		TMap<FName, USkeletalBodySetup*> boneToBodySetupMap;
 		for (const UValveValue* solidValue : solidValues)
 		{
 			const UValveGroupValue* solidGroupValue = CastChecked<UValveGroupValue>(solidValue);
+
+			// Parse index
 			int index;
 			static const FName fnIndex(TEXT("index"));
 			if (!solidGroupValue->GetInt(fnIndex, index))
@@ -1272,11 +1272,13 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid missing index"));
 				continue;
 			}
-			if (!physicsAsset->SkeletalBodySetups.IsValidIndex(index))
+			if (!solids.IsValidIndex(index))
 			{
 				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid refers to invalid index %i"), index);
 				continue;
 			}
+
+			// Parse name
 			FName name;
 			static const FName fnName(TEXT("name"));
 			if (!solidGroupValue->GetName(fnName, name))
@@ -1284,8 +1286,42 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid %i missing name"), index);
 				continue;
 			}
-			USkeletalBodySetup* bodySetup = physicsAsset->SkeletalBodySetups[index];
-			bodySetup->BoneName = name;
+
+			// Retrieve body setup
+			USkeletalBodySetup* bodySetup;
+			{
+				USkeletalBodySetup* const* ptr = boneToBodySetupMap.Find(name);
+				if (ptr == nullptr)
+				{
+					bodySetup = NewObject<USkeletalBodySetup>(physicsAsset, name);
+					if (skeleton->GetReferenceSkeleton().FindBoneIndex(name) >= 0)
+					{
+						bodySetup->BoneName = name;
+					}
+					else
+					{
+						bodySetup->BoneName = FName(*bones[0]->GetName());
+					}
+					bodySetup->bGenerateMirroredCollision = true;
+					bodySetup->bConsiderForBounds = true;
+					physicsAsset->SkeletalBodySetups.Add(bodySetup);
+					boneToBodySetupMap.Add(name, bodySetup);
+				}
+				else
+				{
+					bodySetup = *ptr;
+				}
+			}
+
+			// Parse collision data into it
+			TArray<FPHYSection>& sections = solids[index];
+			for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
+			{
+				const FPHYSection& section = sections[sectionIndex];
+				FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, bodySetup);
+			}
+
+			// Parse surface prop
 			FName surfaceProp;
 			static const FName fnSurfaceProp(TEXT("surfaceprop"));
 			if (solidGroupValue->GetName(fnSurfaceProp, surfaceProp))
@@ -1458,8 +1494,8 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(anim->bone);
 					
 					// We might not have seen any data for this bone for a while, so play catchup
-					const FVector& lastPos = track.PosKeys.Num() > 0 ? track.PosKeys.Last(0) : FVector::ZeroVector;
-					const FQuat& lastRot = track.RotKeys.Num() > 0 ? track.RotKeys.Last(0) : FQuat::Identity;
+					const FVector lastPos = track.PosKeys.Num() > 0 ? track.PosKeys.Last(0) : FVector::ZeroVector;
+					const FQuat lastRot = track.RotKeys.Num() > 0 ? track.RotKeys.Last(0) : FQuat::Identity;
 					for (int i = track.PosKeys.Num() + 1; i < frameIndex - 1; ++i)
 					{
 						track.PosKeys.Add(lastPos);

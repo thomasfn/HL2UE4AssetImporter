@@ -32,6 +32,7 @@ private:
 
 	void BulkImportTexturesClicked();
 	void BulkImportMaterialsClicked();
+	void BulkImportModelsClicked();
 	void ConvertSkyboxes();
 	void ImportBSPClicked();
 

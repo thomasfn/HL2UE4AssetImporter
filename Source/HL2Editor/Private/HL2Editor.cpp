@@ -37,6 +37,11 @@ void HL2EditorImpl::StartupModule()
 		FCanExecuteAction()
 	);
 	utilMenuCommandList->MapAction(
+		FUtilMenuCommands::Get().BulkImportModels,
+		FExecuteAction::CreateRaw(this, &HL2EditorImpl::BulkImportModelsClicked),
+		FCanExecuteAction()
+	);
+	utilMenuCommandList->MapAction(
 		FUtilMenuCommands::Get().ConvertSkyboxes,
 		FExecuteAction::CreateRaw(this, &HL2EditorImpl::ConvertSkyboxes),
 		FCanExecuteAction()
@@ -85,6 +90,7 @@ TSharedRef<SWidget> HL2EditorImpl::GenerateUtilityMenu(TSharedRef<FUICommandList
 	{
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportTextures);
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportMaterials);
+		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportModels);
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().ConvertSkyboxes);
 	}
 	menuBuilder.EndSection();
@@ -157,6 +163,38 @@ void HL2EditorImpl::BulkImportMaterialsClicked()
 		{
 			loopProgress.EnterProgressFrame();
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2MaterialBasePath() / dir);
+			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
+		}
+	}
+}
+
+void HL2EditorImpl::BulkImportModelsClicked()
+{
+	// Ask user to select folder to import from
+	IDesktopPlatform* desktopPlatform = FDesktopPlatformModule::Get();
+	FString rootPath;
+	if (!desktopPlatform->OpenDirectoryDialog(nullptr, TEXT("Choose MDL Location"), TEXT(""), rootPath)) { return; }
+	rootPath += "/";
+
+	// Scan folder
+	IPlatformFile& platformFile = FPlatformFileManager::Get().GetPlatformFile();
+	TArray<FString> filesToImport;
+	platformFile.FindFilesRecursively(filesToImport, *rootPath, TEXT(".mdl"));
+	UE_LOG(LogHL2Editor, Log, TEXT("Importing %d files from '%s'..."), filesToImport.Num(), *rootPath);
+
+	// Import all
+	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
+	TMap<FString, TArray<FString>> groupedFilesToImport;
+	GroupFileListByDirectory(filesToImport, groupedFilesToImport);
+	FScopedSlowTask loopProgress(groupedFilesToImport.Num(), LOCTEXT("ModelsImporting", "Importing mdls..."));
+	loopProgress.MakeDialog();
+	for (const auto& pair : groupedFilesToImport)
+	{
+		FString dir = pair.Key;
+		if (FPaths::MakePathRelativeTo(dir, *rootPath))
+		{
+			loopProgress.EnterProgressFrame();
+			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2ModelBasePath() / dir);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}

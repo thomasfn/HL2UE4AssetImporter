@@ -238,8 +238,8 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 	progress.MakeDialog();
 
 	// Render out VBSPInfo
-	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_VBSPINFO", "Generating VBSPInfo..."));
-	RenderTreeToVBSPInfo(bspModel.m_Headnode);
+	//progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_VBSPINFO", "Generating VBSPInfo..."));
+	//RenderTreeToVBSPInfo(bspModel.m_Headnode);
 
 	// Gather all faces and displacements from tree
 	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_GATHER", "Gathering faces and displacements..."));

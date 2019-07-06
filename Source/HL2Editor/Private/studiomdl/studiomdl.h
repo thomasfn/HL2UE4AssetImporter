@@ -2,8 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "utils.h"
-
-//#pragma pack(1)
+#include "compressed_vector.h"
 
 namespace Valve
 {
@@ -210,12 +209,12 @@ namespace Valve
 
 		enum class mstudioanim_flag : uint8
 		{
-			STUDIO_ANIM_RAWPOS = 0x01, // Vector48
-			STUDIO_ANIM_RAWROT = 0x02, // Quaternion48
-			STUDIO_ANIM_ANIMPOS = 0x04, // mstudioanim_valueptr_t
-			STUDIO_ANIM_ANIMROT = 0x08, // mstudioanim_valueptr_t
-			STUDIO_ANIM_DELTA = 0x10,
-			STUDIO_ANIM_RAWROT2 = 0x20 // Quaternion64
+			RAWPOS = 0x01, // Vector48
+			RAWROT = 0x02, // Quaternion48
+			ANIMPOS = 0x04, // mstudioanim_valueptr_t
+			ANIMROT = 0x08, // mstudioanim_valueptr_t
+			ANIMDELTA = 0x10,
+			RAWROT2 = 0x20 // Quaternion64
 		};
 
 		// per bone per animation DOF and weight pointers
@@ -229,12 +228,12 @@ namespace Valve
 
 			// valid for animating data only
 			const mstudioanim_valueptr_t* GetRotValue() const { return (mstudioanim_valueptr_t*)GetDataPtr(); }
-			const mstudioanim_valueptr_t* GetPosValue() const { return (mstudioanim_valueptr_t*)GetDataPtr() + (HasFlag(mstudioanim_flag::STUDIO_ANIM_ANIMROT) ? 1 : 0); }
+			const mstudioanim_valueptr_t* GetPosValue() const { return (mstudioanim_valueptr_t*)GetDataPtr() + (HasFlag(mstudioanim_flag::ANIMROT) ? 1 : 0); }
 
 			//// valid if animation unvaring over timeline
-			//inline Quaternion48* pQuat48(void) const { return (Quaternion48*)(pData()); };
-			//inline Quaternion64* pQuat64(void) const { return (Quaternion64*)(pData()); };
-			//inline Vector48* pPos(void) const { return (Vector48*)(pData() + ((flags & STUDIO_ANIM_RAWROT) != 0) * sizeof(*pQuat48()) + ((flags & STUDIO_ANIM_RAWROT2) != 0) * sizeof(*pQuat64())); };
+			const Quaternion48* GetQuat48(void) const { return (Quaternion48*)GetDataPtr(); };
+			const Quaternion64* GetQuat64(void) const { return (Quaternion64*)GetDataPtr(); };
+			const Vector48* GetPos(void) const { return (Vector48*)(GetDataPtr() + (HasFlag(mstudioanim_flag::RAWROT) ? 1 : 0) * sizeof(Quaternion48) + (HasFlag(mstudioanim_flag::RAWROT2) ? 1 : 0) * sizeof(Quaternion64)); };
 
 			short				nextoffset;
 		};
@@ -314,8 +313,6 @@ namespace Valve
 			//byte* pZeroFrameData() const { if (zeroframeindex) return (((byte*)this) + zeroframeindex); else return NULL; };
 			mutable float		zeroframestalltime;		// saved during read stalls
 		};
-
-		
 
 		struct mstudioseqdesc_t
 		{
@@ -650,5 +647,3 @@ namespace Valve
 		};
 	}
 }
-
-//#pragma pack()

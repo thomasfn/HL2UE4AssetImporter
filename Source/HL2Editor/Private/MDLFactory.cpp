@@ -271,11 +271,11 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	if (FFileHelper::LoadFileToArray(phyData, *(path / baseFileName + TEXT(".phy"))))
 	{
 		phyHeader = (Valve::PHY::phyheader_t*)&phyData[0];
-		if (phyHeader->checkSum != header.checksum)
+		/*if (phyHeader->checkSum != header.checksum)
 		{
-			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: VVD Header has invalid checksum (expecting %d, got %d)"), header.checksum, vvdHeader.checksum);
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY Header has invalid checksum (expecting %d, got %d)"), header.checksum, phyHeader->checksum);
 			return result;
-		}
+		}*/
 	}
 	else
 	{
@@ -352,6 +352,7 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	ImportSequences(header, result.SkeletalMesh, animPackagePath, aniHeader, result.Animations, warn);
 
 	// TODO: Search for other mdl files that might contain animation data (e.g. alyx.mdl -> alyx_animations.mdl, alyx_gestures.mdl, alyx_postures.mdl)
+	// Do we need to deal with includes?
 
 	for (UAnimSequence* sequence : result.Animations)
 	{
@@ -869,6 +870,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	FFeedbackContext* warn
 )
 {
+
 	// Read and validate body parts
 	TArray<const Valve::MDL::mstudiobodyparts_t*> bodyParts;
 	header.GetBodyParts(bodyParts);
@@ -1419,6 +1421,8 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 	header.GetLocalSequences(localSequences);
 	TArray<const Valve::MDL::mstudioanimblock_t*> animBlocks;
 	header.GetAnimBlocks(animBlocks);
+	TArray<const Valve::MDL::mstudiobone_t*> bones;
+	header.GetBones(bones);
 
 	for (const Valve::MDL::mstudioanimdesc_t* animDesc : localAnims)
 	{
@@ -1433,20 +1437,21 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 
 		if (!animDesc->HasFlag(Valve::MDL::mstudioanimdesc_flag::ALLZEROS))
 		{
-			TArray<TArray<const Valve::MDL::mstudioanim_t*>> anims;
+			TArray<TArray<const Valve::MDL::mstudioanim_t*>> allSectionAnims;
 
+			// Read anim data
 			if (animDesc->sectionindex != 0 && animDesc->sectionframes > 0)
 			{
 				TArray<const Valve::MDL::mstudioanimsections_t*> sections;
 				animDesc->GetSections(sections);
-				anims.AddDefaulted(sections.Num());
+				allSectionAnims.AddDefaulted(sections.Num());
 				if (animDesc->animblock == 0)
 				{
 					for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
 					{
 						const Valve::MDL::mstudioanimsections_t* section = sections[sectionIndex];
-						TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims = anims[sectionIndex];
-						const uint8* basePtr = ((uint8*)animDesc) + section->animindex;
+						TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims = allSectionAnims[sectionIndex];
+						uint8* basePtr = ((uint8*)animDesc) + section->animindex;
 						int sectionFrameCount;
 						if (sectionIndex < sections.Num() - 2)
 						{
@@ -1456,7 +1461,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						{
 							sectionFrameCount = animDesc->numframes - ((sections.Num() - 2) * animDesc->sectionframes);
 						}
-						ReadAnimData(basePtr, animDesc, sectionFrameCount, sectionAnims, aniHeader, skeletalMesh);
+						ReadAnimData(basePtr, skeletalMesh, sectionAnims);
 					}
 				}
 				else
@@ -1469,7 +1474,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 			}
 			else
 			{
-				const uint8* basePtr;
+				uint8* basePtr;
 				if (animDesc->animblock == 0)
 				{
 					basePtr = ((uint8*)animDesc) + animDesc->animindex;
@@ -1478,69 +1483,141 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 				{
 					check(aniHeader != nullptr);
 					const Valve::MDL::mstudioanimblock_t* block = animBlocks[animDesc->animblock];
-					basePtr = ((uint8*)aniHeader) + block->datastart;
+					basePtr = ((uint8*)aniHeader) + block->datastart + animDesc->animindex;
 				}
-				anims.AddDefaulted();
-				ReadAnimData(basePtr, animDesc, animDesc->numframes, anims[0], aniHeader, skeletalMesh);
+				ReadAnimData(basePtr, skeletalMesh, allSectionAnims[allSectionAnims.AddDefaulted()]);
+				
 			}
 
 			// Load anims into sequence
-			int frameIndex = 0;
 			TMap<uint8, FRawAnimSequenceTrack> boneTrackMap;
-			for (const TArray<const Valve::MDL::mstudioanim_t*>& frameBones : anims)
+			for (const TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims : allSectionAnims)
 			{
-				for (const Valve::MDL::mstudioanim_t* anim : frameBones)
+				for (const Valve::MDL::mstudioanim_t* anim : sectionAnims)
 				{
+					check(bones.IsValidIndex(anim->bone));
+					const Valve::MDL::mstudiobone_t* bone = bones[anim->bone];
 					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(anim->bone);
-					
-					// We might not have seen any data for this bone for a while, so play catchup
-					const FVector lastPos = track.PosKeys.Num() > 0 ? track.PosKeys.Last(0) : FVector::ZeroVector;
-					const FQuat lastRot = track.RotKeys.Num() > 0 ? track.RotKeys.Last(0) : FQuat::Identity;
-					for (int i = track.PosKeys.Num() + 1; i < frameIndex - 1; ++i)
-					{
-						track.PosKeys.Add(lastPos);
-					}
-					for (int i = track.RotKeys.Num() + 1; i < frameIndex - 1; ++i)
-					{
-						track.RotKeys.Add(lastRot);
-					}
 
 					// Rotation
-					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_ANIMROT))
+					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMROT))
 					{
-						const Valve::MDL::mstudioanimvalue_t* rotValue = anim->GetRotValue()->GetAnimValue(0);
-						track.RotKeys.Add(lastRot);
+						const Valve::MDL::mstudioanim_valueptr_t* rotValuePtr = anim->GetRotValue();
+						TArray<const Valve::MDL::mstudioanimvalue_t*> xValues, yValues, zValues;
+						if (rotValuePtr->offset[0] > 0)
+						{
+							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[0], sectionAnims.Num(), xValues);
+						}
+						if (rotValuePtr->offset[1] > 0)
+						{
+							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[1], sectionAnims.Num(), yValues);
+						}
+						if (rotValuePtr->offset[2] > 0)
+						{
+							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[2], sectionAnims.Num(), zValues);
+						}
+						track.RotKeys.SetNum(FMath::Min(FMath::Max3(xValues.Num(), yValues.Num(), zValues.Num()), animDesc->numframes), false);
+						for (int i = 0; i < track.RotKeys.Num(); ++i)
+						{
+							FQuat& rot = track.RotKeys[i];
+							float x = 0.0f, y = 0.0f, z = 0.0f;
+							if (xValues.IsValidIndex(i)) { x = ReadAnimValue(i, xValues, bone->rotscale[0]); }
+							if (yValues.IsValidIndex(i)) { y = ReadAnimValue(i, yValues, bone->rotscale[1]); }
+							if (zValues.IsValidIndex(i)) { z = ReadAnimValue(i, zValues, bone->rotscale[2]); }
+							check(!FMath::IsNaN(x));
+							check(!FMath::IsNaN(y));
+							check(!FMath::IsNaN(z));
+							if (!anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
+							{
+								x += bone->rot[0];
+								y += bone->rot[1];
+								z += bone->rot[2];
+							}
+							rot = FQuat::MakeFromEuler(FVector(x, y, z));
+						}
 					}
-					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_RAWROT))
+					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT))
 					{
-						track.RotKeys.Add(lastRot);
+						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
+						Quaternion48 q48 = *anim->GetQuat48();
+						track.RotKeys[0] = q48;
+						
 					}
-					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_RAWROT2))
+					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT2))
 					{
-						track.RotKeys.Add(lastRot);
+						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
+						Quaternion64 q64 = *anim->GetQuat64();
+						track.RotKeys[0] = q64;
 					}
 					else
 					{
-						track.RotKeys.Add(lastRot);
+						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
+						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
+						{
+							track.RotKeys[0] = FQuat::Identity;
+						}
+						else
+						{
+							track.RotKeys[0] = FQuat::MakeFromEuler(FVector(bone->rot[0], bone->rot[1], bone->rot[2]));
+						}
 					}
 
 					// Position
-					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_ANIMPOS))
+					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMPOS))
 					{
-						const Valve::MDL::mstudioanimvalue_t* posValue = anim->GetPosValue()->GetAnimValue(0);
-						track.PosKeys.Add(lastPos);
-
+						const Valve::MDL::mstudioanim_valueptr_t* posValuePtr = anim->GetPosValue();
+						TArray<const Valve::MDL::mstudioanimvalue_t*> xValues, yValues, zValues;
+						if (posValuePtr->offset[0] > 0)
+						{
+							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[0], sectionAnims.Num(), xValues);
+						}
+						if (posValuePtr->offset[1] > 0)
+						{
+							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[1], sectionAnims.Num(), yValues);
+						}
+						if (posValuePtr->offset[2] > 0)
+						{
+							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[2], sectionAnims.Num(), zValues);
+						}
+						track.PosKeys.SetNum(FMath::Min(FMath::Max3(xValues.Num(), yValues.Num(), zValues.Num()), animDesc->numframes), false);
+						for (int i = 0; i < track.PosKeys.Num(); ++i)
+						{
+							FVector& pos = track.PosKeys[i];
+							float x = 0.0f, y = 0.0f, z = 0.0f;
+							if (xValues.IsValidIndex(i)) { x = ReadAnimValue(i, xValues, bone->posscale[0]); }
+							if (yValues.IsValidIndex(i)) { y = ReadAnimValue(i, yValues, bone->posscale[1]); }
+							if (zValues.IsValidIndex(i)) { z = ReadAnimValue(i, zValues, bone->posscale[2]); }
+							check(!FMath::IsNaN(x));
+							check(!FMath::IsNaN(y));
+							check(!FMath::IsNaN(z));
+							if (!anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
+							{
+								x += bone->pos[0];
+								y += bone->pos[1];
+								z += bone->pos[2];
+							}
+							pos = FVector(x, y, z);
+						}
 					}
-					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_RAWPOS))
+					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWPOS))
 					{
-						track.PosKeys.Add(lastPos);
+						Vector48 v48 = *anim->GetPos();
+						track.PosKeys.SetNum(FMath::Max(track.PosKeys.Num(), 1), false);
+						track.PosKeys[0] = v48;
 					}
 					else
 					{
-						track.PosKeys.Add(lastPos);
+						track.PosKeys.SetNum(FMath::Max(track.PosKeys.Num(), 1), false);
+						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
+						{
+							track.PosKeys[0] = FVector::ZeroVector;
+						}
+						else
+						{
+							track.PosKeys[0] = FVector(bone->pos[0], bone->pos[1], bone->pos[2]);
+						}
 					}
 				}
-				++frameIndex;
 			}
 			sequence->RemoveAllTracks();
 			for (auto& pair : boneTrackMap)
@@ -1576,7 +1653,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 	}*/
 }
 
-void UMDLFactory::ReadAnimData(const uint8* basePtr, const Valve::MDL::mstudioanimdesc_t* animDesc, int frameCount, TArray<const Valve::MDL::mstudioanim_t*>& out, const Valve::MDL::studiohdr_t* aniHeader, USkeletalMesh* skeletalMesh)
+void UMDLFactory::ReadAnimData(const uint8* basePtr, USkeletalMesh* skeletalMesh, TArray<const Valve::MDL::mstudioanim_t*>& out)
 {
 	const int numBones = skeletalMesh->RefSkeleton.GetRawBoneNum();
 	for (int i = 0; i < numBones; ++i)
@@ -1584,17 +1661,54 @@ void UMDLFactory::ReadAnimData(const uint8* basePtr, const Valve::MDL::mstudioan
 		const Valve::MDL::mstudioanim_t* anim = (const Valve::MDL::mstudioanim_t*)basePtr;
 		if (anim->bone == 255 || anim->bone > numBones || anim->nextoffset == 0) { break; }
 		out.Add(anim);
-		if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_ANIMROT))
-		{
-			const Valve::MDL::mstudioanim_valueptr_t* rotValuePtr = anim->GetRotValue();
-
-		}
-		if (anim->HasFlag(Valve::MDL::mstudioanim_flag::STUDIO_ANIM_ANIMPOS))
-		{
-			const Valve::MDL::mstudioanim_valueptr_t* posValuePtr = anim->GetPosValue();
-
-		}
 		basePtr += anim->nextoffset;
+	}
+}
+
+void UMDLFactory::ReadAnimValues(uint8* basePtr, int frameCount, TArray<const Valve::MDL::mstudioanimvalue_t*>& animValues)
+{
+	int frameCountRemainingToBeChecked = frameCount;
+	while (frameCountRemainingToBeChecked > 0)
+	{
+		const Valve::MDL::mstudioanimvalue_t* animValue = (Valve::MDL::mstudioanimvalue_t*)basePtr;
+		basePtr += sizeof(Valve::MDL::mstudioanimvalue_t);
+		if (animValue->num.total == 0)
+		{
+			// TODO: Should we ever be getting here?
+			break;
+		}
+		frameCountRemainingToBeChecked -= animValue->num.total;
+		animValues.Add(animValue);
+		for (int i = 0; i < animValue->num.valid; ++i)
+		{
+			animValues.Add((Valve::MDL::mstudioanimvalue_t*)basePtr);
+			basePtr += sizeof(Valve::MDL::mstudioanimvalue_t);
+		}
+	}
+}
+
+float UMDLFactory::ReadAnimValue(int frameIndex, const TArray<const Valve::MDL::mstudioanimvalue_t*> animValues, float scale)
+{
+	int k = frameIndex, animValueIndex = 0;
+	while (animValues[animValueIndex]->num.total <= k)
+	{
+		k -= animValues[animValueIndex]->num.total;
+		animValueIndex += animValues[animValueIndex]->num.valid + 1;
+		if (!animValues.IsValidIndex(animValueIndex) || animValues[animValueIndex]->num.total > 0)
+		{
+			// TODO: Should we be expecting to get here or not?
+			return 0.0f;
+		}
+	}
+	if (animValues[animValueIndex]->num.valid > k)
+	{
+		check(animValues.IsValidIndex(animValueIndex + k + 1));
+		return animValues[animValueIndex + k + 1]->value * scale;
+	}
+	else
+	{
+		check(animValues.IsValidIndex(animValueIndex + animValues[animValueIndex]->num.valid));
+		return animValues[animValueIndex + animValues[animValueIndex]->num.valid]->value * scale;
 	}
 }
 

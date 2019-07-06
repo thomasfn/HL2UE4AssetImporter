@@ -117,11 +117,15 @@ private:
 
 	void ImportSequences(const Valve::MDL::studiohdr_t& header, USkeletalMesh* skeletalMesh, const FString& basePath, const Valve::MDL::studiohdr_t* aniHeader, TArray<UAnimSequence*>& outSequences, FFeedbackContext* warn);
 
-	void ReadAnimData(const uint8* basePtr, const Valve::MDL::mstudioanimdesc_t* animDesc, int frameCount, TArray<const Valve::MDL::mstudioanim_t*>& out, const Valve::MDL::studiohdr_t* aniHeader, USkeletalMesh* skeletalMesh);
+	static void ReadAnimData(const uint8* basePtr, USkeletalMesh* skeletalMesh, TArray<const Valve::MDL::mstudioanim_t*>& out);
 
-	void ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out);
+	static void ReadAnimValues(uint8* basePtr, int frameCount, TArray<const Valve::MDL::mstudioanimvalue_t*>& animValues);
 
-	void ResolveMaterials(const Valve::MDL::studiohdr_t& header, TArray<FName>& out);
+	static float ReadAnimValue(int frameIndex, const TArray<const Valve::MDL::mstudioanimvalue_t*> animValues, float scale);
 
-	void ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray<int>>& out);
+	static void ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out);
+
+	static void ResolveMaterials(const Valve::MDL::studiohdr_t& header, TArray<FName>& out);
+
+	static void ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray<int>>& out);
 };

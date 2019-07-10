@@ -25,6 +25,9 @@ The HL2 Asset Importer plugin is still very much a work-in-progress and there is
 		- :heavy_check_mark: Refract
 		- :heavy_check_mark: Decal
 		- :heavy_exclamation_mark: Cable
+		- :x: Subrect
+		- :x: Anything else
+	- :heavy_check_mark: Convert to PBR
 	- :x: Proxies
 	- :heavy_check_mark: Bulk Import
 

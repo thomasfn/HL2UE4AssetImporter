@@ -11,6 +11,8 @@
 #include "PhysicsEngine/PhysicsConstraintTemplate.h"
 #include "Rendering/SkeletalMeshModel.h"
 #include "HL2ModelData.h"
+#include "MeshAttributes.h"
+#include "StaticMeshAttributes.h"
 #include "MeshUtilities.h"
 #include "MeshDescriptionOperations.h"
 #include "MeshUtilitiesCommon.h"
@@ -66,7 +68,7 @@ UObject* UMDLFactory::FactoryCreateFile(
 
 	if (ScriptFactoryCreateFile(task))
 	{
-		return task->Result;
+		return task->Result[0];
 	}
 
 	FString fileExt = FPaths::GetExtension(filename);
@@ -397,12 +399,13 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 
 		LocalMeshData()
 		{
-			UStaticMesh::RegisterMeshAttributes(meshDescription);
-			polyGroupMaterial = meshDescription.PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
-			vertPos = meshDescription.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
-			vertInstNormal = meshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
-			vertInstTangent = meshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Tangent);
-			vertInstUV0 = meshDescription.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
+			FStaticMeshAttributes staticMeshAttr(meshDescription);
+			staticMeshAttr.Register();
+			polyGroupMaterial = staticMeshAttr.GetPolygonGroupMaterialSlotNames();
+			vertPos = staticMeshAttr.GetVertexPositions();
+			vertInstNormal = staticMeshAttr.GetVertexInstanceNormals();
+			vertInstTangent = staticMeshAttr.GetVertexInstanceTangents();
+			vertInstUV0 = staticMeshAttr.GetVertexInstanceUVs();
 		}
 	};
 	TArray<LocalMeshData> localMeshDatas;
@@ -708,8 +711,8 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			{
 				localMeshDescription.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
 				FOverlappingCorners overlappingCorners;
-				FMeshDescriptionOperations::FindOverlappingCorners(overlappingCorners, localMeshDescription, 0.00001f);
-				FMeshDescriptionOperations::CreateLightMapUVLayout(localMeshDescription, settings.SrcLightmapIndex, settings.DstLightmapIndex, settings.MinLightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+				FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, localMeshDescription, 0.00001f);
+				FStaticMeshOperations::CreateLightMapUVLayout(localMeshDescription, settings.SrcLightmapIndex, settings.DstLightmapIndex, settings.MinLightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
 			}
 
 			// Clean again but this time weld - we do weld after lightmap uv layout because welded vertices sometimes break that algorithm for whatever reason
@@ -728,7 +731,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
 			{
 				const LocalSectionData& localSectionData = localSectionDatas[sectionIdx];
-				staticMesh->SectionInfoMap.Set(lodIndex, sectionIdx, FMeshSectionInfo(sectionIdx));
+				staticMesh->GetSectionInfoMap().Set(lodIndex, sectionIdx, FMeshSectionInfo(sectionIdx));
 			}
 		}
 	}
@@ -820,7 +823,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			{
 				FName material(*FString::Printf(TEXT("Solid%d"), i));
 				const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
-				staticMesh->SectionInfoMap.Set(0, meshSlot, FMeshSectionInfo(meshSlot));
+				staticMesh->GetSectionInfoMap().Set(0, meshSlot, FMeshSectionInfo(meshSlot));
 			}
 		}
 	}

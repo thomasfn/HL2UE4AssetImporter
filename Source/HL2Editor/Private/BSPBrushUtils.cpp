@@ -1,5 +1,7 @@
 #include "HL2EditorPrivatePCH.h"
 
+#include "MeshAttributes.h"
+#include "StaticMeshAttributes.h"
 #include "BSPBrushUtils.h"
 #include "Engine/Polys.h"
 #include "IHL2Runtime.h"
@@ -14,11 +16,13 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 {
 	const int sideNum = brush.Sides.Num();
 
-	TMeshAttributesRef<FVertexID, FVector> vertexPosAttr = meshDesc.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
-	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstUVAttr = meshDesc.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
-	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterialAttr = meshDesc.PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
-	TMeshAttributesRef<FEdgeID, bool> edgeIsHardAttr = meshDesc.EdgeAttributes().GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
-	TMeshAttributesRef<FEdgeID, float> edgeCreaseSharpnessAttr = meshDesc.EdgeAttributes().GetAttributesRef<float>(MeshAttribute::Edge::CreaseSharpness);
+	FStaticMeshAttributes staticMeshAttr(meshDesc);
+	
+	TMeshAttributesRef<FVertexID, FVector> vertexPosAttr = staticMeshAttr.GetVertexPositions();
+	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstUVAttr = staticMeshAttr.GetVertexInstanceUVs();
+	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterialAttr = staticMeshAttr.GetPolygonGroupMaterialSlotNames();
+	TMeshAttributesRef<FEdgeID, bool> edgeIsHardAttr = staticMeshAttr.GetEdgeHardnesses();
+	TMeshAttributesRef<FEdgeID, float> edgeCreaseSharpnessAttr = staticMeshAttr.GetEdgeCreaseSharpnesses();
 
 	// Iterate all planes
 	TMap<FPolygonID, int> polyToSideMap;
@@ -132,7 +136,7 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 		const FBSPBrushSide& side = brush.Sides[pair.Value];
 
 		TArray<FEdgeID> edgeIDs;
-		meshDesc.GetPolygonEdges(pair.Key, edgeIDs);
+		meshDesc.GetPolygonPerimeterEdges(pair.Key, edgeIDs);
 		for (const FEdgeID& edgeID : edgeIDs)
 		{
 			const TArray<FPolygonID>& connectedPolyIDs = meshDesc.GetEdgeConnectedPolygons(edgeID);

@@ -16,6 +16,7 @@
 #include "Components/BrushComponent.h"
 #include "BSPBrushUtils.h"
 #include "MeshAttributes.h"
+#include "StaticMeshAttributes.h"
 #include "Internationalization/Regex.h"
 #include "MeshAttributes.h"
 #include "MeshUtils.h"
@@ -258,11 +259,12 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		// Render whole tree to a single mesh
 		progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_GENERATE", "Generating map geometry..."));
 		FMeshDescription meshDesc;
-		UStaticMesh::RegisterMeshAttributes(meshDesc);
+		FStaticMeshAttributes staticMeshAttr(meshDesc);
+		staticMeshAttr.Register();
 		//RenderFacesToMesh(faces, meshDesc, false);
 		RenderBrushesToMesh(brushes, meshDesc);
 		RenderDisplacementsToMesh(displacements, meshDesc);
-		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
+		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 		//FMeshUtils::Clean(meshDesc, FMeshCleanSettings::All);
 
 		if (useCells)
@@ -335,9 +337,10 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 
 		// Render skybox to a single mesh
 		FMeshDescription meshDesc;
-		UStaticMesh::RegisterMeshAttributes(meshDesc);
+		FStaticMeshAttributes staticMeshAttr(meshDesc);
+		staticMeshAttr.Register();
 		RenderFacesToMesh(faces, meshDesc, true);
-		meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
+		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 		meshDesc.TriangulateMesh();
 
 		// Create actor for it
@@ -375,7 +378,7 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	{
 		FName material = importedMaterialSlotNameAttr[polyGroupID];
 		const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
-		staticMesh->SectionInfoMap.Set(0, meshSlot, FMeshSectionInfo(meshSlot));
+		staticMesh->GetSectionInfoMap().Set(0, meshSlot, FMeshSectionInfo(meshSlot));
 		staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
 	}
 	staticMesh->CommitMeshDescription(0);
@@ -638,7 +641,7 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 
 			// Create poly
 			FPolygonID poly = meshDesc.CreatePolygon(polyGroup, polyVerts);
-			FMeshPolygon& polygon = meshDesc.GetPolygon(poly);
+			FMeshPolygon& polygon = meshDesc.Polygons()[poly];
 			polyToValveFaceMap.Add(poly, ptr);
 		}
 	}
@@ -651,7 +654,7 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 
 		// Find all edges
 		edges.Empty(3);
-		meshDesc.GetPolygonEdges(pair.Key, edges);
+		meshDesc.GetPolygonPerimeterEdges(pair.Key, edges);
 		for (const FEdgeID& edge : edges)
 		{
 			// Find polys connected to the edge
@@ -866,7 +869,7 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 
 				const FPolygonID polyID = meshDesc.CreatePolygon(polyGroupID, polyPoints);
 				polyEdgeIDs.Empty(4);
-				meshDesc.GetPolygonEdges(polyID, polyEdgeIDs);
+				meshDesc.GetPolygonPerimeterEdges(polyID, polyEdgeIDs);
 				for (const FEdgeID& edgeID : polyEdgeIDs)
 				{
 					edgeAttrIsHard[edgeID] = false;
@@ -1102,9 +1105,10 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const FHL2EntityData& entityData)
 			TArray<uint16> faces;
 			GatherFaces(bspModel.m_Headnode, faces);
 			FMeshDescription meshDesc;
-			UStaticMesh::RegisterMeshAttributes(meshDesc);
+			FStaticMeshAttributes staticMeshAttr(meshDesc);
+			staticMeshAttr.Register();
 			RenderFacesToMesh(faces, meshDesc, false);
-			meshDesc.ComputeTangentsAndNormals(EComputeNTBsOptions::Normals & EComputeNTBsOptions::Tangents);
+			FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 			meshDesc.TriangulateMesh();
 			const int lightmapResolution = 128;
 			UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), modelIndex), lightmapResolution);

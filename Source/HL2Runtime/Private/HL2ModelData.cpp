@@ -45,7 +45,7 @@ bool UHL2ModelData::ApplyBodygroupToSkeletalMesh(USkeletalMeshComponent* target,
 	{
 		for (int lodIndex = 0; lodIndex < lodCount; ++lodIndex)
 		{
-			target->ShowMaterialSection(sectionIndex, mapping.Sections.Contains(sectionIndex), lodIndex);
+			target->ShowMaterialSection(0, sectionIndex, mapping.Sections.Contains(sectionIndex), lodIndex);
 		}
 	}
 	return true;

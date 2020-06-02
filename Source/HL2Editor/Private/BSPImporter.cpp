@@ -143,6 +143,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	const static FName fnModel(TEXT("model"));
 	const static FName fnSkin(TEXT("skin"));
 	const static FName fnAngles(TEXT("angles"));
+	// TODO: Find a way to not have all these dumb loops
 	for (const Valve::BSP::StaticProp_v4_t staticProp : bspFile.m_Staticprops_v4)
 	{
 		FHL2EntityData entityData;
@@ -170,6 +171,19 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		entityDatas.Add(entityData);
 	}
 	for (const Valve::BSP::StaticProp_v6_t staticProp : bspFile.m_Staticprops_v6)
+	{
+		FHL2EntityData entityData;
+		entityData.Classname = fnStaticProp;
+		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
+		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
+		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
+		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
+		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
+		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
+		entityDatas.Add(entityData);
+	}
+	for (const Valve::BSP::StaticProp_v10_t staticProp : bspFile.m_Staticprops_v10)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;

@@ -366,6 +366,12 @@ bool BSPFile::parse_staticprops( std::ifstream& bsp_binary )
 				bsp_binary.read( reinterpret_cast<char*>( m_Staticprops_v6.data() ), sizeof( StaticProp_v6_t ) * numStaticProps );
 
 				break;
+            case 10:
+
+                m_Staticprops_v10 = std::vector< StaticProp_v10_t >(numStaticProps);
+                bsp_binary.read(reinterpret_cast<char*>(m_Staticprops_v10.data()), sizeof(StaticProp_v10_t) * numStaticProps);
+
+                break;
 			default:
 				throw std::exception("Unsupported static prop lump version");
 		}

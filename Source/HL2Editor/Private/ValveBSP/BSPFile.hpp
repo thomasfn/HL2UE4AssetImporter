@@ -185,7 +185,10 @@ namespace Valve {
 		std::vector< BSP::StaticProp_v4_t >		m_Staticprops_v4;
 		std::vector< BSP::StaticProp_v5_t >		m_Staticprops_v5;
 		std::vector< BSP::StaticProp_v6_t >		m_Staticprops_v6;
+        std::vector< BSP::StaticProp_v10_t >	m_Staticprops_v10;
     };
+
+    constexpr int blah = sizeof(BSP::StaticProp_v10_t);
 
     template< typename T >
     void BSPFile::parse_lump_data( std::ifstream& bsp_binary, const BSP::eLumpIndex lump_index, std::vector< T >& buffer ) const

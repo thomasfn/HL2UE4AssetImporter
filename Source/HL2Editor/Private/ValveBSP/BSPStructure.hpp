@@ -337,11 +337,15 @@ namespace Valve { namespace BSP {
 		Vector3         m_LightingOrigin;    // for lighting
 	};
 
+    constexpr int StaticProp_v4_size = sizeof(StaticProp_v4_t);
+
 	class StaticProp_v5_t : public StaticProp_v4_t
 	{
 	public:
 		float           m_ForcedFadeScale;   // fade distance scale
 	};
+
+    constexpr int StaticProp_v5_size = sizeof(StaticProp_v5_t);
 
 	class StaticProp_v6_t : public StaticProp_v5_t
 	{
@@ -349,6 +353,17 @@ namespace Valve { namespace BSP {
 		unsigned short  m_MinDXLevel;        // minimum DirectX version to be visible
 		unsigned short  m_MaxDXLevel;        // maximum DirectX version to be visible
 	};
+
+    constexpr int StaticProp_v6_size = sizeof(StaticProp_v6_t);
+
+    class StaticProp_v10_t : public StaticProp_v6_t
+    {
+    public:
+        int             m_LightmapResolutionX;
+        int             m_LightmapResolutionY;
+    };
+
+    constexpr int StaticProp_v10_size = sizeof(StaticProp_v10_t);
 
     class VPlane
     {

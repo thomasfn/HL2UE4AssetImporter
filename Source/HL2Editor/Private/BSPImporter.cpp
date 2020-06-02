@@ -263,6 +263,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		FMeshDescription meshDesc;
 		FStaticMeshAttributes staticMeshAttr(meshDesc);
 		staticMeshAttr.Register();
+		staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
 		//RenderFacesToMesh(faces, meshDesc, false);
 		RenderBrushesToMesh(brushes, meshDesc);
 		RenderDisplacementsToMesh(displacements, meshDesc);
@@ -341,6 +342,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		FMeshDescription meshDesc;
 		FStaticMeshAttributes staticMeshAttr(meshDesc);
 		staticMeshAttr.Register();
+		staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
 		RenderFacesToMesh(faces, meshDesc, true);
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 		meshDesc.TriangulateMesh();
@@ -1109,6 +1111,7 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const FHL2EntityData& entityData)
 			FMeshDescription meshDesc;
 			FStaticMeshAttributes staticMeshAttr(meshDesc);
 			staticMeshAttr.Register();
+			staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
 			RenderFacesToMesh(faces, meshDesc, false);
 			FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 			meshDesc.TriangulateMesh();

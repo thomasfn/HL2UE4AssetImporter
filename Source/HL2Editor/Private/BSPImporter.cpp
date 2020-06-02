@@ -2,7 +2,7 @@
 
 #include "BSPImporter.h"
 #include "IHL2Runtime.h"
-#include "Paths.h"
+#include "Misc/Paths.h"
 #include "EditorActorFolders.h"
 #include "Engine/World.h"
 #include "Engine/Brush.h"
@@ -11,6 +11,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/Selection.h"
+#include "Editor.h"
+#include "Model.h"
 #include "Lightmass/LightmassImportanceVolume.h"
 #include "Builders/EditorBrushBuilder.h"
 #include "Components/BrushComponent.h"

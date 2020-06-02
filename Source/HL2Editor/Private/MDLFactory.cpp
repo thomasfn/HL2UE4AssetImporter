@@ -4,7 +4,7 @@
 #include "EditorFramework/AssetImportData.h"
 #include "Misc/FeedbackContext.h"
 #include "AssetImportTask.h"
-#include "FileHelper.h"
+#include "Misc/FileHelper.h"
 #include "IHL2Runtime.h"
 #include "MeshUtils.h"
 #include "PhysicsEngine/BodySetup.h"

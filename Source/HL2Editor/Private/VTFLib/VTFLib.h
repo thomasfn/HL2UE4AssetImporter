@@ -104,7 +104,7 @@
 #include "VTFFile.h"
 #include "VMTFile.h"
 
-#include "Array.h"
+#include "Containers/Array.h"
 
 namespace VTFLib
 {

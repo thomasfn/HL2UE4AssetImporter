@@ -13,7 +13,7 @@
 #include "VTFFile.h"
 #include "VTFFormat.h"
 #include "VTFDXTn.h"
-#include "Vector.h"
+#include "Math/Vector.h"
 
 // Note: VTF creation requires nvDXTLib and has been
 //       tested with version 8.31.1127.1645, availible here:

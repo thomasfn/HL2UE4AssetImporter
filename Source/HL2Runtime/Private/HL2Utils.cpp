@@ -63,7 +63,8 @@ ABaseEntity* UHL2Utils::GetEntityByTargetName(UObject* worldContextObject, const
 	result.Reserve(1);
 	FindEntitiesByTargetName(worldContextObject, targetName, result);
 	outMultiple = result.Num() > 1;
-	if (outSuccess = result.Num() > 0)
+	outSuccess = result.Num() > 0;
+	if (outSuccess)
 	{
 		return result[0];
 	}

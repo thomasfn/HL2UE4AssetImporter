@@ -12,7 +12,7 @@
 #include "VTFLib.h"
 #include "VMTWrapper.h"
 #include "VMTFile.h"
-#include "Array.h"
+#include "Containers/Array.h"
 
 using namespace VTFLib;
 

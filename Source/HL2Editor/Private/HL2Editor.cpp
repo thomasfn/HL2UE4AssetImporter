@@ -10,7 +10,7 @@
 #include "UtilMenuStyle.h"
 #include "DesktopPlatformModule.h"
 #include "AssetToolsModule.h"
-#include "PlatformFilemanager.h"
+#include "HAL/PlatformFilemanager.h"
 #include "VMTMaterial.h"
 #include "MaterialUtils.h"
 #include "Engine/TextureCube.h"

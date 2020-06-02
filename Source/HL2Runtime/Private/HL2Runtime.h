@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ModuleManager.h"
+#include "Modules/ModuleManager.h"
 #include "AssetRegistryModule.h"
 
 #include "IHL2Runtime.h"

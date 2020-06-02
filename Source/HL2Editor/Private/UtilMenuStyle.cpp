@@ -1,7 +1,7 @@
 #include "HL2EditorPrivatePCH.h"
 
 #include "UtilMenuStyle.h"
-#include "SlateGameResources.h"
+#include "Slate/SlateGameResources.h"
 
 TSharedPtr<FSlateStyleSet> FUtilMenuStyle::StyleInstance = NULL;
 

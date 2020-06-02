@@ -36,7 +36,7 @@ This project is architected as a UE4 plugin, comprising of an editor module and 
 
 ### Prerequisites
 
-- Unreal Engine 4.22
+- Unreal Engine 4.25
 - [Half-Life 2](https://store.steampowered.com/app/220/HalfLife_2/) or [Half-Life 2 Update](https://store.steampowered.com/app/290930/HalfLife_2_Update/)
 
 ### Installing

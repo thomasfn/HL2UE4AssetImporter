@@ -61,7 +61,7 @@ The HL2 Asset Importer plugin is still very much a work-in-progress and there is
 	- :x: Smoothing Groups
 	- :heavy_exclamation_mark: Collision (see below)
 	- :heavy_check_mark: Materials
-	- :heavy_exclamation_mark: Lightmap UVs (broken for displacements)
+	- :heavy_check_mark: Lightmap UVs
 	- :heavy_exclamation_mark: Entities (see below)
 	- :heavy_check_mark: Brush Entities
 	- :heavy_exclamation_mark: 2D Skybox (functional, texture needs to be flipped on Y axis)

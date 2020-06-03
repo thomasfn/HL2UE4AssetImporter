@@ -251,7 +251,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 	const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
 	const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
 
-	FScopedSlowTask progress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1) + 13, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
+	FScopedSlowTask progress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1) + 23, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
 	progress.MakeDialog();
 
 	// Render out VBSPInfo
@@ -280,7 +280,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
 		//RenderFacesToMesh(faces, meshDesc, false);
 		RenderBrushesToMesh(brushes, meshDesc);
-		RenderDisplacementsToMesh(displacements, meshDesc);
+		//RenderDisplacementsToMesh(displacements, meshDesc);
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 		//FMeshUtils::Clean(meshDesc, FMeshCleanSettings::All);
 
@@ -345,6 +345,38 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 			// Create a static mesh for it
 			AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("WorldGeometry"), lightmapResolution);
 			staticMeshActor->SetActorLabel(TEXT("WorldGeometry"));
+			out.Add(staticMeshActor);
+		}
+	}
+
+	{
+		// Render all displacements to individual static meshes
+		progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_DISPLACEMENTS", "Generating displacement geometry..."));
+		int displacementIndex = 0;
+		for (const uint16 displacementID : displacements)
+		{
+			FMeshDescription meshDesc;
+			FStaticMeshAttributes staticMeshAttr(meshDesc);
+			staticMeshAttr.Register();
+			staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+
+			TArray<uint16> tmp = { displacementID };
+			RenderDisplacementsToMesh(tmp, meshDesc);
+
+			FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
+
+			const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(meshDesc);
+			constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
+			const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
+
+			staticMeshAttr.GetVertexInstanceUVs().SetNumIndices(2);
+			FOverlappingCorners overlappingCorners;
+			FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, meshDesc, 1.0f / 512.0f);
+			FStaticMeshOperations::CreateLightMapUVLayout(meshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+
+			// Create a static mesh for it
+			AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, FString::Printf(TEXT("Displacements/Displacement_%d"), displacementIndex++), lightmapResolution);
+			staticMeshActor->SetActorLabel(FString::Printf(TEXT("Displacement_%d"), displacementID));
 			out.Add(staticMeshActor);
 		}
 	}
@@ -745,19 +777,17 @@ void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMesh
 
 void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements, FMeshDescription& meshDesc)
 {
-	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
-	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+	FStaticMeshAttributes staticMeshAttr(meshDesc);
 
-	TAttributesSet<FVertexInstanceID>& vertexInstanceAttr = meshDesc.VertexInstanceAttributes();
-	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstanceAttrUV = vertexInstanceAttr.GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
-	TMeshAttributesRef<FVertexInstanceID, FVector4> vertexInstanceAttrCol = vertexInstanceAttr.GetAttributesRef<FVector4>(MeshAttribute::VertexInstance::Color);
+	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = staticMeshAttr.GetVertexPositions();
 
-	TAttributesSet<FEdgeID>& edgeAttr = meshDesc.EdgeAttributes();
-	TMeshAttributesRef<FEdgeID, bool> edgeAttrIsHard = edgeAttr.GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
-	TMeshAttributesRef<FEdgeID, float> edgeCreaseSharpness = edgeAttr.GetAttributesRef<float>(MeshAttribute::Edge::CreaseSharpness);
+	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstanceAttrUV = staticMeshAttr.GetVertexInstanceUVs();
+	TMeshAttributesRef<FVertexInstanceID, FVector4> vertexInstanceAttrCol = staticMeshAttr.GetVertexInstanceColors();
 
-	TAttributesSet<FPolygonGroupID>& polyGroupAttr = meshDesc.PolygonGroupAttributes();
-	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterial = polyGroupAttr.GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
+	TMeshAttributesRef<FEdgeID, bool> edgeAttrIsHard = staticMeshAttr.GetEdgeHardnesses();
+	TMeshAttributesRef<FEdgeID, float> edgeCreaseSharpness = staticMeshAttr.GetEdgeCreaseSharpnesses();
+
+	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterial = staticMeshAttr.GetPolygonGroupMaterialSlotNames();
 
 	for (const uint16 dispIndex : displacements)
 	{

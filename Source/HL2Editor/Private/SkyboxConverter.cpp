@@ -4,6 +4,7 @@
 #include "Engine/Texture2D.h"
 #include "AssetRegistryModule.h"
 #include "Misc/ScopedSlowTask.h"
+#include "VMTMaterial.h"
 
 DEFINE_LOG_CATEGORY(LogHL2SkyboxConverter);
 
@@ -376,9 +377,39 @@ UTexture2D* FSkyboxConverter::GetFace(const FString& skyboxName, const FString& 
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
 	const FString& hl2TextureBasePath = IHL2Runtime::Get().GetHL2TextureBasePath();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + face + TEXT(".") + skyboxName + face)));
+	const FString& hl2MaterialBasePath = IHL2Runtime::Get().GetHL2MaterialBasePath();
+
+	// search for hl2/materials/skybox/{skyboxname}bk.{skyboxname}bk
+	FAssetData assetData = assetRegistry.GetAssetByObjectPath(FName(*(hl2MaterialBasePath / TEXT("skybox") / skyboxName + face + TEXT(".") + skyboxName + face)));
 	if (!assetData.IsValid())
 	{
+		// search for hl2/textures/skybox/{skyboxname}_bk.{skyboxname}_bk
+		assetData = assetRegistry.GetAssetByObjectPath(FName(*(hl2MaterialBasePath / TEXT("skybox") / skyboxName + TEXT("_") + face + TEXT(".") + skyboxName + TEXT("_") + face)));
+	}
+	if (assetData.IsValid())
+	{
+		UVMTMaterial* material = CastChecked<UVMTMaterial>(assetData.GetAsset());
+		static const FName fnBaseTexture(TEXT("basetexture"));
+		if (material->vmtTextures.Contains(fnBaseTexture))
+		{
+			const FName texturePath = material->vmtTextures[fnBaseTexture];
+			assetData = assetRegistry.GetAssetByObjectPath(texturePath);
+			if (assetData.IsValid())
+			{
+				return CastChecked<UTexture2D>(assetData.GetAsset());
+			}
+			else
+			{
+				UE_LOG(LogHL2SkyboxConverter, Warning, TEXT("Found a vmt material for skybox face %s (%s) but couldn't resolve the $basetexture within"), *face, *skyboxName);
+			}
+		}
+	}
+
+	// search for hl2/textures/skybox/{skyboxname}bk.{skyboxname}bk
+	assetData = assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + face + TEXT(".") + skyboxName + face)));
+	if (!assetData.IsValid())
+	{
+		// search for hl2/textures/skybox/{skyboxname}_bk.{skyboxname}_bk
 		assetData = assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + TEXT("_") + face + TEXT(".") + skyboxName + TEXT("_") + face)));
 	}
 	return CastChecked<UTexture2D>(assetData.GetAsset());

@@ -36,10 +36,6 @@ private:
 	void ConvertSkyboxes();
 	void ImportBSPClicked();
 
-	void ConvertSkybox(UTextureCube* texture, const FString& skyboxName);
-
-	static uint64 HDRDecompress(uint32 pixel);
-
 	static void GroupFileListByDirectory(const TArray<FString>& files, TMap<FString, TArray<FString>>& outMap);
 
 };

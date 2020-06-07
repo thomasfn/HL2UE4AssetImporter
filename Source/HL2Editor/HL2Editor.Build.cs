@@ -13,7 +13,7 @@ public class HL2Editor : ModuleRules
         {
             "Core", "CoreUObject", "JsonUtilities", "Engine",
             "RenderCore", "RHI",
-            "UnrealEd", "Slate", "SlateCore", "EditorStyle", "DesktopPlatform", "AssetTools",
+            "UnrealEd", "Slate", "SlateCore", "EditorStyle", "DesktopPlatform", "AssetTools", "ContentBrowser",
             "MeshDescription", "StaticMeshDescription", "MeshUtilitiesCommon", "MeshDescriptionOperations",
             "HL2Runtime"
         });

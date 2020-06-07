@@ -9,11 +9,13 @@
 #include "UtilMenuCommands.h"
 #include "UtilMenuStyle.h"
 #include "DesktopPlatformModule.h"
+#include "ContentBrowserModule.h"
+#include "IContentBrowserSingleton.h"
 #include "AssetToolsModule.h"
 #include "HAL/PlatformFilemanager.h"
 #include "VMTMaterial.h"
 #include "MaterialUtils.h"
-#include "Engine/TextureCube.h"
+#include "SkyboxConverter.h"
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
 
@@ -209,29 +211,50 @@ void HL2EditorImpl::ConvertSkyboxes()
 	FString texturePath = IHL2Runtime::Get().GetHL2TextureBasePath() / TEXT("skybox");
 	assetRegistry.GetAssetsByPath(FName(*texturePath), assetDatas);
 
+	TArray<FAssetData> selectedAssetDatas;
+	FContentBrowserModule& contentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+	IContentBrowserSingleton& contentBrowserSingleton = contentBrowserModule.Get();
+	contentBrowserSingleton.GetSelectedAssets(selectedAssetDatas);
+
 	TArray<FString> skyboxNames;
 
-	for (const FAssetData& assetData : assetDatas)
+	if (selectedAssetDatas.Num() > 0)
 	{
-		FString assetName = assetData.AssetName.ToString();
-		if (assetData.GetClass() == UTexture2D::StaticClass() && assetName.EndsWith(TEXT("bk")))
+		for (const FAssetData& assetData : selectedAssetDatas)
 		{
-			assetName.RemoveFromEnd(TEXT("bk"));
-			skyboxNames.AddUnique(assetName);
+			FString assetName = assetData.AssetName.ToString();
+			FString skyboxName;
+			if (assetData.GetClass() == UTexture2D::StaticClass() && FSkyboxConverter::IsSkyboxTexture(assetName, skyboxName))
+			{
+				skyboxNames.AddUnique(skyboxName);
+			}
 		}
 	}
+	else
+	{
+		for (const FAssetData& assetData : assetDatas)
+		{
+			FString assetName = assetData.AssetName.ToString();
+			FString skyboxName;
+			if (assetData.GetClass() == UTexture2D::StaticClass() && FSkyboxConverter::IsSkyboxTexture(assetName, skyboxName))
+			{
+				skyboxNames.AddUnique(skyboxName);
+			}
+		}
+	}
+	
 
 	FScopedSlowTask loopProgress(skyboxNames.Num(), LOCTEXT("SkyboxesConverting", "Converting skyboxes to cubemaps..."));
 	loopProgress.MakeDialog();
 	for (const FString& skyboxName : skyboxNames)
 	{
-		loopProgress.EnterProgressFrame();
+		loopProgress.EnterProgressFrame(1.0f, FText::Format(LOCTEXT("SkyboxesConverting_Individual", "{0}"), FText::FromString(skyboxName)));
 		FString packageName = IHL2Runtime::Get().GetHL2TextureBasePath() / TEXT("skybox") / skyboxName;
 		FAssetData existingAsset = assetRegistry.GetAssetByObjectPath(FName(*(packageName + TEXT(".") + skyboxName)));
 		if (existingAsset.IsValid())
 		{
 			UTextureCube* existingTexture = CastChecked<UTextureCube>(existingAsset.GetAsset());
-			ConvertSkybox(existingTexture, skyboxName);
+			FSkyboxConverter::ConvertSkybox(existingTexture, skyboxName);
 			existingTexture->PostEditChange();
 			existingTexture->MarkPackageDirty();
 		}
@@ -239,7 +262,7 @@ void HL2EditorImpl::ConvertSkyboxes()
 		{
 			UPackage* package = CreatePackage(nullptr, *packageName);
 			UTextureCube* cubeMap = NewObject<UTextureCube>(package, FName(*skyboxName), EObjectFlags::RF_Public | EObjectFlags::RF_Standalone);
-			ConvertSkybox(cubeMap, skyboxName);
+			FSkyboxConverter::ConvertSkybox(cubeMap, skyboxName);
 			cubeMap->PostEditChange();
 			FAssetRegistryModule::AssetCreated(cubeMap);
 			cubeMap->MarkPackageDirty();
@@ -262,134 +285,6 @@ void HL2EditorImpl::ImportBSPClicked()
 	{
 		importer.ImportToCurrentLevel();
 	}
-}
-
-void HL2EditorImpl::ConvertSkybox(UTextureCube* texture, const FString& skyboxName)
-{
-	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-
-	// Fetch all 6 faces
-	const FString& hl2TextureBasePath = IHL2Runtime::Get().GetHL2TextureBasePath();
-	UTexture2D* textures[6] =
-	{
-		CastChecked<UTexture2D>(assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + TEXT("ft.") + skyboxName + TEXT("ft")))).GetAsset()), // +X, -90
-		CastChecked<UTexture2D>(assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + TEXT("bk.") + skyboxName + TEXT("bk")))).GetAsset()), // -X, +90
-		CastChecked<UTexture2D>(assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + TEXT("lf.") + skyboxName + TEXT("lf")))).GetAsset()), // +Y, +180
-		CastChecked<UTexture2D>(assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + TEXT("rt.") + skyboxName + TEXT("rt")))).GetAsset()), // -Y, +0
-		CastChecked<UTexture2D>(assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + TEXT("up.") + skyboxName + TEXT("up")))).GetAsset()), // +Z, +0
-		CastChecked<UTexture2D>(assetRegistry.GetAssetByObjectPath(FName(*(hl2TextureBasePath / TEXT("skybox") / skyboxName + TEXT("dn.") + skyboxName + TEXT("dn")))).GetAsset())  // -Z, +0
-	};
-
-	// Determine size
-	const bool hdr = skyboxName.EndsWith(TEXT("hdr"));
-	const int width = textures[0]->Source.GetSizeX();
-	const int height = textures[0]->Source.GetSizeY();
-	check(width == height);
-
-	// Initialise texture data
-	if (hdr)
-	{
-		texture->SRGB = false;
-		texture->CompressionSettings = TextureCompressionSettings::TC_HDR;
-	}
-	else
-	{
-		texture->SRGB = true;
-		texture->CompressionSettings = TextureCompressionSettings::TC_Default;
-	}
-	texture->Source.Init(width, height, 6, 1, hdr ? ETextureSourceFormat::TSF_RGBA16 : ETextureSourceFormat::TSF_BGRA8);
-
-	// Copy texture data
-	int mipSize = texture->Source.CalcMipSize(0) / (hdr ? 12 : 6);
-	uint8* dstData = hdr ? new uint8[mipSize * 6] : texture->Source.LockMip(0);
-	for (int i = 0; i < 6; ++i)
-	{
-		UTexture* srcTex = textures[i];
-		const uint8* srcData = srcTex->Source.LockMip(0);
-		switch (i)
-		{
-			case 0:
-			{
-				// Rotate 90 degrees CCW
-				const uint32* srcPixels = (uint32*)srcData;
-				uint32* dstPixels = (uint32*)(dstData + i * mipSize);
-				for (int y = 0; y < height; ++y)
-				{
-					for (int x = 0; x < width; ++x)
-					{
-						dstPixels[y * height + x] = srcPixels[x * height + (height - (y + 1))];
-					}
-				}
-				break;
-			}
-			case 1:
-			{
-				// Rotate 90 degrees CW
-				const uint32* srcPixels = (uint32*)srcData;
-				uint32* dstPixels = (uint32*)(dstData + i * mipSize);
-				for (int y = 0; y < height; ++y)
-				{
-					for (int x = 0; x < width; ++x)
-					{
-						dstPixels[y * height + x] = srcPixels[(width - (x + 1)) * height + y];
-					}
-				}
-				break;
-			}
-			case 2:
-			{
-				// Rotate 180 degrees
-				const uint32* srcPixels = (uint32*)srcData;
-				uint32* dstPixels = (uint32*)(dstData + i * mipSize);
-				for (int y = 0; y < height; ++y)
-				{
-					for (int x = 0; x < width; ++x)
-					{
-						dstPixels[y * height + x] = srcPixels[(height - (y + 1)) * height + (width - (x + 1))];
-					}
-				}
-				break;
-			}
-			default:
-				FMemory::Memcpy(dstData + i * mipSize, srcData, mipSize);
-				break;
-		}		
-		srcTex->Source.UnlockMip(0);
-	}
-	if (hdr)
-	{
-		uint8* mipDstData = texture->Source.LockMip(0);
-		for (int i = 0; i < 6; ++i)
-		{
-			uint64* dstPixels = (uint64*)(mipDstData + i * mipSize * 2);
-			uint32* srcPixels = (uint32*)(dstData + i * mipSize);
-			for (int y = 0; y < height; ++y)
-			{
-				for (int x = 0; x < width; ++x)
-				{
-					dstPixels[y * height + x] = HDRDecompress(srcPixels[y * height + x]);
-				}
-			}
-		}
-		delete[] dstData;
-	}
-	texture->Source.UnlockMip(0);
-}
-
-uint64 HL2EditorImpl::HDRDecompress(uint32 pixel)
-{
-	const uint8 ldrA = pixel >> 0x18;
-	const uint8 ldrR = (pixel >> 0x10) & 0xff;
-	const uint8 ldrG = (pixel >> 0x8) & 0xff;
-	const uint8 ldrB = pixel & 0xff;
-
-	const uint16 hdrR = (uint16)FMath::Clamp((uint32)ldrR * (uint32)ldrA * 16, 0u, 0xffffu);
-	const uint16 hdrG = (uint16)FMath::Clamp((uint32)ldrG * (uint32)ldrA * 16, 0u, 0xffffu);
-	const uint16 hdrB = (uint16)FMath::Clamp((uint32)ldrB * (uint32)ldrA * 16, 0u, 0xffffu);
-	const uint16 hdrA = 0xffffu;
-
-	return ((uint64)hdrA << 0x30u) | ((uint64)hdrB << 0x20u) | ((uint64)hdrG << 0x10u) | (uint64)hdrR;
 }
 
 void HL2EditorImpl::GroupFileListByDirectory(const TArray<FString>& files, TMap<FString, TArray<FString>>& outMap)

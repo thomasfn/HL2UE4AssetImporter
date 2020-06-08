@@ -1509,15 +1509,15 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						TArray<const Valve::MDL::mstudioanimvalue_t*> xValues, yValues, zValues;
 						if (rotValuePtr->offset[0] > 0)
 						{
-							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[0], sectionAnims.Num(), xValues);
+							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[0], animDesc->numframes, xValues);
 						}
 						if (rotValuePtr->offset[1] > 0)
 						{
-							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[1], sectionAnims.Num(), yValues);
+							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[1], animDesc->numframes, yValues);
 						}
 						if (rotValuePtr->offset[2] > 0)
 						{
-							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[2], sectionAnims.Num(), zValues);
+							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[2], animDesc->numframes, zValues);
 						}
 						track.RotKeys.SetNum(FMath::Min(FMath::Max3(xValues.Num(), yValues.Num(), zValues.Num()), animDesc->numframes), false);
 						for (int i = 0; i < track.RotKeys.Num(); ++i)
@@ -1543,14 +1543,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						Quaternion48 q48 = *anim->GetQuat48();
-						track.RotKeys[0] = q48;
+						track.RotKeys[0] = ((FQuat)q48).GetNormalized();
 						
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT2))
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						Quaternion64 q64 = *anim->GetQuat64();
-						track.RotKeys[0] = q64;
+						track.RotKeys[0] = ((FQuat)q64).GetNormalized();
 					}
 					else
 					{
@@ -1572,15 +1572,15 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						TArray<const Valve::MDL::mstudioanimvalue_t*> xValues, yValues, zValues;
 						if (posValuePtr->offset[0] > 0)
 						{
-							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[0], sectionAnims.Num(), xValues);
+							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[0], animDesc->numframes, xValues);
 						}
 						if (posValuePtr->offset[1] > 0)
 						{
-							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[1], sectionAnims.Num(), yValues);
+							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[1], animDesc->numframes, yValues);
 						}
 						if (posValuePtr->offset[2] > 0)
 						{
-							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[2], sectionAnims.Num(), zValues);
+							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[2], animDesc->numframes, zValues);
 						}
 						track.PosKeys.SetNum(FMath::Min(FMath::Max3(xValues.Num(), yValues.Num(), zValues.Num()), animDesc->numframes), false);
 						for (int i = 0; i < track.PosKeys.Num(); ++i)
@@ -1662,8 +1662,9 @@ void UMDLFactory::ReadAnimData(const uint8* basePtr, USkeletalMesh* skeletalMesh
 	for (int i = 0; i < numBones; ++i)
 	{
 		const Valve::MDL::mstudioanim_t* anim = (const Valve::MDL::mstudioanim_t*)basePtr;
-		if (anim->bone == 255 || anim->bone > numBones || anim->nextoffset == 0) { break; }
+		if (anim->bone == 255 || anim->bone > numBones) { break; }
 		out.Add(anim);
+		if (anim->nextoffset == 0) { break; }
 		basePtr += anim->nextoffset;
 	}
 }

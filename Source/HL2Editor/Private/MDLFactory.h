@@ -128,4 +128,8 @@ private:
 	static void ResolveMaterials(const Valve::MDL::studiohdr_t& header, TArray<FName>& out);
 
 	static void ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray<int>>& out);
+
+	static FQuat SourceEulerToSourceQuat(float pitch, float yaw, float roll);
+
+	static FQuat SourceQuatToUnrealQuat(const FQuat& quat);
 };

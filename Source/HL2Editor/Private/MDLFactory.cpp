@@ -333,6 +333,7 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 		skeletonPackage->MarkPendingKill();
 		return result;
 	}
+	result.SkeletalMesh->InvalidateDeriveDataCacheGUID();
 	result.SkeletalMesh->PostEditChange();
 	FAssetRegistryModule::AssetCreated(result.SkeletalMesh);
 	result.SkeletalMesh->MarkPackageDirty();
@@ -873,7 +874,6 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	FFeedbackContext* warn
 )
 {
-
 	// Read and validate body parts
 	TArray<const Valve::MDL::mstudiobodyparts_t*> bodyParts;
 	header.GetBodyParts(bodyParts);
@@ -945,7 +945,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 			FTransform bonePose;
 			bonePose.SetLocation(FVector(bone.pos[0], bone.pos[1], bone.pos[2]));
-			bonePose.SetRotation(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]));
+			bonePose.SetRotation(SourceQuatToUnrealQuat(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3])));
 			refSkelMod.Add(meshBoneInfo, bonePose);
 		}
 	}
@@ -1519,14 +1519,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						{
 							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[2], animDesc->numframes, zValues);
 						}
-						track.RotKeys.SetNum(FMath::Min(FMath::Max3(xValues.Num(), yValues.Num(), zValues.Num()), animDesc->numframes), false);
-						for (int i = 0; i < track.RotKeys.Num(); ++i)
+						track.RotKeys.SetNum(animDesc->numframes, false);
+						for (int i = 0; i < animDesc->numframes; ++i)
 						{
 							FQuat& rot = track.RotKeys[i];
 							float x = 0.0f, y = 0.0f, z = 0.0f;
-							if (xValues.IsValidIndex(i)) { x = ReadAnimValue(i, xValues, bone->rotscale[0]); }
-							if (yValues.IsValidIndex(i)) { y = ReadAnimValue(i, yValues, bone->rotscale[1]); }
-							if (zValues.IsValidIndex(i)) { z = ReadAnimValue(i, zValues, bone->rotscale[2]); }
+							if (rotValuePtr->offset[0] > 0) { x = ReadAnimValue(i, xValues, bone->rotscale[0]); }
+							if (rotValuePtr->offset[1] > 0) { y = ReadAnimValue(i, yValues, bone->rotscale[1]); }
+							if (rotValuePtr->offset[2] > 0) { z = ReadAnimValue(i, zValues, bone->rotscale[2]); }
 							check(!FMath::IsNaN(x));
 							check(!FMath::IsNaN(y));
 							check(!FMath::IsNaN(z));
@@ -1536,32 +1536,32 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 								y += bone->rot[1];
 								z += bone->rot[2];
 							}
-							rot = FQuat::MakeFromEuler(FVector(x, y, z));
+							rot = SourceQuatToUnrealQuat(SourceEulerToSourceQuat(x, y, z));
 						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT))
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						Quaternion48 q48 = *anim->GetQuat48();
-						track.RotKeys[0] = ((FQuat)q48).GetNormalized();
+						track.RotKeys[0] = SourceQuatToUnrealQuat(((FQuat)q48).GetNormalized());
 						
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT2))
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						Quaternion64 q64 = *anim->GetQuat64();
-						track.RotKeys[0] = ((FQuat)q64).GetNormalized();
+						track.RotKeys[0] = SourceQuatToUnrealQuat(((FQuat)q64).GetNormalized());
 					}
 					else
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							track.RotKeys[0] = FQuat::Identity;
+							track.RotKeys[0] = SourceQuatToUnrealQuat(SourceEulerToSourceQuat(0.0f, 0.0f, 0.0f));
 						}
 						else
 						{
-							track.RotKeys[0] = FQuat::MakeFromEuler(FVector(bone->rot[0], bone->rot[1], bone->rot[2]));
+							track.RotKeys[0] = SourceQuatToUnrealQuat(SourceEulerToSourceQuat(bone->rot[0], bone->rot[1], bone->rot[2]));
 						}
 					}
 
@@ -1582,14 +1582,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						{
 							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[2], animDesc->numframes, zValues);
 						}
-						track.PosKeys.SetNum(FMath::Min(FMath::Max3(xValues.Num(), yValues.Num(), zValues.Num()), animDesc->numframes), false);
-						for (int i = 0; i < track.PosKeys.Num(); ++i)
+						track.PosKeys.SetNum(animDesc->numframes, false);
+						for (int i = 0; i < animDesc->numframes; ++i)
 						{
 							FVector& pos = track.PosKeys[i];
 							float x = 0.0f, y = 0.0f, z = 0.0f;
-							if (xValues.IsValidIndex(i)) { x = ReadAnimValue(i, xValues, bone->posscale[0]); }
-							if (yValues.IsValidIndex(i)) { y = ReadAnimValue(i, yValues, bone->posscale[1]); }
-							if (zValues.IsValidIndex(i)) { z = ReadAnimValue(i, zValues, bone->posscale[2]); }
+							if (posValuePtr->offset[0] > 0) { x = ReadAnimValue(i, xValues, bone->posscale[0]); }
+							if (posValuePtr->offset[1] > 0) { y = ReadAnimValue(i, yValues, bone->posscale[1]); }
+							if (posValuePtr->offset[2] > 0) { z = ReadAnimValue(i, zValues, bone->posscale[2]); }
 							check(!FMath::IsNaN(x));
 							check(!FMath::IsNaN(y));
 							check(!FMath::IsNaN(z));
@@ -1851,4 +1851,32 @@ void UMDLFactory::ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray
 		}
 		out.Add(mapping);
 	}
+}
+
+FQuat UMDLFactory::SourceEulerToSourceQuat(float pitch, float yaw, float roll)
+{
+	const float sinPitch = FMath::Sin(pitch * 0.5f);
+	const float cosPitch = FMath::Cos(pitch * 0.5f);
+	const float sinYaw = FMath::Sin(yaw * 0.5f);
+	const float cosYaw = FMath::Cos(yaw * 0.5f);
+	const float sinRoll = FMath::Sin(roll * 0.5f);
+	const float cosRoll = FMath::Cos(roll * 0.5f);
+
+	const float cosPitchCosYaw = cosPitch * cosYaw;
+	const float sinPitchSinYaw = sinPitch * sinYaw;
+
+	FQuat result;
+	result.X = sinRoll * cosPitchCosYaw - cosRoll * sinPitchSinYaw;
+	result.Y = cosRoll * sinPitch * cosYaw + sinRoll * cosPitch * sinYaw;
+	result.Z = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw;
+	result.W = cosRoll * cosPitchCosYaw + sinRoll * sinPitchSinYaw;
+
+	result.Normalize();
+	return result;
+}
+
+FQuat UMDLFactory::SourceQuatToUnrealQuat(const FQuat& quat)
+{
+	//return FQuat(FVector::ForwardVector, PI * 0.5f) * quat;
+	return quat;
 }

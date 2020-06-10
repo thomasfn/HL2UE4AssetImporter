@@ -18,6 +18,7 @@
 #include "MeshUtilitiesCommon.h"
 #include "OverlappingCorners.h"
 #include "ValveKeyValues.h"
+#include "SourceCoord.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -602,12 +603,19 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 							{
 								tmpVertInstIDs.Empty(3);
 
-								const uint16 idxs[3] =
+								uint16 idxs[3];
+								if (StudioMdlToUnreal.ShouldReverseWinding())
 								{
-									indices[strip.indexOffset + i],
-									indices[strip.indexOffset + i + 1],
-									indices[strip.indexOffset + i + 2]
-								};
+									idxs[0] = indices[strip.indexOffset + i + 2];
+									idxs[1] = indices[strip.indexOffset + i + 1];
+									idxs[2] = indices[strip.indexOffset + i];
+								}
+								else
+								{
+									idxs[0] = indices[strip.indexOffset + i];
+									idxs[1] = indices[strip.indexOffset + i + 1];
+									idxs[2] = indices[strip.indexOffset + i + 2];
+								}
 
 								const Valve::VTX::Vertex_t* verts[3] =
 								{
@@ -629,11 +637,11 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 									const FVector4& vvdTangent = vvdTangents[baseIdxs[j]];
 
 									FVertexID vertID = localMeshData.meshDescription.CreateVertex();
-									localMeshData.vertPos[vertID] = vvdVertex.m_vecPosition;
+									localMeshData.vertPos[vertID] = StudioMdlToUnreal.Position(vvdVertex.m_vecPosition);
 
 									FVertexInstanceID vertInstID = localMeshData.meshDescription.CreateVertexInstance(vertID);
-									localMeshData.vertInstNormal[vertInstID] = vvdVertex.m_vecNormal;
-									localMeshData.vertInstTangent[vertInstID] = FVector(vvdTangent.X, vvdTangent.Y, vvdTangent.Z);
+									localMeshData.vertInstNormal[vertInstID] = StudioMdlToUnreal.Direction(vvdVertex.m_vecNormal);
+									localMeshData.vertInstTangent[vertInstID] = StudioMdlToUnreal.Direction(FVector(vvdTangent.X, vvdTangent.Y, vvdTangent.Z));
 									localMeshData.vertInstUV0[vertInstID] = vvdVertex.m_vecTexCoord;
 
 									tmpVertInstIDs.Add(vertInstID);
@@ -944,8 +952,8 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
 
 			FTransform bonePose;
-			bonePose.SetLocation(FVector(bone.pos[0], bone.pos[1], bone.pos[2]));
-			bonePose.SetRotation(SourceQuatToUnrealQuat(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3])));
+			bonePose.SetLocation(StudioMdlToUnreal.Position(FVector(bone.pos[0], bone.pos[1], bone.pos[2])));
+			bonePose.SetRotation(StudioMdlToUnreal.Quat(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]).GetNormalized()));
 			refSkelMod.Add(meshBoneInfo, bonePose);
 		}
 	}
@@ -1103,12 +1111,19 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 							for (int i = 0; i < strip.numIndices; i += 3)
 							{
-								const uint16 idxs[3] =
+								uint16 idxs[3];
+								if (StudioMdlToUnreal.ShouldReverseWinding())
 								{
-									indices[strip.indexOffset + i],
-									indices[strip.indexOffset + i + 1],
-									indices[strip.indexOffset + i + 2]
-								};
+									idxs[0] = indices[strip.indexOffset + i + 2];
+									idxs[1] = indices[strip.indexOffset + i + 1];
+									idxs[2] = indices[strip.indexOffset + i];
+								}
+								else
+								{
+									idxs[0] = indices[strip.indexOffset + i];
+									idxs[1] = indices[strip.indexOffset + i + 1];
+									idxs[2] = indices[strip.indexOffset + i + 2];
+								}
 
 								const Valve::VTX::Vertex_t* verts[3] =
 								{
@@ -1139,7 +1154,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 									const Valve::VTX::Vertex_t& vert = *verts[j];
 									const Valve::VVD::mstudiovertex_t& origVert = *origVerts[j];
 
-									const int vertIdx = localMeshData.points.Add(origVert.m_vecPosition);
+									const int vertIdx = localMeshData.points.Add(StudioMdlToUnreal.Position(origVert.m_vecPosition));
 									localMeshData.pointToRawMap.Add(baseIdxs[j]);
 
 									SkeletalMeshImportData::FMeshWedge wedge;
@@ -1147,8 +1162,8 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 									wedge.Color = FColor::White;
 									wedge.UVs[0] = origVert.m_vecTexCoord;
 									face.iWedge[j] = localMeshData.wedges.Add(wedge);
-									face.TangentZ[j] = origVert.m_vecNormal.GetSafeNormal();
-									face.TangentY[j] = vvdTangents[baseIdxs[j]].GetSafeNormal();
+									face.TangentZ[j] = StudioMdlToUnreal.Direction(origVert.m_vecNormal.GetSafeNormal());
+									face.TangentY[j] = StudioMdlToUnreal.Direction(vvdTangents[baseIdxs[j]].GetSafeNormal());
 									face.TangentX[j] = FVector::CrossProduct(face.TangentY[j], face.TangentZ[j]);
 									
 									const int numBones = FMath::Min((int)origVert.m_BoneWeights.numbones, Valve::VVD::MAX_NUM_BONES_PER_VERT);
@@ -1536,32 +1551,32 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 								y += bone->rot[1];
 								z += bone->rot[2];
 							}
-							rot = SourceQuatToUnrealQuat(SourceEulerToSourceQuat(x, y, z));
+							rot = StudioMdlToUnreal.Quat(ParseSourceEuler(x, y, z));
 						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT))
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						Quaternion48 q48 = *anim->GetQuat48();
-						track.RotKeys[0] = SourceQuatToUnrealQuat(((FQuat)q48).GetNormalized());
+						track.RotKeys[0] = StudioMdlToUnreal.Quat(((FQuat)q48).GetNormalized());
 						
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT2))
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						Quaternion64 q64 = *anim->GetQuat64();
-						track.RotKeys[0] = SourceQuatToUnrealQuat(((FQuat)q64).GetNormalized());
+						track.RotKeys[0] = StudioMdlToUnreal.Quat(((FQuat)q64).GetNormalized());
 					}
 					else
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							track.RotKeys[0] = SourceQuatToUnrealQuat(SourceEulerToSourceQuat(0.0f, 0.0f, 0.0f));
+							track.RotKeys[0] = StudioMdlToUnreal.Quat(FQuat::Identity);
 						}
 						else
 						{
-							track.RotKeys[0] = SourceQuatToUnrealQuat(SourceEulerToSourceQuat(bone->rot[0], bone->rot[1], bone->rot[2]));
+							track.RotKeys[0] = StudioMdlToUnreal.Quat(FQuat(bone->quat[0], bone->quat[1], bone->quat[2], bone->quat[3]));
 						}
 					}
 
@@ -1599,25 +1614,25 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 								y += bone->pos[1];
 								z += bone->pos[2];
 							}
-							pos = FVector(x, y, z);
+							pos = StudioMdlToUnreal.Position(FVector(x, y, z));
 						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWPOS))
 					{
 						Vector48 v48 = *anim->GetPos();
 						track.PosKeys.SetNum(FMath::Max(track.PosKeys.Num(), 1), false);
-						track.PosKeys[0] = v48;
+						track.PosKeys[0] = StudioMdlToUnreal.Position(v48);
 					}
 					else
 					{
 						track.PosKeys.SetNum(FMath::Max(track.PosKeys.Num(), 1), false);
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							track.PosKeys[0] = FVector::ZeroVector;
+							track.PosKeys[0] = StudioMdlToUnreal.Position(FVector::ZeroVector);
 						}
 						else
 						{
-							track.PosKeys[0] = FVector(bone->pos[0], bone->pos[1], bone->pos[2]);
+							track.PosKeys[0] = StudioMdlToUnreal.Position(FVector(bone->pos[0], bone->pos[1], bone->pos[2]));
 						}
 					}
 				}
@@ -1853,9 +1868,10 @@ void UMDLFactory::ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray
 	}
 }
 
-FQuat UMDLFactory::SourceEulerToSourceQuat(float pitch, float yaw, float roll)
+FQuat UMDLFactory::ParseSourceEuler(float pitch, float yaw, float roll)
 {
-	const float sinPitch = FMath::Sin(pitch * 0.5f);
+	return FQuat(FRotator(FMath::RadiansToDegrees(pitch), FMath::RadiansToDegrees(yaw), FMath::RadiansToDegrees(roll)));
+	/*const float sinPitch = FMath::Sin(pitch * 0.5f);
 	const float cosPitch = FMath::Cos(pitch * 0.5f);
 	const float sinYaw = FMath::Sin(yaw * 0.5f);
 	const float cosYaw = FMath::Cos(yaw * 0.5f);
@@ -1872,11 +1888,5 @@ FQuat UMDLFactory::SourceEulerToSourceQuat(float pitch, float yaw, float roll)
 	result.W = cosRoll * cosPitchCosYaw + sinRoll * sinPitchSinYaw;
 
 	result.Normalize();
-	return result;
-}
-
-FQuat UMDLFactory::SourceQuatToUnrealQuat(const FQuat& quat)
-{
-	//return FQuat(FVector::ForwardVector, PI * 0.5f) * quat;
-	return quat;
+	return result;*/
 }

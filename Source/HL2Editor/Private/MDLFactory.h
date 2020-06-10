@@ -129,7 +129,5 @@ private:
 
 	static void ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray<int>>& out);
 
-	static FQuat SourceEulerToSourceQuat(float pitch, float yaw, float roll);
-
-	static FQuat SourceQuatToUnrealQuat(const FQuat& quat);
+	static FQuat ParseSourceEuler(float pitch, float yaw, float roll);
 };

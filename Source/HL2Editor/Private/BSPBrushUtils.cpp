@@ -1,8 +1,6 @@
-#include "HL2EditorPrivatePCH.h"
-
+#include "BSPBrushUtils.h"
 #include "MeshAttributes.h"
 #include "StaticMeshAttributes.h"
-#include "BSPBrushUtils.h"
 #include "Engine/Polys.h"
 #include "IHL2Runtime.h"
 

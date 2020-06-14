@@ -5,8 +5,6 @@ public class HL2Editor : ModuleRules
 {
     public HL2Editor(ReadOnlyTargetRules Target) : base(Target)
     {
-		PrivatePCHHeaderFile = "Private/HL2EditorPrivatePCH.h";
-		
         PrivateIncludePaths.AddRange(new string[] { Path.Combine(ModuleDirectory, "Private") });
 
         PrivateDependencyModuleNames.AddRange(new string[]

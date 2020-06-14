@@ -9,8 +9,8 @@
  * version.
  */
 
-#include "VTFLib.h"
 #include "VTFWrapper.h"
+#include "VTFLib.h"
 #include "VTFFile.h"
 
 using namespace VTFLib;

@@ -9,8 +9,8 @@
  * version.
  */
 
-#include "VTFLib.h"
 #include "VMTFile.h"
+#include "VTFLib.h"
 
 using namespace VTFLib;
 using namespace VTFLib::Nodes;

@@ -1,5 +1,3 @@
-#include "HL2EditorPrivatePCH.h"
-
 #include "MaterialUtils.h"
 #include "IHL2Runtime.h"
 #include "Internationalization/Regex.h"

@@ -9,8 +9,8 @@
  * version.
  */
 
-#include "VTFLib.h"
 #include "MemoryWriter.h"
+#include "VTFLib.h"
 
 using namespace VTFLib;
 using namespace VTFLib::IO::Writers;

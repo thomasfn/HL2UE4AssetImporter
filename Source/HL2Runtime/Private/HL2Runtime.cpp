@@ -1,5 +1,3 @@
-#include "HL2RuntimePrivatePCH.h"
-
 #include "HL2Runtime.h"
 
 #include "Misc/Paths.h"

@@ -9,9 +9,9 @@
  * version.
  */
 
-#include "VTFLib.h"
-#include "Proc.h"
 #include "ProcReader.h"
+#include "Proc.h"
+#include "VTFLib.h"
 
 using namespace VTFLib;
 using namespace VTFLib::IO::Readers;

@@ -9,8 +9,8 @@
  * version.
  */
 
-#include "VTFLib.h"
 #include "VTFFile.h"
+#include "VTFLib.h"
 #include "VTFFormat.h"
 #include "VTFDXTn.h"
 #include "Math/Vector.h"

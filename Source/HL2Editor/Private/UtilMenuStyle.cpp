@@ -1,5 +1,3 @@
-#include "HL2EditorPrivatePCH.h"
-
 #include "UtilMenuStyle.h"
 #include "Slate/SlateGameResources.h"
 

@@ -1,5 +1,3 @@
-#include "HL2RuntimePrivatePCH.h"
-
 #include "VMTMaterial.h"
 
 #if WITH_EDITORONLY_DATA

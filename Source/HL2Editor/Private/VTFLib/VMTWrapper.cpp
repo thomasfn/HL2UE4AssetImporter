@@ -9,8 +9,8 @@
  * version.
  */
 
-#include "VTFLib.h"
 #include "VMTWrapper.h"
+#include "VTFLib.h"
 #include "VMTFile.h"
 #include "Containers/Array.h"
 

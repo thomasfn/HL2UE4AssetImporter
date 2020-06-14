@@ -1,5 +1,3 @@
-#include "HL2EditorPrivatePCH.h"
-
 #include "compressed_vector.h"
 
 Vector32::Vector32(void)

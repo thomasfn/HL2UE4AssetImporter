@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-#include "HL2Runtime.h"
 #include "HL2EntityDataUtils.h"
+#include "HL2Runtime.h"
 
 FString UHL2EntityDataUtils::GetString(const FHL2EntityData& entityData, FName key) { return entityData.GetString(key); }
 

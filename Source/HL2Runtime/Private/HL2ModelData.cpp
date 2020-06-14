@@ -1,9 +1,7 @@
-#include "HL2RuntimePrivatePCH.h"
+#include "HL2ModelData.h"
 
 #include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
-
-#include "HL2ModelData.h"
 
 bool UHL2ModelData::ApplyBodygroupToStaticMesh(UStaticMeshComponent* target, const FName bodygroupName, int index)
 {

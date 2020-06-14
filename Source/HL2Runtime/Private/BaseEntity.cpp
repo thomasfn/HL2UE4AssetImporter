@@ -1,5 +1,3 @@
-#include "HL2RuntimePrivatePCH.h"
-
 #include "BaseEntity.h"
 #include "BaseEntityComponent.h"
 #include "IHL2Runtime.h"

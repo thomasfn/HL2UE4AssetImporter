@@ -1,5 +1,3 @@
-#include "HL2RuntimePrivatePCH.h"
-
 #include "VBSPInfo.h"
 
 #include "BaseEntity.h"

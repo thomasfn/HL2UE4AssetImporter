@@ -1,5 +1,3 @@
-#include "HL2EditorPrivatePCH.h"
-
 #include "VMTFactory.h"
 #include "MaterialUtils.h"
 #include "Runtime/Core/Public/Misc/FeedbackContext.h"

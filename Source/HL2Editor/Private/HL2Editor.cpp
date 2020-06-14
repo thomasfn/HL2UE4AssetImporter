@@ -1,5 +1,3 @@
-#include "HL2EditorPrivatePCH.h"
-
 #include "HL2Editor.h"
 
 #include "IHL2Runtime.h"

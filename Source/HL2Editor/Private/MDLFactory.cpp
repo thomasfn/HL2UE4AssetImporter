@@ -1,5 +1,3 @@
-#include "HL2EditorPrivatePCH.h"
-
 #include "MDLFactory.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Misc/FeedbackContext.h"

@@ -1,5 +1,3 @@
-#include "HL2RuntimePrivatePCH.h"
-
 #include "HL2EntityData.h"
 
 FString FHL2EntityData::GetString(FName key) const

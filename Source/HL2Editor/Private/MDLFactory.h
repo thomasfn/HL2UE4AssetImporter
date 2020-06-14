@@ -7,6 +7,7 @@
 #include "Animation/Skeleton.h"
 #include "Animation/AnimSequence.h"
 #include "PhysicsEngine/PhysicsAsset.h"
+#include "SourceCoord.h"
 
 #include "studiomdl/studiomdl.h"
 #include "studiomdl/valvemeshstrip.h"

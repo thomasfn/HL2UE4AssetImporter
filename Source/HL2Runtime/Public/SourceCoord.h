@@ -8,6 +8,7 @@ class FSourceCoord
 private:
 
 	const FVector unitX, unitY, unitZ;
+	const FMatrix matrix;
 	const bool reverseWinding;
 
 public:
@@ -22,7 +23,15 @@ private:
 
 public:
 
+	static inline void CopySign(float from, float& to);
+
+	static inline void CopySign(const FVector& from, FVector& to);
+
+public:
+
 	inline bool ShouldReverseWinding() const;
+
+	inline const FMatrix& GetMatrix() const;
 	
 	inline FVector Position(const FVector& position) const;
 
@@ -34,7 +43,7 @@ public:
 
 	inline FQuat Quat(const FQuat& quat) const;
 
-	inline FTransform Transform(const FTransform& transform) const;
+	inline FTransform Transform(const FTransform& transform, bool preserveScaleSign = false) const;
 
 	inline FPlane Plane(const FPlane& plane) const;
 
@@ -44,6 +53,7 @@ inline FSourceCoord::FSourceCoord(const FVector& unitX, const FVector& unitY, co
 	: unitX(unitX)
 	, unitY(unitY)
 	, unitZ(unitZ)
+	, matrix(FMatrix(FPlane(unitX, 0.0f), FPlane(unitY, 0.0f), FPlane(unitZ, 0.0f), FPlane(0.0f, 0.0f, 0.0f, 1.0f)))
 	, reverseWinding(Determinant() < 0.0f)
 { }
 
@@ -64,9 +74,29 @@ inline FVector FSourceCoord::Multiply(const FVector& vec) const
 	);
 }
 
+inline void FSourceCoord::CopySign(float from, float& to)
+{
+	if ((from < 0.0f && to > 0.0f) || (from > 0.0f && to < 0.0f))
+	{
+		to *= -1.0f;
+	}
+}
+
+inline void FSourceCoord::CopySign(const FVector& from, FVector& to)
+{
+	CopySign(from.X, to.X);
+	CopySign(from.Y, to.Y);
+	CopySign(from.Z, to.Z);
+}
+
 inline bool FSourceCoord::ShouldReverseWinding() const
 {
 	return reverseWinding;
+}
+
+inline const FMatrix& FSourceCoord::GetMatrix() const
+{
+	return matrix;
 }
 
 inline FVector FSourceCoord::Position(const FVector& position) const
@@ -91,16 +121,19 @@ inline FRotator FSourceCoord::Rotator(const FRotator& rotator) const
 
 inline FQuat FSourceCoord::Quat(const FQuat& quat) const
 {
-	return FQuat::FindBetweenNormals(FVector::ForwardVector, Direction(quat.RotateVector(FVector::ForwardVector)));
+	return (FQuat(matrix) * quat).GetNormalized();
 }
 
-inline FTransform FSourceCoord::Transform(const FTransform& transform) const
+inline FTransform FSourceCoord::Transform(const FTransform& transform, bool preserveScaleSign) const
 {
-	return FTransform(
-		Quat(transform.GetRotation()),
-		Position(transform.GetTranslation()),
-		Scale(transform.GetScale3D())
-	);
+	FTransform result(transform.ToMatrixWithScale() * matrix);
+	if (preserveScaleSign)
+	{
+		FVector resultScale = result.GetScale3D();
+		CopySign(transform.GetScale3D(), resultScale);
+		result.SetScale3D(resultScale);
+	}
+	return result;
 }
 
 inline FPlane FSourceCoord::Plane(const FPlane& plane) const
@@ -133,4 +166,15 @@ const FSourceCoord StudioMdlToUnreal(
 	FVector(1.0f, 0.0f, 0.0f),
 	FVector(0.0f, -1.0f, 0.0f),
 	FVector(0.0f, 0.0f, 1.0f) 
+);
+
+const FSourceCoord UnrealToSource(
+	FVector(0.0f, 1.0f, 0.0f), // map unreal +X to source +Y axis
+	FVector(1.0f, 0.0f, 0.0f), // map unreal +Y to source +X axis
+	FVector(0.0f, 0.0f, 1.0f)  // map unreal +Z to source +Z axis
+);
+const FSourceCoord UnrealToStudioMdl(
+	FVector(1.0f, 0.0f, 0.0f),
+	FVector(0.0f, -1.0f, 0.0f),
+	FVector(0.0f, 0.0f, 1.0f)
 );

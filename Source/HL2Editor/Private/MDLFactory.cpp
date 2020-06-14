@@ -16,7 +16,7 @@
 #include "MeshUtilitiesCommon.h"
 #include "OverlappingCorners.h"
 #include "ValveKeyValues.h"
-#include "SourceCoord.h"
+#include "SkeletonUtils.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -198,7 +198,7 @@ UAnimSequence* UMDLFactory::CreateAnimSequence(UObject* InParent, FName Name, EO
 	{
 		newAnimSequence = CastChecked<UAnimSequence>(newObject);
 	}
-
+	newAnimSequence->CleanAnimSequenceForImport();
 	return newAnimSequence;
 }
 
@@ -931,29 +931,36 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	// Load bones into skeleton
 	FReferenceSkeleton refSkel(false);
 	{
-		FReferenceSkeletonModifier refSkelMod(refSkel, skeleton);
-		refSkel.Empty(bones.Num());
-		for (int i = 0; i < bones.Num(); ++i)
+		// Load bones into temporary skeleton, in source coordinates
+		FReferenceSkeleton refSkelSource(false);
 		{
-			const Valve::MDL::mstudiobone_t& bone = *bones[i];
-			FMeshBoneInfo meshBoneInfo;
-			if (bone.parent < 0)
+			FReferenceSkeletonModifier refSkelSourceMod(refSkelSource, skeleton);
+			refSkelSource.Empty(bones.Num());
+			for (int i = 0; i < bones.Num(); ++i)
 			{
-				// Only accept it as root bone if it's the first one
-				meshBoneInfo.ParentIndex = i == 0 ? -1 : 0;
-			}
-			else
-			{
-				meshBoneInfo.ParentIndex = bone.parent;
-			}
-			meshBoneInfo.ExportName = bone.GetName();
-			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
+				const Valve::MDL::mstudiobone_t& bone = *bones[i];
+				FMeshBoneInfo meshBoneInfo;
+				if (bone.parent < 0)
+				{
+					// Only accept it as root bone if it's the first one
+					meshBoneInfo.ParentIndex = i == 0 ? -1 : 0;
+				}
+				else
+				{
+					meshBoneInfo.ParentIndex = bone.parent;
+				}
+				meshBoneInfo.ExportName = bone.GetName();
+				meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
 
-			FTransform bonePose;
-			bonePose.SetLocation(StudioMdlToUnreal.Position(FVector(bone.pos[0], bone.pos[1], bone.pos[2])));
-			bonePose.SetRotation(StudioMdlToUnreal.Quat(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]).GetNormalized()));
-			refSkelMod.Add(meshBoneInfo, bonePose);
+				FTransform bonePose;
+				bonePose.SetLocation(FVector(bone.pos[0], bone.pos[1], bone.pos[2]));
+				bonePose.SetRotation(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]).GetNormalized());
+				refSkelSourceMod.Add(meshBoneInfo, bonePose);
+			}
 		}
+
+		// Go through each bone in temporary skeleton, convert to unreal coords
+		refSkel = FSkeletonUtils::TransformSkeleton(refSkelSource, StudioMdlToUnreal);
 	}
 	skeletalMesh->RefSkeleton = refSkel;
 	skeleton->RecreateBoneTree(skeletalMesh);
@@ -1440,6 +1447,9 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 	TArray<const Valve::MDL::mstudiobone_t*> bones;
 	header.GetBones(bones);
 
+	const FReferenceSkeleton& refSkel = skeletalMesh->RefSkeleton;
+	const FReferenceSkeleton refSkelSource = FSkeletonUtils::TransformSkeleton(refSkel, UnrealToStudioMdl);
+
 	for (const Valve::MDL::mstudioanimdesc_t* animDesc : localAnims)
 	{
 		FString name = animDesc->GetName();
@@ -1450,6 +1460,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 		sequence->SetSkeleton(skeletalMesh->Skeleton);
 		sequence->SetRawNumberOfFrame(animDesc->numframes);
 		sequence->SequenceLength = animDesc->numframes / (float)animDesc->fps;
+		sequence->AdditiveAnimType = EAdditiveAnimationType::AAT_None;
 
 		if (!animDesc->HasFlag(Valve::MDL::mstudioanimdesc_flag::ALLZEROS))
 		{
@@ -1513,7 +1524,9 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 				{
 					check(bones.IsValidIndex(anim->bone));
 					const Valve::MDL::mstudiobone_t* bone = bones[anim->bone];
+					const FTransform& boneRefPose = refSkelSource.GetRefBonePose()[anim->bone];
 					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(anim->bone);
+					const bool isRootBone = !bones.IsValidIndex(refSkel.GetParentIndex(anim->bone));
 
 					// Rotation
 					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMROT))
@@ -1549,32 +1562,39 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 								y += bone->rot[1];
 								z += bone->rot[2];
 							}
-							rot = StudioMdlToUnreal.Quat(ParseSourceEuler(x, y, z));
+							rot = ParseSourceEuler(x, y, z);
 						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT))
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
-						Quaternion48 q48 = *anim->GetQuat48();
-						track.RotKeys[0] = StudioMdlToUnreal.Quat(((FQuat)q48).GetNormalized());
-						
+						FQuat rot = *anim->GetQuat48();
+						if (isRootBone)
+						{
+							rot = FQuat(rot.Rotator() - FRotator(0.0f, 0.0f, 90.0f));
+						}
+						track.RotKeys[0] = *anim->GetQuat48();
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT2))
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
-						Quaternion64 q64 = *anim->GetQuat64();
-						track.RotKeys[0] = StudioMdlToUnreal.Quat(((FQuat)q64).GetNormalized());
+						FQuat rot = *anim->GetQuat64();
+						if (isRootBone)
+						{
+							rot = FQuat(rot.Rotator() - FRotator(0.0f, 0.0f, 90.0f));
+						}
+						track.RotKeys[0] = rot;
 					}
 					else
 					{
 						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							track.RotKeys[0] = StudioMdlToUnreal.Quat(FQuat::Identity);
+							track.RotKeys[0] = FQuat::Identity;
 						}
 						else
 						{
-							track.RotKeys[0] = StudioMdlToUnreal.Quat(FQuat(bone->quat[0], bone->quat[1], bone->quat[2], bone->quat[3]));
+							track.RotKeys[0] = boneRefPose.GetRotation();
 						}
 					}
 
@@ -1612,29 +1632,69 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 								y += bone->pos[1];
 								z += bone->pos[2];
 							}
-							pos = StudioMdlToUnreal.Position(FVector(x, y, z));
+							pos = FVector(x, y, z);
 						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWPOS))
 					{
-						Vector48 v48 = *anim->GetPos();
 						track.PosKeys.SetNum(FMath::Max(track.PosKeys.Num(), 1), false);
-						track.PosKeys[0] = StudioMdlToUnreal.Position(v48);
+						FVector pos = *anim->GetPos();
+						if (isRootBone)
+						{
+							pos = FVector(pos.Y, -pos.X, pos.Z);
+						}
+						track.PosKeys[0] = pos;
 					}
 					else
 					{
 						track.PosKeys.SetNum(FMath::Max(track.PosKeys.Num(), 1), false);
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							track.PosKeys[0] = StudioMdlToUnreal.Position(FVector::ZeroVector);
+							track.PosKeys[0] = FVector::ZeroVector;
 						}
 						else
 						{
-							track.PosKeys[0] = StudioMdlToUnreal.Position(FVector(bone->pos[0], bone->pos[1], bone->pos[2]));
+							track.PosKeys[0] = boneRefPose.GetTranslation();
 						}
 					}
 				}
 			}
+
+			// Convert sequence tracks into unreal coordinate space
+			/*TMap<uint8, FRawAnimSequenceTrack> transformedBoneTrackMap = boneTrackMap;
+			for (const TPair<uint8, FRawAnimSequenceTrack>& trackPair : boneTrackMap)
+			{
+				FRawAnimSequenceTrack& transformedTrack = transformedBoneTrackMap[trackPair.Key];
+				const int parentBoneIndex = refSkel.GetParentIndex(trackPair.Key);
+				for (int i = 0; i < animDesc->numframes; ++i)
+				{
+					// Get parent bone's component transform, in source coords
+					const FTransform parentBoneComponentTransformSource = refSkel.IsValidIndex(parentBoneIndex)
+						? GetBoneComponentTransform(refSkelSource, parentBoneIndex, boneTrackMap, i)
+						: FTransform::Identity;
+					const FTransform parentBoneComponentTransform = StudioMdlToUnreal.Transform(parentBoneComponentTransformSource);
+
+					// Apply our bone transform from the track map to it, and convert to unreal coords
+					const FTransform boneComponentTransform = StudioMdlToUnreal.Transform(GetTrackBoneLocalTransform(trackPair.Value, i) * parentBoneComponentTransformSource);
+
+					// Find bone local transform
+					const FTransform boneLocalTransform = boneComponentTransform.GetRelativeTransform(parentBoneComponentTransform);
+
+					// Apply to transformedTrack
+					if (transformedTrack.PosKeys.IsValidIndex(i))
+					{
+						transformedTrack.PosKeys[i] = boneLocalTransform.GetTranslation();
+					}
+					if (transformedTrack.RotKeys.IsValidIndex(i))
+					{
+						transformedTrack.RotKeys[i] = boneLocalTransform.GetRotation();
+					}
+					if (transformedTrack.ScaleKeys.IsValidIndex(i))
+					{
+						transformedTrack.ScaleKeys[i] = boneLocalTransform.GetScale3D();
+					}
+				}
+			}*/
 			sequence->RemoveAllTracks();
 			for (auto& pair : boneTrackMap)
 			{
@@ -1868,8 +1928,12 @@ void UMDLFactory::ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray
 
 FQuat UMDLFactory::ParseSourceEuler(float pitch, float yaw, float roll)
 {
-	return FQuat(FRotator(FMath::RadiansToDegrees(pitch), FMath::RadiansToDegrees(yaw), FMath::RadiansToDegrees(roll)));
-	/*const float sinPitch = FMath::Sin(pitch * 0.5f);
+	/*return FQuat(FRotator::MakeFromEuler(FVector(
+		FMath::RadiansToDegrees(roll),
+		FMath::RadiansToDegrees(pitch),
+		FMath::RadiansToDegrees(yaw)
+	)));*/
+	const float sinPitch = FMath::Sin(pitch * 0.5f);
 	const float cosPitch = FMath::Cos(pitch * 0.5f);
 	const float sinYaw = FMath::Sin(yaw * 0.5f);
 	const float cosYaw = FMath::Cos(yaw * 0.5f);
@@ -1886,5 +1950,5 @@ FQuat UMDLFactory::ParseSourceEuler(float pitch, float yaw, float roll)
 	result.W = cosRoll * cosPitchCosYaw + sinRoll * sinPitchSinYaw;
 
 	result.Normalize();
-	return result;*/
+	return result;
 }

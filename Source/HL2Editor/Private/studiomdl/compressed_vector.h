@@ -23,7 +23,7 @@ public:
 
 	// assignment
 	Vector32& operator=(const FVector& vOther);
-	operator FVector ();
+	operator FVector () const;
 
 private:
 	unsigned short x : 10;
@@ -54,7 +54,7 @@ inline Vector32& Vector32::operator=(const FVector& vOther)
 }
 
 
-inline Vector32::operator FVector ()
+inline Vector32::operator FVector () const
 {
 	FVector tmp;
 
@@ -82,7 +82,7 @@ public:
 
 	// assignment
 	Normal32& operator=(const FVector& vOther);
-	operator FVector ();
+	operator FVector () const;
 
 private:
 	unsigned short x : 15;
@@ -103,7 +103,7 @@ inline Normal32& Normal32::operator=(const FVector& vOther)
 }
 
 
-inline Normal32::operator FVector ()
+inline Normal32::operator FVector () const
 {
 	FVector tmp;
 
@@ -112,6 +112,7 @@ inline Normal32::operator FVector ()
 	tmp.Z = sqrt(1 - tmp.X * tmp.X - tmp.Y * tmp.Y);
 	if (zneg)
 		tmp.Z = -tmp.Z;
+	tmp.Normalize();
 	return tmp;
 }
 
@@ -130,7 +131,7 @@ public:
 	// assignment
 	// Quaternion& operator=(const Quaternion64 &vOther);
 	Quaternion64& operator=(const FQuat& vOther);
-	operator FQuat ();
+	operator FQuat () const;
 private:
 	uint64 x : 21;
 	uint64 y : 21;
@@ -139,7 +140,7 @@ private:
 };
 
 
-inline Quaternion64::operator FQuat ()
+inline Quaternion64::operator FQuat () const
 {
 	FQuat tmp;
 
@@ -150,6 +151,7 @@ inline Quaternion64::operator FQuat ()
 	tmp.W = sqrt(1 - tmp.X * tmp.X - tmp.Y * tmp.Y - tmp.Z * tmp.Z);
 	if (wneg)
 		tmp.W = -tmp.W;
+	tmp.Normalize();
 	return tmp;
 }
 
@@ -176,7 +178,7 @@ public:
 	// assignment
 	// Quaternion& operator=(const Quaternion48 &vOther);
 	Quaternion48& operator=(const FQuat& vOther);
-	operator FQuat ();
+	operator FQuat () const;
 private:
 	unsigned short x : 16;
 	unsigned short y : 16;
@@ -185,7 +187,7 @@ private:
 };
 
 
-inline Quaternion48::operator FQuat ()
+inline Quaternion48::operator FQuat () const
 {
 	FQuat tmp;
 
@@ -195,6 +197,7 @@ inline Quaternion48::operator FQuat ()
 	tmp.W = sqrt(1 - tmp.X * tmp.X - tmp.Y * tmp.Y - tmp.Z * tmp.Z);
 	if (wneg)
 		tmp.W = -tmp.W;
+	tmp.Normalize();
 	return tmp;
 }
 
@@ -221,7 +224,7 @@ public:
 	// assignment
 	// Quaternion& operator=(const Quaternion48 &vOther);
 	Quaternion32& operator=(const FQuat& vOther);
-	operator FQuat ();
+	operator FQuat () const;
 private:
 	unsigned int x : 11;
 	unsigned int y : 10;
@@ -230,7 +233,7 @@ private:
 };
 
 
-inline Quaternion32::operator FQuat ()
+inline Quaternion32::operator FQuat () const
 {
 	FQuat tmp;
 
@@ -240,6 +243,7 @@ inline Quaternion32::operator FQuat ()
 	tmp.W = sqrt(1 - tmp.X * tmp.X - tmp.Y * tmp.Y - tmp.Z * tmp.Z);
 	if (wneg)
 		tmp.W = -tmp.W;
+	tmp.Normalize();
 	return tmp;
 }
 
@@ -492,7 +496,7 @@ public:
 
 	// assignment
 	Vector48& operator=(const FVector& vOther);
-	operator FVector ();
+	operator FVector () const;
 
 	const float operator[](int i) const { return (((float16*)this)[i]).GetFloat(); }
 
@@ -510,7 +514,7 @@ inline Vector48& Vector48::operator=(const FVector& vOther)
 }
 
 
-inline Vector48::operator FVector ()
+inline Vector48::operator FVector () const
 {
 	FVector tmp;
 

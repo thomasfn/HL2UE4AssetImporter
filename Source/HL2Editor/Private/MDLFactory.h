@@ -130,5 +130,5 @@ private:
 
 	static void ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray<int>>& out);
 
-	static FQuat ParseSourceEuler(float pitch, float yaw, float roll);
+	static FQuat ParseSourceEuler(float x, float y, float z);
 };

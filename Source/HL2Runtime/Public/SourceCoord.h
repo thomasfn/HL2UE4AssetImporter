@@ -144,19 +144,6 @@ inline FPlane FSourceCoord::Plane(const FPlane& plane) const
 	);
 }
 
-static const FMatrix sourceToUnrealMatrix = FMatrix(
-	FPlane(0.0f, 1.0f, 0.0f, 0.0f),
-	FPlane(1.0f, 0.0f, 0.0f, 0.0f),
-	FPlane(0.0f, 0.0f, 1.0f, 0.0f),
-	FPlane(0.0f, 0.0f, 0.0f, 1.0f)
-);
-static const FMatrix studioMdlToUnrealMatrix = FMatrix(
-	FPlane(1.0f, 0.0f, 0.0f, 0.0f),
-	FPlane(0.0f, 1.0f, 0.0f, 0.0f),
-	FPlane(0.0f, 0.0f, 1.0f, 0.0f),
-	FPlane(0.0f, 0.0f, 0.0f, 1.0f)
-);
-
 const FSourceCoord SourceToUnreal(
 	FVector(0.0f, 1.0f, 0.0f), // map source +X to unreal +Y axis
 	FVector(1.0f, 0.0f, 0.0f), // map source +Y to unreal +X axis
@@ -164,7 +151,7 @@ const FSourceCoord SourceToUnreal(
 );
 const FSourceCoord StudioMdlToUnreal(
 	FVector(1.0f, 0.0f, 0.0f),
-	FVector(0.0f, -1.0f, 0.0f),
+	FVector(0.0f, 1.0f, 0.0f),
 	FVector(0.0f, 0.0f, 1.0f) 
 );
 
@@ -175,6 +162,6 @@ const FSourceCoord UnrealToSource(
 );
 const FSourceCoord UnrealToStudioMdl(
 	FVector(1.0f, 0.0f, 0.0f),
-	FVector(0.0f, -1.0f, 0.0f),
+	FVector(0.0f, 1.0f, 0.0f),
 	FVector(0.0f, 0.0f, 1.0f)
 );

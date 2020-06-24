@@ -141,11 +141,7 @@ FTransform FSkeletonUtils::GetBoneComponentTransform(const FReferenceSkeleton& s
 
 FTransform FSkeletonUtils::TransformBoneComponentTransform(const FTransform& boneComponentTransform, const FSourceCoord& transform)
 {
-	return FTransform(
-		transform.Quat(boneComponentTransform.GetRotation()),
-		transform.Position(boneComponentTransform.GetTranslation()),
-		boneComponentTransform.GetScale3D()
-	);
+	return transform.Transform(boneComponentTransform);
 }
 
 FReferenceSkeleton FSkeletonUtils::TransformSkeleton(const FReferenceSkeleton& skeleton, const FSourceCoord& transform)

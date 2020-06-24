@@ -98,7 +98,7 @@ void FSkeletonUtils::SetTrackBoneLocalTransform(FRawAnimSequenceTrack& track, in
 	const FVector newPos = transform.GetLocation();
 	const FQuat newRot = transform.GetRotation();
 	const FVector newScale = transform.GetScale3D();
-	if (!oldPos.Equals(newPos))
+	if (!oldPos.Equals(newPos) || track.PosKeys.Num() == 0)
 	{
 		if (track.PosKeys.Num() == 0) { track.PosKeys.Add(FVector::ZeroVector); }
 		while (track.PosKeys.Num() <= frameIndex)
@@ -108,7 +108,7 @@ void FSkeletonUtils::SetTrackBoneLocalTransform(FRawAnimSequenceTrack& track, in
 		}
 		track.PosKeys[frameIndex] = newPos;
 	}
-	if (!oldRot.Equals(newRot))
+	if (!oldRot.Equals(newRot) || track.RotKeys.Num() == 0)
 	{
 		if (track.RotKeys.Num() == 0) { track.RotKeys.Add(FQuat::Identity); }
 		while (track.RotKeys.Num() <= frameIndex)

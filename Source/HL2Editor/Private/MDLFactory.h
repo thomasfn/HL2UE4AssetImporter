@@ -116,6 +116,8 @@ private:
 		FFeedbackContext* warn
 	);
 
+	void ImportInclude(UObject* inParent, const Valve::MDL::mstudiomodelgroup_t& include, const FString& basePath,	FImportedMDL& result, FFeedbackContext* warn);
+
 	void ImportSequences(const Valve::MDL::studiohdr_t& header, USkeletalMesh* skeletalMesh, const FString& basePath, const Valve::MDL::studiohdr_t* aniHeader, TArray<UAnimSequence*>& outSequences, FFeedbackContext* warn);
 
 	static void ReadAnimData(const uint8* basePtr, USkeletalMesh* skeletalMesh, TArray<const Valve::MDL::mstudioanim_t*>& out);

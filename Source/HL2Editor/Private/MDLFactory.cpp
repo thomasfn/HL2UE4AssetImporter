@@ -353,8 +353,13 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	animPackagePath.Append(TEXT("_anims/"));
 	ImportSequences(header, result.SkeletalMesh, animPackagePath, aniHeader, result.Animations, warn);
 
-	// TODO: Search for other mdl files that might contain animation data (e.g. alyx.mdl -> alyx_animations.mdl, alyx_gestures.mdl, alyx_postures.mdl)
-	// Do we need to deal with includes?
+	// Includes
+	TArray<const Valve::MDL::mstudiomodelgroup_t*> includes;
+	header.GetIncludeModels(includes);
+	for (const Valve::MDL::mstudiomodelgroup_t* include : includes)
+	{
+		ImportInclude(inParent, *include, path, result, warn);
+	}
 
 	for (UAnimSequence* sequence : result.Animations)
 	{
@@ -364,6 +369,78 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	}
 
 	return result;
+}
+
+void UMDLFactory::ImportInclude(UObject* inParent, const Valve::MDL::mstudiomodelgroup_t& include, const FString& basePath, FImportedMDL& result, FFeedbackContext* warn)
+{
+	const FString includeName = include.GetName();
+	const FString fileExt = FPaths::GetExtension(includeName);
+	if (fileExt != TEXT("mdl"))
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportInclude: Failed to load file '%s' (unknown extension)"), *includeName);
+		return;
+	}
+	if (includeName.Contains(TEXT("gestures")) || includeName.Contains(TEXT("postures")))
+	{
+		warn->Logf(ELogVerbosity::Warning, TEXT("ImportInclude: Refusing to load '%s' (not yet properly supported)"), *includeName);
+		return;
+	}
+	const FString fileName = basePath / TEXT("..") / includeName;
+
+	// load as binary
+	TArray<uint8> data;
+	if (!FFileHelper::LoadFileToArray(data, *fileName))
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportInclude: Failed to load file '%s'"), *fileName);
+		return;
+	}
+
+	const Valve::MDL::studiohdr_t& header = *((Valve::MDL::studiohdr_t*)data.GetData());
+
+	// IDST
+	if (header.id != 0x54534449)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportInclude: Header has invalid ID (expecting 'IDST')"));
+		return;
+	}
+
+	// Version
+	if (header.version < 44 || header.version > 48)
+	{
+		warn->Logf(ELogVerbosity::Error, TEXT("ImportInclude: MDL Header has invalid version (expecting 44-48, got %d)"), header.version);
+		return;
+	}
+
+	// Load ani
+	TArray<uint8> aniData;
+	Valve::MDL::studiohdr_t* aniHeader;
+	if (FFileHelper::LoadFileToArray(aniData, *(FPaths::GetPath(fileName) / FPaths::GetBaseFilename(fileName) + TEXT(".ani"))))
+	{
+		aniHeader = (Valve::MDL::studiohdr_t*) & aniData[0];
+
+		// IDAG
+		if (aniHeader->id != 0x47414449)
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportInclude: ANI header has invalid ID (expecting 'IDAG')"));
+			return;
+		}
+
+		// Version
+		if (aniHeader->version < 44 || aniHeader->version > 48)
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportInclude: ANI header has invalid version (expecting 44-48, got %d)"), aniHeader->version);
+			return;
+		}
+	}
+	else
+	{
+		aniHeader = nullptr;
+	}
+
+	// Sequences
+	FString animPackagePath = inParent->GetPathName();
+	animPackagePath.Append(TEXT("_anims/"));
+	ImportSequences(header, result.SkeletalMesh, animPackagePath, aniHeader, result.Animations, warn);
 }
 
 UStaticMesh* UMDLFactory::ImportStaticMesh

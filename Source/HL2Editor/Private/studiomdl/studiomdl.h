@@ -424,6 +424,14 @@ namespace Valve
 			int					unused[7];		// remove/add as appropriate (grow back to 8 ints on version change!)
 		};
 
+		struct mstudiomodelgroup_t
+		{
+			int					szlabelindex;	// textual name
+			FString GetLabel() const { return szlabelindex > 0 ? ReadString(this, szlabelindex) : FString(); }
+			int					sznameindex;	// file name
+			FString GetName() const { return sznameindex > 0 ? ReadString(this, sznameindex) : FString(); }
+		};
+
 		struct studiohdr_t
 		{
 			int		id;		// Model format ID, such as "IDST" (0x49 0x44 0x53 0x54)
@@ -581,6 +589,7 @@ namespace Valve
 			// mstudiomodelgroup_t
 			int		includemodel_count;
 			int		includemodel_index;
+			void GetIncludeModels(TArray<const mstudiomodelgroup_t*>& out) const { ReadArray<mstudiomodelgroup_t>(this, includemodel_index, includemodel_count, out); }
 
 			int		virtualModel;	// Placeholder for mutable-void*
 

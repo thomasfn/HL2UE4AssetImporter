@@ -90,24 +90,26 @@ inline FPlane FSourceCoord::Plane(const FPlane& inPlane) const
 	return inPlane.TransformBy(matrix);
 }
 
+constexpr float SOURCE_UNIT_SCALE = 2.54f; // inches to cm
+
 const FSourceCoord SourceToUnreal(
-	FVector(0.0f, 1.0f, 0.0f), // map source +X to unreal +Y axis
-	FVector(1.0f, 0.0f, 0.0f), // map source +Y to unreal +X axis
-	FVector(0.0f, 0.0f, 1.0f)  // map source +Z to unreal +Z axis
+	FVector(0.0f, 1.0f, 0.0f) * SOURCE_UNIT_SCALE, // map source +X to unreal +Y axis
+	FVector(1.0f, 0.0f, 0.0f) * SOURCE_UNIT_SCALE, // map source +Y to unreal +X axis
+	FVector(0.0f, 0.0f, 1.0f) * SOURCE_UNIT_SCALE  // map source +Z to unreal +Z axis
 );
 const FSourceCoord StudioMdlToUnreal(
-	FVector(1.0f, 0.0f, 0.0f),
-	FVector(0.0f, -1.0f, 0.0f),
-	FVector(0.0f, 0.0f, 1.0f) 
+	FVector(1.0f, 0.0f, 0.0f) * SOURCE_UNIT_SCALE,
+	FVector(0.0f, -1.0f, 0.0f) * SOURCE_UNIT_SCALE,
+	FVector(0.0f, 0.0f, 1.0f) * SOURCE_UNIT_SCALE
 );
 
 const FSourceCoord UnrealToSource(
-	FVector(0.0f, 1.0f, 0.0f), // map unreal +X to source +Y axis
-	FVector(1.0f, 0.0f, 0.0f), // map unreal +Y to source +X axis
-	FVector(0.0f, 0.0f, 1.0f)  // map unreal +Z to source +Z axis
+	FVector(0.0f, 1.0f, 0.0f) / SOURCE_UNIT_SCALE, // map unreal +X to source +Y axis
+	FVector(1.0f, 0.0f, 0.0f) / SOURCE_UNIT_SCALE, // map unreal +Y to source +X axis
+	FVector(0.0f, 0.0f, 1.0f) / SOURCE_UNIT_SCALE  // map unreal +Z to source +Z axis
 );
 const FSourceCoord UnrealToStudioMdl(
-	FVector(1.0f, 0.0f, 0.0f),
-	FVector(0.0f, -1.0f, 0.0f),
-	FVector(0.0f, 0.0f, 1.0f)
+	FVector(1.0f, 0.0f, 0.0f) / SOURCE_UNIT_SCALE,
+	FVector(0.0f, -1.0f, 0.0f) / SOURCE_UNIT_SCALE,
+	FVector(0.0f, 0.0f, 1.0f) / SOURCE_UNIT_SCALE
 );

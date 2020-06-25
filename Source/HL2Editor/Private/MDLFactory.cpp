@@ -1,4 +1,5 @@
 #include "MDLFactory.h"
+
 #include "EditorFramework/AssetImportData.h"
 #include "Misc/FeedbackContext.h"
 #include "AssetImportTask.h"
@@ -385,7 +386,21 @@ void UMDLFactory::ImportInclude(UObject* inParent, const Valve::MDL::mstudiomode
 		warn->Logf(ELogVerbosity::Warning, TEXT("ImportInclude: Refusing to load '%s' (not yet properly supported)"), *includeName);
 		return;
 	}
-	const FString fileName = basePath / TEXT("..") / includeName;
+	// includeName will be something like "models/blah/blah_animations.mdl"
+	// so we need to follow basePath up until we reach models
+	FString fileName = basePath;
+	FPaths::NormalizeDirectoryName(fileName);
+	do {
+		FString left, right;
+		fileName.Split(TEXT("/"), &left, &right, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		right.TrimStartAndEndInline();
+		if (right.Equals(TEXT("models"), ESearchCase::IgnoreCase))
+		{
+			break;
+		}
+		fileName = left;
+	} while (fileName.Contains(TEXT("/")));
+	fileName = fileName / TEXT("..") / includeName;
 
 	// load as binary
 	TArray<uint8> data;

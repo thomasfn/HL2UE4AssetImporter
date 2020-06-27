@@ -18,6 +18,7 @@
 #include "OverlappingCorners.h"
 #include "ValveKeyValues.h"
 #include "SkeletonUtils.h"
+#include "IMeshBuilderModule.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -984,16 +985,8 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	}
 
 	// Create all data arrays
-	struct LocalMeshData
-	{
-		TArray<FVector> points;
-		TArray<SkeletalMeshImportData::FMeshWedge> wedges;
-		TArray<SkeletalMeshImportData::FMeshFace> faces;
-		TArray<SkeletalMeshImportData::FVertInfluence> influences;
-		TArray<int32> pointToRawMap;
-	};
-	TArray<LocalMeshData> localMeshDatas;
-	localMeshDatas.AddDefaulted(vtxHeader.numLODs);
+	TArray<FSkeletalMeshImportData> importDatas;
+	importDatas.AddDefaulted(vtxHeader.numLODs);
 
 	// Read materials
 	TArray<FName> materials;
@@ -1104,7 +1097,10 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			// Iterate all lods
 			for (int lodIndex = 0; lodIndex < lods.Num(); ++lodIndex)
 			{
-				LocalMeshData& localMeshData = localMeshDatas[lodIndex];
+				FSkeletalMeshImportData& importData = importDatas[lodIndex];
+				importData.bHasNormals = true;
+				importData.bHasTangents = true;
+				importData.bHasVertexColors = false;
 				const Valve::VTX::ModelLODHeader_t& lod = *lods[lodIndex];
 
 				// Iterate all vertices in the vvd for this lod and insert them
@@ -1243,22 +1239,22 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 									&vvdVertices[baseIdxs[2]]
 								};
 
-								SkeletalMeshImportData::FMeshFace face;
-								face.MeshMaterialIndex = (uint16)sectionIndex;
+								SkeletalMeshImportData::FTriangle face;
+								face.MatIndex = (uint16)sectionIndex;
 								face.SmoothingGroups = 0;
 								for (int j = 0; j < 3; ++j)
 								{
 									const Valve::VTX::Vertex_t& vert = *verts[j];
 									const Valve::VVD::mstudiovertex_t& origVert = *origVerts[j];
 
-									const int vertIdx = localMeshData.points.Add(StudioMdlToUnreal.Position(origVert.m_vecPosition));
-									localMeshData.pointToRawMap.Add(baseIdxs[j]);
+									const int vertIdx = importData.Points.Add(StudioMdlToUnreal.Position(origVert.m_vecPosition));
+									importData.PointToRawMap.Add(baseIdxs[j]);
 
-									SkeletalMeshImportData::FMeshWedge wedge;
-									wedge.iVertex = vertIdx;
+									SkeletalMeshImportData::FVertex wedge;
+									wedge.VertexIndex = vertIdx;
 									wedge.Color = FColor::White;
 									wedge.UVs[0] = origVert.m_vecTexCoord;
-									face.iWedge[j] = localMeshData.wedges.Add(wedge);
+									face.WedgeIndex[j] = importData.Wedges.Add(wedge);
 									face.TangentZ[j] = StudioMdlToUnreal.Direction(origVert.m_vecNormal.GetSafeNormal());
 									face.TangentY[j] = StudioMdlToUnreal.Direction(vvdTangents[baseIdxs[j]].GetSafeNormal());
 									face.TangentX[j] = FVector::CrossProduct(face.TangentY[j], face.TangentZ[j]);
@@ -1270,14 +1266,14 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 										const int boneID = origVert.m_BoneWeights.bone[boneWeightIdx];
 										// check(vert.boneID[k] == boneID);
 										const float weight = origVert.m_BoneWeights.weight[boneWeightIdx];
-										SkeletalMeshImportData::FVertInfluence influence;
+										SkeletalMeshImportData::FRawBoneInfluence influence;
 										influence.BoneIndex = boneID;
-										influence.VertIndex = wedge.iVertex;
+										influence.VertexIndex = wedge.VertexIndex;
 										influence.Weight = weight;
-										localMeshData.influences.Add(influence);
+										importData.Influences.Add(influence);
 									}
 								}
-								localMeshData.faces.Add(face);
+								importData.Faces.Add(face);
 							}
 						}
 					}
@@ -1298,10 +1294,10 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	buildOptions.bComputeNormals = false;
 	buildOptions.bComputeTangents = false;
 	buildOptions.bRemoveDegenerateTriangles = false;
-	IMeshUtilities& meshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
-	for (int lodIndex = 0; lodIndex < localMeshDatas.Num(); ++lodIndex)
+	IMeshBuilderModule& meshBuilderModule = IMeshBuilderModule::GetForRunningPlatform();
+	for (int lodIndex = 0; lodIndex < importDatas.Num(); ++lodIndex)
 	{
-		const LocalMeshData& localMeshData = localMeshDatas[lodIndex];
+		FSkeletalMeshImportData& importData = importDatas[lodIndex];
 
 		// Prepare lod on skeletal mesh
 		meshModel->LODModels.Add(new FSkeletalMeshLODModel());
@@ -1313,14 +1309,14 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		newLODInfo.LODHysteresis = 0.02f;
 		if (lodIndex == 0)
 		{
-			skeletalMesh->SetImportedBounds(FBoxSphereBounds(&localMeshData.points[0], (uint32)localMeshData.points.Num()));
+			skeletalMesh->SetImportedBounds(FBoxSphereBounds(&importData.Points[0], (uint32)importData.Points.Num()));
 		}
 		LODModel.NumTexCoords = 1;
 
 		// Build
-		TArray<FText> warningMessages;
-		TArray<FName> warningNames;
-		if (!meshUtilities.BuildSkeletalMesh(meshModel->LODModels[lodIndex], skeletalMesh->RefSkeleton, localMeshData.influences, localMeshData.wedges, localMeshData.faces, localMeshData.points, localMeshData.pointToRawMap, buildOptions, &warningMessages, &warningNames))
+		skeletalMesh->SaveLODImportedData(lodIndex, importData);
+		const bool buildSuccess = meshBuilderModule.BuildSkeletalMesh(skeletalMesh, lodIndex, false);
+		if (!buildSuccess)
 		{
 			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Skeletal mesh build for lod %d failed"), lodIndex);
 			return nullptr;
@@ -1330,6 +1326,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		USkeletalMesh::CalculateRequiredBones(LODModel, refSkel, nullptr);
 	}
 	skeletalMesh->CalculateInvRefMatrices();
+	skeletalMesh->Build();
 
 	// Assign materials
 	for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
@@ -1346,148 +1343,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	// Resolve physics
 	if (phyHeader != nullptr && inPhysAssetParent != nullptr)
 	{
-		// Create phys asset
-		UPhysicsAsset* physicsAsset = CreatePhysAsset(inPhysAssetParent, inPhysAssetName, flags);
-
-		// Read solids
-		uint8* curPtr = ((uint8*)phyHeader) + phyHeader->size;
-		TArray<TArray<FPHYSection>> solids;
-		for (int i = 0; i < phyHeader->solidCount; ++i)
-		{
-			TArray<FPHYSection>& sections = solids[solids.AddDefaulted()];
-			ReadPHYSolid(curPtr, sections);
-		}
-
-		// Read text section
-		UValveDocument* doc;
-		{
-			const auto rawStr = StringCast<TCHAR, ANSICHAR>((const char*)curPtr);
-			const FString textSection(rawStr.Length(), rawStr.Get());
-			doc = UValveDocument::Parse(textSection);
-			if (doc == nullptr)
-			{
-				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Failed to parse PHY text section"));
-				return nullptr;
-			}
-		}
-		const UValveGroupValue* root = CastChecked<UValveGroupValue>(doc->Root);
-
-		// Parse solids
-		TArray<UValveValue*> solidValues;
-		static const FName fnSolid(TEXT("solid"));
-		root->GetItems(fnSolid, solidValues);
-		TMap<FName, USkeletalBodySetup*> boneToBodySetupMap;
-		for (const UValveValue* solidValue : solidValues)
-		{
-			const UValveGroupValue* solidGroupValue = CastChecked<UValveGroupValue>(solidValue);
-
-			// Parse index
-			int index;
-			static const FName fnIndex(TEXT("index"));
-			if (!solidGroupValue->GetInt(fnIndex, index))
-			{
-				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid missing index"));
-				continue;
-			}
-			if (!solids.IsValidIndex(index))
-			{
-				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid refers to invalid index %i"), index);
-				continue;
-			}
-
-			// Parse name
-			FName name;
-			static const FName fnName(TEXT("name"));
-			if (!solidGroupValue->GetName(fnName, name))
-			{
-				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid %i missing name"), index);
-				continue;
-			}
-
-			// Retrieve body setup
-			USkeletalBodySetup* bodySetup;
-			{
-				USkeletalBodySetup* const* ptr = boneToBodySetupMap.Find(name);
-				if (ptr == nullptr)
-				{
-					bodySetup = NewObject<USkeletalBodySetup>(physicsAsset, name);
-					if (skeleton->GetReferenceSkeleton().FindBoneIndex(name) >= 0)
-					{
-						bodySetup->BoneName = name;
-					}
-					else
-					{
-						bodySetup->BoneName = FName(*bones[0]->GetName());
-					}
-					bodySetup->bGenerateMirroredCollision = true;
-					bodySetup->bConsiderForBounds = true;
-					physicsAsset->SkeletalBodySetups.Add(bodySetup);
-					boneToBodySetupMap.Add(name, bodySetup);
-				}
-				else
-				{
-					bodySetup = *ptr;
-				}
-			}
-
-			// Parse collision data into it
-			TArray<FPHYSection>& sections = solids[index];
-			for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
-			{
-				const FPHYSection& section = sections[sectionIndex];
-				FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, bodySetup);
-			}
-
-			// Parse surface prop
-			FName surfaceProp;
-			static const FName fnSurfaceProp(TEXT("surfaceprop"));
-			if (solidGroupValue->GetName(fnSurfaceProp, surfaceProp))
-			{
-				bodySetup->PhysMaterial = IHL2Runtime::Get().TryResolveHL2SurfaceProp(surfaceProp);
-			}
-		}
-
-		// Parse constraints
-		TArray<UValveValue*> constraintValues;
-		static const FName fnRagdollConstraint(TEXT("ragdollconstraint"));
-		root->GetItems(fnRagdollConstraint, constraintValues);
-		for (const UValveValue* constraintValue : constraintValues)
-		{
-			const UValveGroupValue* constraintGroupValue = CastChecked<UValveGroupValue>(constraintValue);
-
-			int parent;
-			static const FName fnParent(TEXT("parent"));
-			if (!constraintGroupValue->GetInt(fnParent, parent))
-			{
-				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY constraint missing parent"));
-				continue;
-			}
-
-			int child;
-			static const FName fnChild(TEXT("child"));
-			if (!constraintGroupValue->GetInt(fnChild, child))
-			{
-				warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY constraint missing child"));
-				continue;
-			}
-
-			USkeletalBodySetup* parentBodySetup = physicsAsset->SkeletalBodySetups[parent];
-			USkeletalBodySetup* childBodySetup = physicsAsset->SkeletalBodySetups[child];
-
-			const FTransform& parentBoneTransform = skeletalMesh->RefSkeleton.GetRefBonePose()[parent];
-			const FTransform& childBoneTransform = skeletalMesh->RefSkeleton.GetRefBonePose()[child];
-
-			const FVector loc = FMath::Lerp(parentBoneTransform.GetLocation(), childBoneTransform.GetLocation(), 0.5f);
-
-			UPhysicsConstraintTemplate* constraintTemplate = NewObject<UPhysicsConstraintTemplate>(physicsAsset);
-			FConstraintInstance& constraint = constraintTemplate->DefaultInstance;
-
-			constraint.ConstraintBone1 = refSkel.GetBoneName(parent);
-			constraint.ConstraintBone2 = refSkel.GetBoneName(child);
-
-			constraint.ConstraintIndex = physicsAsset->ConstraintSetup.Add(constraintTemplate);
-		}
-
+		UPhysicsAsset* physicsAsset = ImportPhysicsAsset(inPhysAssetParent, inPhysAssetName, flags, phyHeader, refSkel, warn);
 		physicsAsset->PreviewSkeletalMesh = skeletalMesh;
 		skeletalMesh->PhysicsAsset = physicsAsset;
 	}
@@ -1526,6 +1382,157 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 	// Done
 	return skeletalMesh;
+}
+
+UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
+(
+	UObject* inParent, FName inName, EObjectFlags flags,
+	const Valve::PHY::phyheader_t* phyHeader, const FReferenceSkeleton& referenceSkeleton,
+	FFeedbackContext* warn
+)
+{
+	// Create phys asset
+	UPhysicsAsset* physicsAsset = CreatePhysAsset(inParent, inName, flags);
+
+	// Read solids
+	uint8* curPtr = ((uint8*)phyHeader) + phyHeader->size;
+	TArray<TArray<FPHYSection>> solids;
+	for (int i = 0; i < phyHeader->solidCount; ++i)
+	{
+		TArray<FPHYSection>& sections = solids[solids.AddDefaulted()];
+		ReadPHYSolid(curPtr, sections);
+	}
+
+	// Read text section
+	UValveDocument* doc;
+	{
+		const auto rawStr = StringCast<TCHAR, ANSICHAR>((const char*)curPtr);
+		const FString textSection(rawStr.Length(), rawStr.Get());
+		doc = UValveDocument::Parse(textSection);
+		if (doc == nullptr)
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Failed to parse PHY text section"));
+			return nullptr;
+		}
+	}
+	const UValveGroupValue* root = CastChecked<UValveGroupValue>(doc->Root);
+
+	// Parse solids
+	TArray<UValveValue*> solidValues;
+	static const FName fnSolid(TEXT("solid"));
+	root->GetItems(fnSolid, solidValues);
+	TArray<USkeletalBodySetup*> boneToBodySetup;
+	boneToBodySetup.AddZeroed(referenceSkeleton.GetNum());
+	TArray<TArray<int>> indexToBone;
+	for (const UValveValue* solidValue : solidValues)
+	{
+		const UValveGroupValue* solidGroupValue = CastChecked<UValveGroupValue>(solidValue);
+
+		// Parse index
+		int index;
+		static const FName fnIndex(TEXT("index"));
+		if (!solidGroupValue->GetInt(fnIndex, index))
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid missing index"));
+			continue;
+		}
+		if (!solids.IsValidIndex(index))
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid refers to invalid index %i"), index);
+			continue;
+		}
+		if (index <= indexToBone.Num())
+		{
+			indexToBone.AddDefaulted((index - indexToBone.Num()) + 1);
+		}
+		TArray<int>& solidBones = indexToBone[index];
+
+		// Parse name
+		FName name;
+		static const FName fnName(TEXT("name"));
+		if (!solidGroupValue->GetName(fnName, name))
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY solid %i missing name"), index);
+			continue;
+		}
+
+		// Parse surface prop
+		FName surfacePropName;
+		static const FName fnSurfaceProp(TEXT("surfaceprop"));
+		USurfaceProp* surfaceProp = nullptr;
+		if (solidGroupValue->GetName(fnSurfaceProp, surfacePropName))
+		{
+			surfaceProp = IHL2Runtime::Get().TryResolveHL2SurfaceProp(surfacePropName);
+		}
+
+		// Iterate sections
+		TArray<FPHYSection>& sections = solids[index];
+		for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
+		{
+			const FPHYSection& section = sections[sectionIndex];
+			if (referenceSkeleton.IsValidIndex(section.BoneIndex))
+			{
+				solidBones.AddUnique(section.BoneIndex);
+
+				// Retrieve body setup
+				USkeletalBodySetup* bodySetup = boneToBodySetup[section.BoneIndex];
+				if (bodySetup == nullptr)
+				{
+					bodySetup = NewObject<USkeletalBodySetup>(physicsAsset, name);
+					bodySetup->BoneName = referenceSkeleton.GetBoneName(section.BoneIndex);
+					bodySetup->bGenerateMirroredCollision = false;
+					bodySetup->bConsiderForBounds = true;
+					bodySetup->PhysMaterial = surfaceProp;
+					physicsAsset->SkeletalBodySetups.Add(bodySetup);
+					boneToBodySetup[section.BoneIndex] = bodySetup;
+				}
+
+				// Build mesh
+				FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, bodySetup);
+			}
+		}
+	}
+
+	// Parse constraints
+	TArray<UValveValue*> constraintValues;
+	static const FName fnRagdollConstraint(TEXT("ragdollconstraint"));
+	root->GetItems(fnRagdollConstraint, constraintValues);
+	for (const UValveValue* constraintValue : constraintValues)
+	{
+		const UValveGroupValue* constraintGroupValue = CastChecked<UValveGroupValue>(constraintValue);
+
+		// Resolve parent
+		int parent;
+		static const FName fnParent(TEXT("parent"));
+		if (!constraintGroupValue->GetInt(fnParent, parent))
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY constraint missing parent"));
+			continue;
+		}
+		const TArray<int>& parentBones = indexToBone[parent];
+		check(parentBones.Num() > 0);
+
+		// Resolve child
+		int child;
+		static const FName fnChild(TEXT("child"));
+		if (!constraintGroupValue->GetInt(fnChild, child))
+		{
+			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: PHY constraint missing child"));
+			continue;
+		}
+		const TArray<int>& childBones = indexToBone[child];
+		check(childBones.Num() > 0);
+
+		UPhysicsConstraintTemplate* constraintTemplate = NewObject<UPhysicsConstraintTemplate>(physicsAsset);
+		FConstraintInstance& constraint = constraintTemplate->DefaultInstance;
+
+		constraint.ConstraintBone1 = referenceSkeleton.GetBoneName(parentBones[0]);
+		constraint.ConstraintBone2 = referenceSkeleton.GetBoneName(childBones[0]);
+
+		constraint.ConstraintIndex = physicsAsset->ConstraintSetup.Add(constraintTemplate);
+	}
+
+	return physicsAsset;
 }
 
 void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkeletalMesh* skeletalMesh, const FString& basePath, const Valve::MDL::studiohdr_t* aniHeader, TArray<UAnimSequence*>& outSequences, FFeedbackContext* warn)

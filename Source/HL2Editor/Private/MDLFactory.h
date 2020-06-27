@@ -4,6 +4,7 @@
 #include "Factories/Factory.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
+#include "Rendering/SkeletalMeshRenderData.h"
 #include "Animation/Skeleton.h"
 #include "Animation/AnimSequence.h"
 #include "PhysicsEngine/PhysicsAsset.h"
@@ -119,6 +120,13 @@ private:
 	void ImportInclude(UObject* inParent, const Valve::MDL::mstudiomodelgroup_t& include, const FString& basePath,	FImportedMDL& result, FFeedbackContext* warn);
 
 	void ImportSequences(const Valve::MDL::studiohdr_t& header, USkeletalMesh* skeletalMesh, const FString& basePath, const Valve::MDL::studiohdr_t* aniHeader, TArray<UAnimSequence*>& outSequences, FFeedbackContext* warn);
+
+	UPhysicsAsset* ImportPhysicsAsset
+	(
+		UObject* inParent, FName inName, EObjectFlags flags,
+		const Valve::PHY::phyheader_t* phyHeader, const FReferenceSkeleton& referenceSkeleton,
+		FFeedbackContext* warn
+	);
 
 	static void ReadAnimData(const uint8* basePtr, USkeletalMesh* skeletalMesh, TArray<const Valve::MDL::mstudioanim_t*>& out);
 

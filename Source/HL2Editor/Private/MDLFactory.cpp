@@ -1290,10 +1290,6 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 	// Build geometry
 	skeletalMesh->bHasVertexColors = false;
-	IMeshUtilities::MeshBuildOptions buildOptions;
-	buildOptions.bComputeNormals = false;
-	buildOptions.bComputeTangents = false;
-	buildOptions.bRemoveDegenerateTriangles = false;
 	IMeshBuilderModule& meshBuilderModule = IMeshBuilderModule::GetForRunningPlatform();
 	for (int lodIndex = 0; lodIndex < importDatas.Num(); ++lodIndex)
 	{
@@ -1312,6 +1308,9 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			skeletalMesh->SetImportedBounds(FBoxSphereBounds(&importData.Points[0], (uint32)importData.Points.Num()));
 		}
 		LODModel.NumTexCoords = 1;
+		newLODInfo.BuildSettings.bRecomputeNormals = false;
+		newLODInfo.BuildSettings.bRecomputeTangents = false;
+		newLODInfo.BuildSettings.bRemoveDegenerates = false;
 
 		// Build
 		skeletalMesh->SaveLODImportedData(lodIndex, importData);

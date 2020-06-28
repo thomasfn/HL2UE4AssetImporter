@@ -1342,9 +1342,44 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	// Resolve physics
 	if (phyHeader != nullptr && inPhysAssetParent != nullptr)
 	{
-		UPhysicsAsset* physicsAsset = ImportPhysicsAsset(inPhysAssetParent, inPhysAssetName, flags, phyHeader, refSkel, warn);
+		constexpr bool DEBUG_PHYSICS_MESH = false;
+		FMeshDescription debugMeshDesc;
+		if (DEBUG_PHYSICS_MESH)
+		{
+			FStaticMeshAttributes attr(debugMeshDesc);
+			attr.Register();
+			attr.RegisterPolygonNormalAndTangentAttributes();
+		}
+		UPhysicsAsset* physicsAsset = ImportPhysicsAsset(inPhysAssetParent, inPhysAssetName, flags, header, phyHeader, refSkel, DEBUG_PHYSICS_MESH ? &debugMeshDesc : nullptr, warn);
 		physicsAsset->PreviewSkeletalMesh = skeletalMesh;
 		skeletalMesh->PhysicsAsset = physicsAsset;
+		if (DEBUG_PHYSICS_MESH)
+		{
+			UStaticMesh* staticMesh = CreateStaticMesh(inParent, FName(inName.ToString() + TEXT("_DebugPhys")), flags);
+			FStaticMeshSourceModel& sourceModel = staticMesh->AddSourceModel();
+			FMeshBuildSettings& settings = sourceModel.BuildSettings;
+			settings.bRecomputeNormals = false;
+			settings.bRecomputeTangents = false;
+			settings.bGenerateLightmapUVs = false;
+			settings.bRemoveDegenerates = false;
+			FMeshDescription* meshDescription = staticMesh->CreateMeshDescription(0);
+			FStaticMeshOperations::ComputePolygonTangentsAndNormals(debugMeshDesc);
+			FStaticMeshOperations::ComputeTangentsAndNormals(debugMeshDesc, EComputeNTBsFlags::Normals | EComputeNTBsFlags::Tangents);
+			FMeshUtils::Clean(debugMeshDesc);
+			*meshDescription = debugMeshDesc;
+			staticMesh->CommitMeshDescription(0);
+			/*for (int i = 0; i < phyHeader->solidCount; ++i)
+			{
+				FName material(*FString::Printf(TEXT("Solid%d"), i));
+				const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
+				staticMesh->GetSectionInfoMap().Set(0, meshSlot, FMeshSectionInfo(meshSlot));
+			}*/
+			staticMesh->Build();
+			staticMesh->PostEditChange();
+			staticMesh->MarkPackageDirty();
+			FAssetRegistryModule::AssetCreated(staticMesh);
+			GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, staticMesh);
+		}
 	}
 
 	// Resolve skins
@@ -1386,7 +1421,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 (
 	UObject* inParent, FName inName, EObjectFlags flags,
-	const Valve::PHY::phyheader_t* phyHeader, const FReferenceSkeleton& referenceSkeleton,
+	const Valve::MDL::studiohdr_t& header, const Valve::PHY::phyheader_t* phyHeader, const FReferenceSkeleton& referenceSkeleton, FMeshDescription* outDebugMesh,
 	FFeedbackContext* warn
 )
 {
@@ -1416,12 +1451,15 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 	}
 	const UValveGroupValue* root = CastChecked<UValveGroupValue>(doc->Root);
 
+	// Cache bone data
+	TArray<FTransform> boneComponentTransforms = FSkeletonUtils::GetSkeletonComponentTransforms(referenceSkeleton);
+	const FReferenceSkeleton referenceSkeletonSource = FSkeletonUtils::TransformSkeleton(referenceSkeleton, UnrealToStudioMdl);
+	TArray<FTransform> boneComponentSourceTransforms = FSkeletonUtils::GetSkeletonComponentTransforms(referenceSkeletonSource);
+
 	// Parse solids
 	TArray<UValveValue*> solidValues;
 	static const FName fnSolid(TEXT("solid"));
 	root->GetItems(fnSolid, solidValues);
-	TArray<USkeletalBodySetup*> boneToBodySetup;
-	boneToBodySetup.AddZeroed(referenceSkeleton.GetNum());
 	TArray<TArray<int>> indexToBone;
 	for (const UValveValue* solidValue : solidValues)
 	{
@@ -1468,26 +1506,74 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 		TArray<FPHYSection>& sections = solids[index];
 		for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
 		{
-			const FPHYSection& section = sections[sectionIndex];
+			FPHYSection& section = sections[sectionIndex];
 			if (referenceSkeleton.IsValidIndex(section.BoneIndex))
 			{
 				solidBones.AddUnique(section.BoneIndex);
 
 				// Retrieve body setup
-				USkeletalBodySetup* bodySetup = boneToBodySetup[section.BoneIndex];
+				const FName bodyName = referenceSkeleton.GetBoneName(section.BoneIndex);
+				const int bodyIndex = physicsAsset->FindBodyIndex(bodyName);
+				USkeletalBodySetup* bodySetup = bodyIndex == INDEX_NONE ? nullptr : physicsAsset->SkeletalBodySetups[bodyIndex];
 				if (bodySetup == nullptr)
 				{
 					bodySetup = NewObject<USkeletalBodySetup>(physicsAsset, name);
+					bodySetup->CollisionTraceFlag = CTF_UseSimpleAsComplex;
+					bodySetup->PhysicsType = PhysType_Default;
 					bodySetup->BoneName = referenceSkeleton.GetBoneName(section.BoneIndex);
 					bodySetup->bGenerateMirroredCollision = false;
 					bodySetup->bConsiderForBounds = true;
 					bodySetup->PhysMaterial = surfaceProp;
 					physicsAsset->SkeletalBodySetups.Add(bodySetup);
-					boneToBodySetup[section.BoneIndex] = bodySetup;
+					physicsAsset->UpdateBodySetupIndexMap();
+					physicsAsset->UpdateBoundsBodiesArray();
+				}
+
+				// Correct transform of verts (which are in bone-local space)
+				for (FVector& position : section.Vertices)
+				{
+					const FVector componentPosSource = boneComponentSourceTransforms[section.BoneIndex].TransformPosition(position);
+					const FVector componentPos = StudioMdlToUnreal.Position(componentPosSource);
+					position = boneComponentTransforms[section.BoneIndex].InverseTransformPosition(componentPos);
+				}
+				if (StudioMdlToUnreal.ShouldReverseWinding())
+				{
+					for (int i = 0; i < section.FaceIndices.Num(); i += 3)
+					{
+						Swap(section.FaceIndices[i], section.FaceIndices[i + 2]);
+					}
 				}
 
 				// Build mesh
 				FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, bodySetup);
+
+				// Write debug
+				if (outDebugMesh != nullptr)
+				{
+					FStaticMeshAttributes attr(*outDebugMesh);
+					FPolygonGroupID polyGroupID = outDebugMesh->CreatePolygonGroup();
+					attr.GetPolygonGroupMaterialSlotNames()[polyGroupID] = referenceSkeleton.GetBoneName(section.BoneIndex);
+					TArray<FVertexID> vertexIDs;
+					vertexIDs.Reserve(section.Vertices.Num());
+					for (const FVector& position : section.Vertices)
+					{
+						const FVertexID vertexID = outDebugMesh->CreateVertex();
+						attr.GetVertexPositions()[vertexID] = boneComponentTransforms[section.BoneIndex].TransformPosition(position);
+						vertexIDs.Add(vertexID);
+					}
+					for (int i = 0; i < section.FaceIndices.Num(); i += 3)
+					{
+						const int i0 = section.FaceIndices[i + 0];
+						const int i1 = section.FaceIndices[i + 1];
+						const int i2 = section.FaceIndices[i + 2];
+
+						const FVertexInstanceID vertexInstID0 = outDebugMesh->CreateVertexInstance(vertexIDs[i0]);
+						const FVertexInstanceID vertexInstID1 = outDebugMesh->CreateVertexInstance(vertexIDs[i1]);
+						const FVertexInstanceID vertexInstID2 = outDebugMesh->CreateVertexInstance(vertexIDs[i2]);
+
+						outDebugMesh->CreatePolygon(polyGroupID, TArray<FVertexInstanceID> { vertexInstID0, vertexInstID1, vertexInstID2 });
+					}
+				}
 			}
 		}
 	}
@@ -1909,11 +1995,14 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 	}
 	uint8* vertPtr = endPtr;
 
-	TSet<uint16> uniqueVerts;
-
 	// Read all triangles
+	out.Empty();
+	TArray<TSet<uint16>> uniqueVertsPerSection;
+	int numVerts = -1;
 	while (basePtr < vertPtr)
 	{
+		TSet<uint16>& uniqueVerts = uniqueVertsPerSection.AddDefaulted_GetRef();
+
 		// Read header and advance pointer past it
 		const Valve::PHY::sectionheader_t& sectionHeader = *((Valve::PHY::sectionheader_t*)basePtr);
 		vertPtr = basePtr + sectionHeader.vertexDataOffset;
@@ -1925,54 +2014,87 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 
 		// Start a new section
 		FPHYSection section;
-		section.BoneIndex = sectionHeader.boneIndex;
+		if (sectionHeader.boneIndex < 0)
+		{
+			section.BoneIndex = 0;
+			section.IsCollisionModel = true;
+		}
+		else
+		{
+			section.BoneIndex = sectionHeader.boneIndex - 1;
+			section.IsCollisionModel = false;
+		}
 		section.FaceIndices.Reserve(triangles.Num() * 3);
 
 		// Iterate all triangles, gather new unique verts and face indices
 		for (const Valve::PHY::triangle_t& triangle : triangles)
 		{
 			uniqueVerts.Add(triangle.vertices[0].index);
-			uniqueVerts.Add(triangle.vertices[2].index);
 			uniqueVerts.Add(triangle.vertices[1].index);
+			uniqueVerts.Add(triangle.vertices[2].index);
+			numVerts = FMath::Max(numVerts, (int)FMath::Max3(triangle.vertices[0].index, triangle.vertices[1].index, triangle.vertices[2].index));
 			section.FaceIndices.Add(triangle.vertices[0].index);
-			section.FaceIndices.Add(triangle.vertices[2].index);
 			section.FaceIndices.Add(triangle.vertices[1].index);
+			section.FaceIndices.Add(triangle.vertices[2].index);
 		}
 
 		// Store section
 		out.Add(section);
 	}
+	++numVerts;
 
 	// Read all vertices
 	check(basePtr == vertPtr);
-	TArray<FVector> vertices;
-	for (int j = 0; j < uniqueVerts.Num(); ++j)
+	TArray<FVector4> rawVerts;
+	rawVerts.Reserve(numVerts);
+	for (int i = 0; i < numVerts; ++i)
 	{
-		const FVector4 vertex = *((FVector4*)basePtr); basePtr += sizeof(FVector4);
-		FVector tmp;
-		tmp.X = 1.0f / 0.0254f * vertex.X;
-		tmp.Y = 1.0f / 0.0254f * vertex.Z;
-		tmp.Z = 1.0f / 0.0254f * -vertex.Y;
-		vertices.Add(tmp);
+		rawVerts.Add(((FVector4*)basePtr)[i]);
+	}
+	basePtr += sizeof(FVector4) * numVerts;
+
+	// Fixup sections
+	for (FPHYSection& section : out)
+	{
+		// Fix vertices
+		for (int i = 0; i < section.FaceIndices.Num(); ++i)
+		{
+			// Lookup face index and vertex
+			const int idx = section.FaceIndices[i];
+			const FVector4 rawVert = rawVerts[idx];
+
+			// Convert to UE4 vertex
+			FVector fixedVert;
+			if (section.IsCollisionModel)
+			{
+				fixedVert.X = (100.0f / 2.54f) * rawVert.Z;
+				fixedVert.Y = (100.0f / 2.54f) * -rawVert.X;
+				fixedVert.Z = (100.0f / 2.54f) * -rawVert.Y;
+			}
+			else
+			{
+				fixedVert.X = (100.0f / 2.54f) * rawVert.X;
+				fixedVert.Y = (100.0f / 2.54f) * rawVert.Z;
+				fixedVert.Z = (100.0f / 2.54f) * -rawVert.Y;
+			}
+
+			// Store the vertex uniquely to the section and rewire the face index to point at it
+			section.FaceIndices[i] = section.Vertices.AddUnique(fixedVert);
+		}
+
+		// Fix winding order
+		if (!section.IsCollisionModel)
+		{
+			for (int i = 0; i < section.FaceIndices.Num(); i += 3)
+			{
+				Swap(section.FaceIndices[i], section.FaceIndices[i + 2]);
+			}
+		}
 	}
 
 	// There is sometimes trailing data, skip it
 	check(basePtr <= endPtr);
 	basePtr = endPtr;
-
-	// Go back through sections and fix them up
-	for (FPHYSection& section : out)
-	{
-		for (int i = 0; i < section.FaceIndices.Num(); ++i)
-		{
-			// Lookup face index and vertex
-			const int idx = section.FaceIndices[i];
-			const FVector vert = vertices[idx];
-
-			// Store the vertex uniquely to the section and rewire the face index to point at it
-			section.FaceIndices[i] = section.Vertices.AddUnique(vert);
-		}
-	}
 }
 
 void UMDLFactory::ResolveMaterials(const Valve::MDL::studiohdr_t& header, TArray<FName>& out)

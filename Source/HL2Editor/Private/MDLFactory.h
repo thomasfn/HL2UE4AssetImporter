@@ -54,6 +54,9 @@ public:
 	int BoneIndex = -1;
 
 	UPROPERTY()
+	bool IsCollisionModel;
+
+	UPROPERTY()
 	TArray<int32> FaceIndices;
 
 	UPROPERTY()
@@ -124,7 +127,7 @@ private:
 	UPhysicsAsset* ImportPhysicsAsset
 	(
 		UObject* inParent, FName inName, EObjectFlags flags,
-		const Valve::PHY::phyheader_t* phyHeader, const FReferenceSkeleton& referenceSkeleton,
+		const Valve::MDL::studiohdr_t& header, const Valve::PHY::phyheader_t* phyHeader, const FReferenceSkeleton& referenceSkeleton, FMeshDescription* outDebugMesh,
 		FFeedbackContext* warn
 	);
 

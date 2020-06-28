@@ -1546,6 +1546,7 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 
 				// Build mesh
 				FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, bodySetup);
+				bodySetup->CalculateMass();
 
 				// Write debug
 				if (outDebugMesh != nullptr)
@@ -1608,13 +1609,79 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 		const TArray<int>& childBones = indexToBone[child];
 		check(childBones.Num() > 0);
 
+		// Parse rotational constraint
+		float xMin, xMax, xFric, yMin, yMax, yFric, zMin, zMax, zFric;
+
+		static const FName fnXMin(TEXT("xmin"));
+		if (!constraintGroupValue->GetFloat(fnXMin, xMin)) { xMin = 0.0f; }
+		static const FName fnXMax(TEXT("xmax"));
+		if (!constraintGroupValue->GetFloat(fnXMax, xMax)) { xMax = 0.0f; }
+		static const FName fnXFric(TEXT("xfric"));
+		if (!constraintGroupValue->GetFloat(fnXFric, xFric)) { xFric = 0.0f; }
+
+		static const FName fnYMin(TEXT("ymin"));
+		if (!constraintGroupValue->GetFloat(fnYMin, yMin)) { yMin = 0.0f; }
+		static const FName fnYMax(TEXT("ymax"));
+		if (!constraintGroupValue->GetFloat(fnYMax, yMax)) { yMax = 0.0f; }
+		static const FName fnYFric(TEXT("yfric"));
+		if (!constraintGroupValue->GetFloat(fnYFric, yFric)) { yFric = 0.0f; }
+
+		static const FName fnZMin(TEXT("zmin"));
+		if (!constraintGroupValue->GetFloat(fnZMin, zMin)) { zMin = 0.0f; }
+		static const FName fnZMax(TEXT("zmax"));
+		if (!constraintGroupValue->GetFloat(fnZMax, zMax)) { zMax = 0.0f; }
+		static const FName fnZFric(TEXT("zfric"));
+		if (!constraintGroupValue->GetFloat(fnZFric, zFric)) { zFric = 0.0f; }
+
 		UPhysicsConstraintTemplate* constraintTemplate = NewObject<UPhysicsConstraintTemplate>(physicsAsset);
 		FConstraintInstance& constraint = constraintTemplate->DefaultInstance;
 
+		const FTransform& parentComponentTransform = boneComponentTransforms[parentBones[0]];
+		const FTransform& childComponentTransform = boneComponentTransforms[childBones[0]];
+
 		constraint.ConstraintBone1 = referenceSkeleton.GetBoneName(parentBones[0]);
+		constraint.SetRefFrame(EConstraintFrame::Frame1, childComponentTransform.GetRelativeTransform(parentComponentTransform));
+
 		constraint.ConstraintBone2 = referenceSkeleton.GetBoneName(childBones[0]);
+		//constraint.SetRefFrame(EConstraintFrame::Frame2, FTransform(FQuat(FRotator((xMin + xMax) * 0.5f, (yMin + yMax) * 0.5f, (zMin + zMax) * 0.5f))));
+
+		constraint.SetAngularTwistLimit(EAngularConstraintMotion::ACM_Limited, xMax - xMin);
+		constraint.SetAngularSwing1Limit(EAngularConstraintMotion::ACM_Limited, zMax - zMin);
+		constraint.SetAngularSwing2Limit(EAngularConstraintMotion::ACM_Limited, yMax - yMin);
+		
 
 		constraint.ConstraintIndex = physicsAsset->ConstraintSetup.Add(constraintTemplate);
+	}
+
+	// Parse collision rules
+	static const FName fnCollisionRules(TEXT("collisionrules"));
+	UValveValue* collisionRules = root->GetItem(fnCollisionRules);
+	if (collisionRules != nullptr)
+	{
+		const UValveGroupValue* collisionRulesGroup = CastChecked<UValveGroupValue>(collisionRules);
+		TArray<UValveValue*> collisionPairs;
+		static const FName fnCollisionPair(TEXT("collisionpair"));
+		collisionRulesGroup->GetItems(fnCollisionPair, collisionPairs);
+		if (collisionPairs.Num() > 0)
+		{
+			for (int i = 0; i < physicsAsset->SkeletalBodySetups.Num(); ++i)
+			{
+				for (int j = i + 1; j < physicsAsset->SkeletalBodySetups.Num(); ++j)
+				{
+					physicsAsset->DisableCollision(i, j);
+				}
+			}
+		}
+		for (const UValveValue* collisionPairValue : collisionPairs)
+		{
+			const UValvePrimitiveValue* collisionPair = CastChecked<UValvePrimitiveValue>(collisionPairValue);
+			const FString collisionPairStr = collisionPair->AsString();
+			FString left, right;
+			collisionPairStr.Split(TEXT(","), &left, &right);
+			const int leftIndex = FCString::Atoi(*left);
+			const int rightIndex = FCString::Atoi(*right);
+			physicsAsset->EnableCollision(leftIndex, rightIndex);
+		}
 	}
 
 	return physicsAsset;

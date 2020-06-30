@@ -135,7 +135,7 @@ private:
 
 	static void ReadAnimValues(uint8* basePtr, int frameCount, TArray<const Valve::MDL::mstudioanimvalue_t*>& animValues);
 
-	static float ReadAnimValue(int frameIndex, const TArray<const Valve::MDL::mstudioanimvalue_t*> animValues, float scale);
+	static void DecompressAnimValues(const TArray<const Valve::MDL::mstudioanimvalue_t*> animValues, TArray<short>& outValues);
 
 	static void ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out);
 

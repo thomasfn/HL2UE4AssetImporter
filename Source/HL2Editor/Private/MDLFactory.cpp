@@ -19,6 +19,7 @@
 #include "ValveKeyValues.h"
 #include "SkeletonUtils.h"
 #include "IMeshBuilderModule.h"
+#include "Engine/SkeletalMeshSocket.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -1014,39 +1015,33 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	skeletalMesh->AddAssetUserData(modelData);
 
 	// Load bones into skeleton
-	FReferenceSkeleton refSkel(false);
+	FReferenceSkeleton refSkelSource(false);
 	{
-		// Load bones into temporary skeleton, in source coordinates
-		FReferenceSkeleton refSkelSource(false);
+		FReferenceSkeletonModifier refSkelSourceMod(refSkelSource, skeleton);
+		refSkelSource.Empty(bones.Num());
+		for (int i = 0; i < bones.Num(); ++i)
 		{
-			FReferenceSkeletonModifier refSkelSourceMod(refSkelSource, skeleton);
-			refSkelSource.Empty(bones.Num());
-			for (int i = 0; i < bones.Num(); ++i)
+			const Valve::MDL::mstudiobone_t& bone = *bones[i];
+			FMeshBoneInfo meshBoneInfo;
+			if (bone.parent < 0)
 			{
-				const Valve::MDL::mstudiobone_t& bone = *bones[i];
-				FMeshBoneInfo meshBoneInfo;
-				if (bone.parent < 0)
-				{
-					// Only accept it as root bone if it's the first one
-					meshBoneInfo.ParentIndex = i == 0 ? -1 : 0;
-				}
-				else
-				{
-					meshBoneInfo.ParentIndex = bone.parent;
-				}
-				meshBoneInfo.ExportName = bone.GetName();
-				meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
-
-				FTransform bonePose;
-				bonePose.SetLocation(FVector(bone.pos[0], bone.pos[1], bone.pos[2]));
-				bonePose.SetRotation(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]).GetNormalized());
-				refSkelSourceMod.Add(meshBoneInfo, bonePose);
+				// Only accept it as root bone if it's the first one
+				meshBoneInfo.ParentIndex = i == 0 ? -1 : 0;
 			}
-		}
+			else
+			{
+				meshBoneInfo.ParentIndex = bone.parent;
+			}
+			meshBoneInfo.ExportName = bone.GetName();
+			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
 
-		// Go through each bone in temporary skeleton, convert to unreal coords
-		refSkel = FSkeletonUtils::TransformSkeleton(refSkelSource, StudioMdlToUnreal);
+			FTransform bonePose;
+			bonePose.SetLocation(FVector(bone.pos[0], bone.pos[1], bone.pos[2]));
+			bonePose.SetRotation(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]).GetNormalized());
+			refSkelSourceMod.Add(meshBoneInfo, bonePose);
+		}
 	}
+	const FReferenceSkeleton refSkel = FSkeletonUtils::TransformSkeleton(refSkelSource, StudioMdlToUnreal);
 	skeletalMesh->RefSkeleton = refSkel;
 	skeleton->RecreateBoneTree(skeletalMesh);
 
@@ -1409,6 +1404,38 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 				}
 			}
 			modelData->Skins.Add(skinMapping);
+
+	// Resolve attachments
+	{
+		TArray<USkeletalMeshSocket*>& sockets = skeletalMesh->GetMeshOnlySocketList();
+		TArray<const Valve::MDL::mstudioattachment_t*> attachments;
+		header.GetAttachments(attachments);
+		for (const Valve::MDL::mstudioattachment_t* attachment : attachments)
+		{
+			USkeletalMeshSocket* socket = NewObject<USkeletalMeshSocket>(skeletalMesh);
+			check(refSkel.IsValidIndex(attachment->localbone));
+			const FName boneName = refSkel.GetBoneName(attachment->localbone);
+			socket->BoneName = boneName;
+			socket->SocketName = FName(attachment->GetName());
+			// ATTACHMENT_FLAG_WORLD_ALIGN 
+			if ((attachment->flags & 0x10000) != 0)
+			{
+				// TODO: Figure out how to make a world-aligned socket (does unreal even support this?)
+			}
+			const FTransform attachmentTransformSource(
+				FVector(attachment->local[0], attachment->local[4], attachment->local[8]),
+				FVector(attachment->local[1], attachment->local[5], attachment->local[9]),
+				FVector(attachment->local[2], attachment->local[6], attachment->local[10]),
+				FVector(attachment->local[3], attachment->local[7], attachment->local[11])
+			);
+			const FTransform boneComponentTransformSource = FSkeletonUtils::GetBoneComponentTransform(refSkelSource, attachment->localbone);
+			const FTransform attachmentComponentTransform = StudioMdlToUnreal.Transform(attachmentTransformSource * boneComponentTransformSource);
+			const FTransform boneComponentTransform = FSkeletonUtils::GetBoneComponentTransform(refSkel, attachment->localbone);
+			const FTransform attachmentTransform = attachmentComponentTransform.GetRelativeTransform(boneComponentTransform);
+			socket->RelativeLocation = attachmentTransform.GetLocation();
+			socket->RelativeRotation = attachmentTransform.GetRotation().Rotator();
+			socket->RelativeScale = attachmentTransform.GetScale3D();
+			sockets.Add(socket);
 		}
 	}
 	modelData->PostEditChange();

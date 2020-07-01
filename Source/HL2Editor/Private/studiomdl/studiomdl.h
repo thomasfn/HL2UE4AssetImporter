@@ -432,6 +432,16 @@ namespace Valve
 			FString GetName() const { return sznameindex > 0 ? ReadString(this, sznameindex) : FString(); }
 		};
 
+		struct mstudioattachment_t
+		{
+			int					sznameindex;
+			FString GetName() const { return sznameindex > 0 ? ReadString(this, sznameindex) : FString(); }
+			unsigned int		flags;
+			int					localbone;
+			float				local[12]; // attachment point
+			int					unused[8];
+		};
+
 		struct studiohdr_t
 		{
 			int		id;		// Model format ID, such as "IDST" (0x49 0x44 0x53 0x54)
@@ -522,9 +532,10 @@ namespace Valve
 			void GetBodyParts(TArray<const mstudiobodyparts_t*>& out) const { ReadArray<mstudiobodyparts_t>(this, bodypart_offset, bodypart_count, out); }
 
 			// Local attachment points		
-		// mstudioattachment_t
+		// 
 			int		attachment_count;
 			int		attachment_offset;
+			void GetAttachments(TArray<const mstudioattachment_t*>& out) const { ReadArray<mstudioattachment_t>(this, attachment_offset, attachment_count, out); }
 
 			// Node values appear to be single bytes, while their names are null-terminated strings.
 			int		localnode_count;

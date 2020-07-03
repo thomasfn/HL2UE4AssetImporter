@@ -2119,7 +2119,7 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 
 		// Start a new section
 		FPHYSection section;
-		if (sectionHeader.boneIndex < 0)
+		if (sectionHeader.boneIndex <= 0)
 		{
 			section.BoneIndex = 0;
 			section.IsCollisionModel = true;
@@ -2138,9 +2138,9 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 			uniqueVerts.Add(triangle.vertices[1].index);
 			uniqueVerts.Add(triangle.vertices[2].index);
 			numVerts = FMath::Max(numVerts, (int)FMath::Max3(triangle.vertices[0].index, triangle.vertices[1].index, triangle.vertices[2].index));
-			section.FaceIndices.Add(triangle.vertices[0].index);
-			section.FaceIndices.Add(triangle.vertices[1].index);
 			section.FaceIndices.Add(triangle.vertices[2].index);
+			section.FaceIndices.Add(triangle.vertices[1].index);
+			section.FaceIndices.Add(triangle.vertices[0].index);
 		}
 
 		// Store section
@@ -2185,15 +2185,6 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 
 			// Store the vertex uniquely to the section and rewire the face index to point at it
 			section.FaceIndices[i] = section.Vertices.AddUnique(fixedVert);
-		}
-
-		// Fix winding order
-		if (!section.IsCollisionModel)
-		{
-			for (int i = 0; i < section.FaceIndices.Num(); i += 3)
-			{
-				Swap(section.FaceIndices[i], section.FaceIndices[i + 2]);
-			}
 		}
 	}
 

@@ -1413,6 +1413,8 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 				}
 			}
 			modelData->Skins.Add(skinMapping);
+		}
+	}
 
 	// Resolve attachments
 	{

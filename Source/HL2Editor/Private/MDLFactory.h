@@ -131,6 +131,10 @@ private:
 		FFeedbackContext* warn
 	);
 
+	static bool SkeletonHasMultipleRoots(const Valve::MDL::studiohdr_t& header);
+
+	static bool SkeletonHasMultipleRoots(const TArray<const Valve::MDL::mstudiobone_t*>& bones);
+
 	static void ReadAnimData(const uint8* basePtr, USkeletalMesh* skeletalMesh, TArray<const Valve::MDL::mstudioanim_t*>& out);
 
 	static void ReadAnimValues(uint8* basePtr, int frameCount, TArray<const Valve::MDL::mstudioanimvalue_t*>& animValues);

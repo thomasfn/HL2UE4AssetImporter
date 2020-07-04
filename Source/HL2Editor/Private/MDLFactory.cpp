@@ -1002,6 +1002,8 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	// Read bones
 	TArray<const Valve::MDL::mstudiobone_t*> bones;
 	header.GetBones(bones);
+	const bool multiRoot = SkeletonHasMultipleRoots(bones);
+	const int boneIndexOffset = multiRoot ? 1 : 0;
 
 	// Create skeleton
 	USkeleton* skeleton = CreateSkeleton(inSkeletonParent, inSkeletonName, flags);
@@ -1015,22 +1017,29 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	skeletalMesh->AddAssetUserData(modelData);
 
 	// Load bones into skeleton
-	FReferenceSkeleton refSkelSource(false);
+	FReferenceSkeleton refSkelSource;
 	{
 		FReferenceSkeletonModifier refSkelSourceMod(refSkelSource, skeleton);
-		refSkelSource.Empty(bones.Num());
+		refSkelSource.Empty(bones.Num() + boneIndexOffset);
+		if (multiRoot)
+		{
+			FMeshBoneInfo meshBoneInfo;
+			meshBoneInfo.ParentIndex = -1;
+			meshBoneInfo.ExportName = TEXT("GENERATED_ROOT");
+			meshBoneInfo.Name = FName(TEXT("root"));
+			refSkelSourceMod.Add(meshBoneInfo, FTransform::Identity);
+		}
 		for (int i = 0; i < bones.Num(); ++i)
 		{
 			const Valve::MDL::mstudiobone_t& bone = *bones[i];
 			FMeshBoneInfo meshBoneInfo;
 			if (bone.parent < 0)
 			{
-				// Only accept it as root bone if it's the first one
-				meshBoneInfo.ParentIndex = i == 0 ? -1 : 0;
+				meshBoneInfo.ParentIndex = boneIndexOffset - 1;
 			}
 			else
 			{
-				meshBoneInfo.ParentIndex = bone.parent;
+				meshBoneInfo.ParentIndex = bone.parent + boneIndexOffset;
 			}
 			meshBoneInfo.ExportName = bone.GetName();
 			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
@@ -1258,7 +1267,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 									for (int k = 0; k < numBones; ++k)
 									{
 										const uint8 boneWeightIdx = vert.boneWeightIndex[k];
-										const int boneID = origVert.m_BoneWeights.bone[boneWeightIdx];
+										const int boneID = origVert.m_BoneWeights.bone[boneWeightIdx] + boneIndexOffset;
 										// check(vert.boneID[k] == boneID);
 										const float weight = origVert.m_BoneWeights.weight[boneWeightIdx];
 										SkeletalMeshImportData::FRawBoneInfluence influence;
@@ -1412,9 +1421,10 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		header.GetAttachments(attachments);
 		for (const Valve::MDL::mstudioattachment_t* attachment : attachments)
 		{
+			const int boneIndex = attachment->localbone + boneIndexOffset;
 			USkeletalMeshSocket* socket = NewObject<USkeletalMeshSocket>(skeletalMesh);
-			check(refSkel.IsValidIndex(attachment->localbone));
-			const FName boneName = refSkel.GetBoneName(attachment->localbone);
+			check(refSkel.IsValidIndex(boneIndex));
+			const FName boneName = refSkel.GetBoneName(boneIndex);
 			socket->BoneName = boneName;
 			socket->SocketName = FName(attachment->GetName());
 			// ATTACHMENT_FLAG_WORLD_ALIGN 
@@ -1428,9 +1438,9 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 				FVector(attachment->local[2], attachment->local[6], attachment->local[10]),
 				FVector(attachment->local[3], attachment->local[7], attachment->local[11])
 			);
-			const FTransform boneComponentTransformSource = FSkeletonUtils::GetBoneComponentTransform(refSkelSource, attachment->localbone);
+			const FTransform boneComponentTransformSource = FSkeletonUtils::GetBoneComponentTransform(refSkelSource, boneIndex);
 			const FTransform attachmentComponentTransform = StudioMdlToUnreal.Transform(attachmentTransformSource * boneComponentTransformSource);
-			const FTransform boneComponentTransform = FSkeletonUtils::GetBoneComponentTransform(refSkel, attachment->localbone);
+			const FTransform boneComponentTransform = FSkeletonUtils::GetBoneComponentTransform(refSkel, boneIndex);
 			const FTransform attachmentTransform = attachmentComponentTransform.GetRelativeTransform(boneComponentTransform);
 			socket->RelativeLocation = attachmentTransform.GetLocation();
 			socket->RelativeRotation = attachmentTransform.GetRotation().Rotator();
@@ -1482,6 +1492,8 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 	TArray<FTransform> boneComponentTransforms = FSkeletonUtils::GetSkeletonComponentTransforms(referenceSkeleton);
 	const FReferenceSkeleton referenceSkeletonSource = FSkeletonUtils::TransformSkeleton(referenceSkeleton, UnrealToStudioMdl);
 	TArray<FTransform> boneComponentSourceTransforms = FSkeletonUtils::GetSkeletonComponentTransforms(referenceSkeletonSource);
+	const bool multiRoot = SkeletonHasMultipleRoots(header);
+	const int boneIndexOffset = multiRoot ? 1 : 0;
 
 	// Parse solids
 	TArray<UValveValue*> solidValues;
@@ -1534,12 +1546,13 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 		for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
 		{
 			FPHYSection& section = sections[sectionIndex];
-			if (referenceSkeleton.IsValidIndex(section.BoneIndex))
+			const int boneIndex = section.BoneIndex + boneIndexOffset;
+			if (referenceSkeleton.IsValidIndex(boneIndex))
 			{
-				solidBones.AddUnique(section.BoneIndex);
+				solidBones.AddUnique(boneIndex);
 
 				// Retrieve body setup
-				const FName bodyName = referenceSkeleton.GetBoneName(section.BoneIndex);
+				const FName bodyName = referenceSkeleton.GetBoneName(boneIndex);
 				const int bodyIndex = physicsAsset->FindBodyIndex(bodyName);
 				USkeletalBodySetup* bodySetup = bodyIndex == INDEX_NONE ? nullptr : physicsAsset->SkeletalBodySetups[bodyIndex];
 				if (bodySetup == nullptr)
@@ -1547,7 +1560,7 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 					bodySetup = NewObject<USkeletalBodySetup>(physicsAsset, name);
 					bodySetup->CollisionTraceFlag = CTF_UseSimpleAsComplex;
 					bodySetup->PhysicsType = PhysType_Default;
-					bodySetup->BoneName = referenceSkeleton.GetBoneName(section.BoneIndex);
+					bodySetup->BoneName = referenceSkeleton.GetBoneName(boneIndex);
 					bodySetup->bGenerateMirroredCollision = false;
 					bodySetup->bConsiderForBounds = true;
 					bodySetup->PhysMaterial = surfaceProp;
@@ -1559,9 +1572,9 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 				// Correct transform of verts (which are in bone-local space)
 				for (FVector& position : section.Vertices)
 				{
-					const FVector componentPosSource = boneComponentSourceTransforms[section.BoneIndex].TransformPosition(position);
+					const FVector componentPosSource = boneComponentSourceTransforms[boneIndex].TransformPosition(position);
 					const FVector componentPos = StudioMdlToUnreal.Position(componentPosSource);
-					position = boneComponentTransforms[section.BoneIndex].InverseTransformPosition(componentPos);
+					position = boneComponentTransforms[boneIndex].InverseTransformPosition(componentPos);
 				}
 				if (StudioMdlToUnreal.ShouldReverseWinding())
 				{
@@ -1580,13 +1593,13 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 				{
 					FStaticMeshAttributes attr(*outDebugMesh);
 					FPolygonGroupID polyGroupID = outDebugMesh->CreatePolygonGroup();
-					attr.GetPolygonGroupMaterialSlotNames()[polyGroupID] = referenceSkeleton.GetBoneName(section.BoneIndex);
+					attr.GetPolygonGroupMaterialSlotNames()[polyGroupID] = referenceSkeleton.GetBoneName(boneIndex);
 					TArray<FVertexID> vertexIDs;
 					vertexIDs.Reserve(section.Vertices.Num());
 					for (const FVector& position : section.Vertices)
 					{
 						const FVertexID vertexID = outDebugMesh->CreateVertex();
-						attr.GetVertexPositions()[vertexID] = boneComponentTransforms[section.BoneIndex].TransformPosition(position);
+						attr.GetVertexPositions()[vertexID] = boneComponentTransforms[boneIndex].TransformPosition(position);
 						vertexIDs.Add(vertexID);
 					}
 					for (int i = 0; i < section.FaceIndices.Num(); i += 3)
@@ -1724,6 +1737,8 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 	header.GetAnimBlocks(animBlocks);
 	TArray<const Valve::MDL::mstudiobone_t*> bones;
 	header.GetBones(bones);
+	const bool multiRoot = SkeletonHasMultipleRoots(bones);
+	const int boneIndexOffset = multiRoot ? 1 : 0;
 
 	const FReferenceSkeleton& refSkel = skeletalMesh->RefSkeleton;
 	const FReferenceSkeleton refSkelSource = FSkeletonUtils::TransformSkeleton(refSkel, UnrealToStudioMdl);
@@ -1800,11 +1815,12 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 			{
 				for (const Valve::MDL::mstudioanim_t* anim : sectionAnims)
 				{
+					const int boneIndex = anim->bone + boneIndexOffset;
 					check(bones.IsValidIndex(anim->bone));
 					const Valve::MDL::mstudiobone_t* bone = bones[anim->bone];
-					const FTransform& boneRefPose = refSkelSource.GetRefBonePose()[anim->bone];
-					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(anim->bone);
-					const bool isRootBone = !bones.IsValidIndex(refSkel.GetParentIndex(anim->bone));
+					const FTransform& boneRefPose = refSkelSource.GetRefBonePose()[boneIndex];
+					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(boneIndex);
+					const bool isRootBone = !bones.IsValidIndex(refSkel.GetParentIndex(boneIndex) - boneIndexOffset);
 
 					// Rotation
 					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMROT))
@@ -2022,6 +2038,26 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 
 
 	}*/
+}
+
+bool UMDLFactory::SkeletonHasMultipleRoots(const Valve::MDL::studiohdr_t& header)
+{
+	TArray<const Valve::MDL::mstudiobone_t*> bones;
+	header.GetBones(bones);
+	return SkeletonHasMultipleRoots(bones);
+}
+
+bool UMDLFactory::SkeletonHasMultipleRoots(const TArray<const Valve::MDL::mstudiobone_t*>& bones)
+{
+	int rootCount = 0;
+	for (const Valve::MDL::mstudiobone_t* bone : bones)
+	{
+		if (bone->parent < 0)
+		{
+			++rootCount;
+		}
+	}
+	return rootCount > 1;
 }
 
 void UMDLFactory::ReadAnimData(const uint8* basePtr, USkeletalMesh* skeletalMesh, TArray<const Valve::MDL::mstudioanim_t*>& out)

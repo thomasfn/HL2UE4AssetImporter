@@ -1820,7 +1820,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					const Valve::MDL::mstudiobone_t* bone = bones[anim->bone];
 					const FTransform& boneRefPose = refSkelSource.GetRefBonePose()[boneIndex];
 					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(boneIndex);
-					const bool isRootBone = !bones.IsValidIndex(refSkel.GetParentIndex(boneIndex) - boneIndexOffset);
+					const bool isRootBone = bone->parent < 0;
 
 					// Rotation
 					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMROT))
@@ -1849,20 +1849,20 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						for (int i = 0; i < animDesc->numframes; ++i)
 						{
 							FQuat& rot = track.RotKeys[i];
-							float x = 0.0f, y = 0.0f, z = 0.0f;
-							if (rotValuePtr->offset[0] > 0) { x = (xValues.IsValidIndex(i) ? xValues[i] : xValues.Last()) * bone->rotscale[0]; }
-							if (rotValuePtr->offset[1] > 0) { y = (yValues.IsValidIndex(i) ? yValues[i] : yValues.Last()) * bone->rotscale[1]; }
-							if (rotValuePtr->offset[2] > 0) { z = (zValues.IsValidIndex(i) ? zValues[i] : zValues.Last()) * bone->rotscale[2]; }
-							check(!FMath::IsNaN(x));
-							check(!FMath::IsNaN(y));
-							check(!FMath::IsNaN(z));
+							FVector angles = FVector::ZeroVector;
+							if (rotValuePtr->offset[0] > 0) { angles.X = (xValues.IsValidIndex(i) ? xValues[i] : xValues.Last()) * bone->rotscale[0]; }
+							if (rotValuePtr->offset[1] > 0) { angles.Y = (yValues.IsValidIndex(i) ? yValues[i] : yValues.Last()) * bone->rotscale[1]; }
+							if (rotValuePtr->offset[2] > 0) { angles.Z = (zValues.IsValidIndex(i) ? zValues[i] : zValues.Last()) * bone->rotscale[2]; }
+							check(!angles.ContainsNaN());
 							if (!anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 							{
-								x += bone->rot[0];
-								y += bone->rot[1];
-								z += bone->rot[2];
+								angles += FVector(bone->rot[0], bone->rot[1], bone->rot[2]);
 							}
-							rot = ParseSourceEuler(x, y, z);
+							if (isRootBone)
+							{
+								angles.Z += FMath::DegreesToRadians(-90.0f);
+							}
+							rot = SourceAnglesToQuat(angles);
 						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT))
@@ -1871,7 +1871,9 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						FQuat rot = *anim->GetQuat48();
 						if (isRootBone)
 						{
-							rot = FQuat(FVector::UpVector, PI * -0.5f) * rot;
+							FVector angles = QuatToSourceAngles(rot);
+							angles.Z += FMath::DegreesToRadians(-90.0f);
+							rot = SourceAnglesToQuat(angles);
 						}
 						track.RotKeys[0] = rot;
 					}
@@ -1881,7 +1883,9 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						FQuat rot = *anim->GetQuat64();
 						if (isRootBone)
 						{
-							rot = FQuat(FVector::UpVector, PI * -0.5f) * rot;
+							FVector angles = QuatToSourceAngles(rot);
+							angles.Z += FMath::DegreesToRadians(-90.0f);
+							rot = SourceAnglesToQuat(angles);
 						}
 						track.RotKeys[0] = rot;
 					}
@@ -1938,7 +1942,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 								y += bone->pos[1];
 								z += bone->pos[2];
 							}
-							pos = FVector(x, y, z);
+							if (isRootBone)
+							{
+								pos = FVector(y, -x, z);
+							}
+							else
+							{
+								pos = FVector(x, y, z);
+							}
 						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWPOS))
@@ -2283,20 +2294,47 @@ void UMDLFactory::ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray
 	}
 }
 
-FQuat UMDLFactory::ParseSourceEuler(float x, float y, float z)
+FQuat UMDLFactory::SourceAnglesToQuat(const FVector& angles)
 {
 	// https://marc-b-reynolds.github.io/math/2017/04/18/TaitEuler.html
-	const float hy = 0.5f * z;
-	const float hp = 0.5f * y;
-	const float hr = 0.5f * x;
-	const float ys = FMath::Sin(hy), yc = FMath::Cos(hy);
-	const float ps = FMath::Sin(hp), pc = FMath::Cos(hp);
-	const float rs = FMath::Sin(hr), rc = FMath::Cos(hr);
+	const double hy = 0.5 * angles.Z;
+	const double hp = 0.5 * angles.Y;
+	const double hr = 0.5 * angles.X;
+	const double ys = sin(hy), yc = cos(hy);
+	const double ps = sin(hp), pc = cos(hp);
+	const double rs = sin(hr), rc = cos(hr);
 
 	FQuat quat;
-	quat.W = rc * pc * yc + rs * ps * ys;
-	quat.X = rs * pc * yc - rc * ps * ys;
-	quat.Y = rc * ps * yc + rs * pc * ys;
-	quat.Z = rc * pc * ys - rs * ps * yc;
+	quat.W = (float)(rc * pc * yc + rs * ps * ys);
+	quat.X = (float)(rs * pc * yc - rc * ps * ys);
+	quat.Y = (float)(rc * ps * yc + rs * pc * ys);
+	quat.Z = (float)(rc * pc * ys - rs * ps * yc);
 	return quat.GetNormalized();
+}
+
+FVector UMDLFactory::QuatToSourceAngles(const FQuat& quat)
+{
+	// https://marc-b-reynolds.github.io/math/2017/04/18/TaitEuler.html
+	const double x = quat.X, y = quat.Y, z = quat.Z, w = quat.W;
+
+	const double t0 = x * x - z * z;
+	const double t1 = w * w - y * y;
+	const double xx = 0.5 * (t0 + t1);        // 1/2 x of x'
+	const double xy = x * y + w * z;            // 1/2 y of x'
+	const double xz = w * y - x * z;            // 1/2 z of x'
+	const double t = xx * xx + xy * xy;        // cos(theta)^2
+	const double yz = 2.0 * (y * z + w * x);      // z of y'
+
+	FVector v;
+	v.Z = (float)atan2(xy, xx);    // yaw   (psi)
+	v.Y = (float)atan(xz / sqrt(t)); // pitch (theta)
+	if (t != 0)
+	{
+		v.X = (float)atan2(yz, t1 - t0);
+	}
+	else
+	{
+		v.X = (float)(2.0 * atan2(x, w) - FMath::Sign(xz) * v.Z);
+	}
+	return v;
 }

@@ -147,5 +147,7 @@ private:
 
 	static void ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray<int>>& out);
 
-	static FQuat ParseSourceEuler(float x, float y, float z);
+	static FQuat SourceAnglesToQuat(const FVector& angles);
+
+	static FVector QuatToSourceAngles(const FQuat& quat);
 };

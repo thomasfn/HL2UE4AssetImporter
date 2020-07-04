@@ -1772,15 +1772,6 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						const Valve::MDL::mstudioanimsections_t* section = sections[sectionIndex];
 						TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims = allSectionAnims[sectionIndex];
 						uint8* basePtr = ((uint8*)animDesc) + section->animindex;
-						int sectionFrameCount;
-						if (sectionIndex < sections.Num() - 2)
-						{
-							sectionFrameCount = animDesc->sectionframes;
-						}
-						else
-						{
-							sectionFrameCount = animDesc->numframes - ((sections.Num() - 2) * animDesc->sectionframes);
-						}
 						ReadAnimData(basePtr, skeletalMesh, sectionAnims);
 					}
 				}
@@ -1790,6 +1781,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					const Valve::MDL::mstudioanimblock_t* block = animBlocks[animDesc->animblock];
 					// TODO: Load from ani
 					// Can we ever get here?
+					check(false);
 				}
 			}
 			else
@@ -1806,13 +1798,17 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					basePtr = ((uint8*)aniHeader) + block->datastart + animDesc->animindex;
 				}
 				ReadAnimData(basePtr, skeletalMesh, allSectionAnims[allSectionAnims.AddDefaulted()]);
-				
 			}
 
 			// Load anims into sequence
 			TMap<uint8, FRawAnimSequenceTrack> boneTrackMap;
-			for (const TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims : allSectionAnims)
+			int framesLeft = animDesc->numframes;
+			for (int sectionIndex = 0; sectionIndex < allSectionAnims.Num(); ++sectionIndex)
 			{
+				const TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims = allSectionAnims[sectionIndex];
+				const int sectionFrameCount = allSectionAnims.Num() > 1 ? FMath::Min(framesLeft, animDesc->sectionframes) : animDesc->numframes;
+				framesLeft -= sectionFrameCount;
+				const int sectionFrameIndex = sectionIndex * animDesc->sectionframes;
 				for (const Valve::MDL::mstudioanim_t* anim : sectionAnims)
 				{
 					const int boneIndex = anim->bone + boneIndexOffset;
@@ -1820,11 +1816,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					const Valve::MDL::mstudiobone_t* bone = bones[anim->bone];
 					const FTransform& boneRefPose = refSkelSource.GetRefBonePose()[boneIndex];
 					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(boneIndex);
+					if (track.RotKeys.Num() == 0) { track.RotKeys.Init(boneRefPose.GetRotation(), animDesc->numframes); }
+					if (track.PosKeys.Num() == 0) { track.PosKeys.Init(boneRefPose.GetLocation(), animDesc->numframes); }
 					const bool isRootBone = bone->parent < 0;
 
 					// Rotation
 					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMROT))
 					{
+						// Compressed rotations for each frame in the section
 						const Valve::MDL::mstudioanim_valueptr_t* rotValuePtr = anim->GetRotValue();
 						TArray<short> xValues, yValues, zValues;
 						if (rotValuePtr->offset[0] > 0)
@@ -1845,10 +1844,9 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 							ReadAnimValues(((uint8*)rotValuePtr) + rotValuePtr->offset[2], animDesc->numframes, animValues);
 							DecompressAnimValues(animValues, zValues);
 						}
-						track.RotKeys.SetNum(animDesc->numframes, false);
-						for (int i = 0; i < animDesc->numframes; ++i)
+						for (int i = 0; i < sectionFrameCount; ++i)
 						{
-							FQuat& rot = track.RotKeys[i];
+							FQuat& rot = track.RotKeys[sectionFrameIndex + i];
 							FVector angles = FVector::ZeroVector;
 							if (rotValuePtr->offset[0] > 0) { angles.X = (xValues.IsValidIndex(i) ? xValues[i] : xValues.Last()) * bone->rotscale[0]; }
 							if (rotValuePtr->offset[1] > 0) { angles.Y = (yValues.IsValidIndex(i) ? yValues[i] : yValues.Last()) * bone->rotscale[1]; }
@@ -1867,7 +1865,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT))
 					{
-						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
+						// Single rotation covering every frame in the section
 						FQuat rot = *anim->GetQuat48();
 						if (isRootBone)
 						{
@@ -1875,11 +1873,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 							angles.Z += FMath::DegreesToRadians(-90.0f);
 							rot = SourceAnglesToQuat(angles);
 						}
-						track.RotKeys[0] = rot;
+						for (int i = 0; i < sectionFrameCount; ++i)
+						{
+							track.RotKeys[sectionFrameIndex + i] = rot;
+						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT2))
 					{
-						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
+						// Single rotation covering every frame in the section
 						FQuat rot = *anim->GetQuat64();
 						if (isRootBone)
 						{
@@ -1887,24 +1888,33 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 							angles.Z += FMath::DegreesToRadians(-90.0f);
 							rot = SourceAnglesToQuat(angles);
 						}
-						track.RotKeys[0] = rot;
+						for (int i = 0; i < sectionFrameCount; ++i)
+						{
+							track.RotKeys[sectionFrameIndex + i] = rot;
+						}
 					}
 					else
 					{
-						track.RotKeys.SetNum(FMath::Max(track.RotKeys.Num(), 1), false);
+						// Match reference pose for every frame in the section
+						FQuat rot;
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							track.RotKeys[0] = FQuat::Identity;
+							rot = FQuat::Identity;
 						}
 						else
 						{
-							track.RotKeys[0] = FQuat(bone->quat[0], bone->quat[1], bone->quat[2], bone->quat[3]).GetNormalized();
+							rot = FQuat(bone->quat[0], bone->quat[1], bone->quat[2], bone->quat[3]).GetNormalized();
+						}
+						for (int i = 0; i < sectionFrameCount; ++i)
+						{
+							track.RotKeys[sectionFrameIndex + i] = rot;
 						}
 					}
 
 					// Position
 					if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMPOS))
 					{
+						// Compressed positions for each frame in the section
 						const Valve::MDL::mstudioanim_valueptr_t* posValuePtr = anim->GetPosValue();
 						TArray<short> xValues, yValues, zValues;
 						if (posValuePtr->offset[0] > 0)
@@ -1925,10 +1935,9 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 							ReadAnimValues(((uint8*)posValuePtr) + posValuePtr->offset[2], animDesc->numframes, animValues);
 							DecompressAnimValues(animValues, zValues);
 						}
-						track.PosKeys.SetNum(animDesc->numframes, false);
-						for (int i = 0; i < animDesc->numframes; ++i)
+						for (int i = 0; i < sectionFrameCount; ++i)
 						{
-							FVector& pos = track.PosKeys[i];
+							FVector& pos = track.PosKeys[sectionFrameIndex + i];
 							float x = 0.0f, y = 0.0f, z = 0.0f;
 							if (posValuePtr->offset[0] > 0) { x = (xValues.IsValidIndex(i) ? xValues[i] : xValues.Last()) * bone->posscale[0]; }
 							if (posValuePtr->offset[1] > 0) { y = (yValues.IsValidIndex(i) ? yValues[i] : yValues.Last()) * bone->posscale[1]; }
@@ -1954,28 +1963,37 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWPOS))
 					{
-						track.PosKeys.SetNum(FMath::Max(track.PosKeys.Num(), 1), false);
+						// Single position covering every frame in the section
 						FVector pos = *anim->GetPos();
 						if (isRootBone)
 						{
 							pos = FVector(pos.Y, -pos.X, pos.Z);
 						}
-						track.PosKeys[0] = pos;
+						for (int i = 0; i < sectionFrameCount; ++i)
+						{
+							track.PosKeys[sectionFrameIndex + i] = pos;
+						}
 					}
 					else
 					{
-						track.PosKeys.SetNum(FMath::Max(track.PosKeys.Num(), 1), false);
+						// Match reference pose for every frame in the section
+						FVector pos;
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							track.PosKeys[0] = FVector::ZeroVector;
+							pos = FVector::ZeroVector;
 						}
 						else
 						{
-							track.PosKeys[0] = FVector(bone->pos[0], bone->pos[1], bone->pos[2]);
+							pos = FVector(bone->pos[0], bone->pos[1], bone->pos[2]);
+						}
+						for (int i = 0; i < sectionFrameCount; ++i)
+						{
+							track.PosKeys[sectionFrameIndex + i] = pos;
 						}
 					}
 				}
 			}
+			check(framesLeft == 0);
 
 			// Convert sequence tracks into unreal coordinate space
 			TMap<uint8, FRawAnimSequenceTrack> transformedBoneTrackMap;

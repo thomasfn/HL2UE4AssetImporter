@@ -1,7 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "HL2EntityDataUtils.h"
+
 #include "HL2Runtime.h"
+#include "SourceCoord.h"
 
 FString UHL2EntityDataUtils::GetString(const FHL2EntityData& entityData, FName key) { return entityData.GetString(key); }
 
@@ -38,7 +40,7 @@ bool UHL2EntityDataUtils::TryGetRotator(const FHL2EntityData& entityData, FName 
 {
 	FVector value;
 	if (!entityData.TryGetVector(key, value)) { return false; }
-	out = FRotator::MakeFromEuler(FVector(value.Z, -value.X, -value.Y));
+	out = SourceToUnreal.Rotator(FRotator::MakeFromEuler(FVector(value.Z, -value.X, 180.0f - value.Y)));
 	return true;
 }
 
@@ -68,4 +70,19 @@ bool UHL2EntityDataUtils::TryGetColorAndAlpha(const FHL2EntityData& entityData, 
 	out.B = value.Z / 255.0f;
 	outAlpha = value.W / 255.0f;
 	return true;
+}
+
+FVector UHL2EntityDataUtils::ConvertSourcePositionToUnreal(const FVector& position)
+{
+	return SourceToUnreal.Position(position);
+}
+
+FQuat UHL2EntityDataUtils::ConvertSourceRotationToUnreal(const FQuat& rotation)
+{
+	return SourceToUnreal.Quat(rotation);
+}
+
+FTransform UHL2EntityDataUtils::ConvertSourceTransformToUnreal(const FTransform& transform)
+{
+	return SourceToUnreal.Transform(transform);
 }

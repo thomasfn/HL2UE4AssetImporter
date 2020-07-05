@@ -30,6 +30,7 @@
 #include "MeshDescriptionOperations.h"
 #include "MeshUtilitiesCommon.h"
 #include "OverlappingCorners.h"
+#include "SourceCoord.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -103,18 +104,18 @@ bool FBSPImporter::ImportGeometryToWorld(UWorld* targetWorld)
 	folders.SetSelectedFolderPath(geometryFolder);
 	GEditor->SelectNone(false, true, false);
 
-	FVector mins(bspWorldModel.m_Mins(0, 0), bspWorldModel.m_Mins(0, 1), bspWorldModel.m_Mins(0, 2));
-	FVector maxs(bspWorldModel.m_Maxs(0, 0), bspWorldModel.m_Maxs(0, 1), bspWorldModel.m_Maxs(0, 2));
+	const FBox bspBounds = GetModelBounds(bspWorldModel, true);
 	ALightmassImportanceVolume* lightmassImportanceVolume = world->SpawnActor<ALightmassImportanceVolume>();
 	lightmassImportanceVolume->Brush = NewObject<UModel>(lightmassImportanceVolume, NAME_None, RF_Transactional);
 	lightmassImportanceVolume->Brush->Initialize(nullptr, true);
 	lightmassImportanceVolume->Brush->Polys = NewObject<UPolys>(lightmassImportanceVolume->Brush, NAME_None, RF_Transactional);
 	lightmassImportanceVolume->GetBrushComponent()->Brush = lightmassImportanceVolume->Brush;
-	lightmassImportanceVolume->SetActorLocation(FMath::Lerp(mins, maxs, 0.5f) * FVector(1.0f, -1.0f, 1.0f));
+	lightmassImportanceVolume->SetActorLocation(bspBounds.GetCenter());
 	UCubeBuilder* brushBuilder = NewObject<UCubeBuilder>(lightmassImportanceVolume);
-	brushBuilder->X = maxs.X - mins.X;
-	brushBuilder->Y = maxs.Y - mins.Y;
-	brushBuilder->Z = maxs.Z - mins.Z;
+	const FVector extent = bspBounds.GetExtent();
+	brushBuilder->X = extent.X;
+	brushBuilder->Y = extent.Y;
+	brushBuilder->Z = extent.Z;
 	brushBuilder->Build(world, lightmassImportanceVolume);
 
 	return true;
@@ -148,7 +149,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
-		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.Origin = FVector(staticProp.m_Origin(0, 0), staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
 		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
 		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
@@ -161,7 +162,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
-		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.Origin = FVector(staticProp.m_Origin(0, 0), staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
 		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
 		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
@@ -174,7 +175,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
-		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.Origin = FVector(staticProp.m_Origin(0, 0), staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
 		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
 		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
@@ -187,7 +188,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
-		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.Origin = FVector(staticProp.m_Origin(0, 0), staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
 		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
 		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
@@ -204,7 +205,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnCubemap;
-		entityData.Origin = FVector(cubemap.m_Origin[0], -cubemap.m_Origin[1], cubemap.m_Origin[2]);
+		entityData.Origin = FVector(cubemap.m_Origin[0], cubemap.m_Origin[1], cubemap.m_Origin[2]);
 		entityData.KeyValues.Add(fnSize, FString::FromInt(cubemap.m_Size));
 		entityDatas.Add(entityData);
 	}
@@ -240,16 +241,17 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 modelIndex)
 {
 	constexpr bool useCells = true;
-	constexpr float cellSize = 1024.0f;
+	constexpr float cellSize = 2048.0f;
 
 	const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[modelIndex];
 
 	// Determine cell mins and maxs
 	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[bspModel.m_Headnode];
-	const int cellMinX = FMath::FloorToInt(bspNode.m_Mins[0] / cellSize);
-	const int cellMaxX = FMath::CeilToInt(bspNode.m_Maxs[0] / cellSize);
-	const int cellMinY = FMath::FloorToInt(bspNode.m_Mins[1] / cellSize);
-	const int cellMaxY = FMath::CeilToInt(bspNode.m_Maxs[1] / cellSize);
+	const FBox bspBounds = GetNodeBounds(bspNode, true);
+	const int cellMinX = FMath::FloorToInt(bspBounds.Min.X / cellSize);
+	const int cellMaxX = FMath::CeilToInt(bspBounds.Max.X / cellSize);
+	const int cellMinY = FMath::FloorToInt(bspBounds.Min.Y / cellSize);
+	const int cellMaxY = FMath::CeilToInt(bspBounds.Max.Y / cellSize);
 
 	FScopedSlowTask progress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1) + 23, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
 	progress.MakeDialog();
@@ -448,10 +450,7 @@ AStaticMeshActor* FBSPImporter::RenderMeshToActor(const FMeshDescription& meshDe
 {
 	UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, assetName, lightmapResolution);
 
-	FTransform transform = FTransform::Identity;
-	transform.SetScale3D(FVector(1.0f, -1.0f, 1.0f));
-
-	AStaticMeshActor* staticMeshActor = world->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), transform);
+	AStaticMeshActor* staticMeshActor = world->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), FTransform::Identity);
 	UStaticMeshComponent* staticMeshComponent = staticMeshActor->GetStaticMeshComponent();
 	staticMeshComponent->SetStaticMesh(staticMesh);
 	FLightmassPrimitiveSettings& lightmassSettings = staticMeshComponent->LightmassSettings;
@@ -538,7 +537,7 @@ void FBSPImporter::GatherDisplacements(const TArray<uint16>& faceIndices, TArray
 
 FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 {
-	return FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
+	return SourceToUnreal.Plane(FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance));
 }
 
 void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter)
@@ -630,7 +629,7 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 				{
 					vertID = meshDesc.CreateVertex();
 					const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
-					vertexAttrPosition[vertID] = FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
+					vertexAttrPosition[vertID] = SourceToUnreal.Position(FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2)));
 					valveToUnrealVertexMap.Add(vertIndex, vertID);
 				}
 			}
@@ -639,8 +638,8 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 			FVertexInstanceID vertInstID = meshDesc.CreateVertexInstance(vertID);
 
 			// Calculate texture coords
-			FVector pos = vertexAttrPosition[vertID];
 			{
+				const FVector pos = UnrealToSource.Position(vertexAttrPosition[vertID]);
 				const FVector texU_XYZ = FVector(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2]);
 				const float texU_W = bspTexInfo.m_TextureVecs[0][3];
 				const FVector texV_XYZ = FVector(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2]);
@@ -737,8 +736,9 @@ void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMesh
 
 			if (bspBrushSide.m_Bevel == 0)
 			{
+				const Valve::BSP::cplane_t& plane = bspFile.m_Planes[bspBrushSide.m_Planenum];
 				FBSPBrushSide side;
-				side.Plane = ValveToUnrealPlane(bspFile.m_Planes[bspBrushSide.m_Planenum]);
+				side.Plane = FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
 				side.EmitGeometry = false;
 				side.TextureU = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
 				side.TextureV = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -873,7 +873,7 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 				const FVector dispPos = basePos + bspVertVec * bspVert.m_Dist;
 
 				const FVertexID meshVertID = meshDesc.CreateVertex();
-				vertexAttrPosition[meshVertID] = dispPos;
+				vertexAttrPosition[meshVertID] = SourceToUnreal.Position(dispPos);
 
 				const FVertexInstanceID meshVertInstID = meshDesc.CreateVertexInstance(meshVertID);
 
@@ -904,16 +904,27 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 		{
 			for (int y = 0; y < dispRes; ++y)
 			{
-				const int idxA = x * (dispRes + 1) + y;
-				const int idxB = (x + 1) * (dispRes + 1) + y;
-				const int idxC = (x + 1) * (dispRes + 1) + (y + 1);
-				const int idxD = x * (dispRes + 1) + (y + 1);
+				const int i0 = x * (dispRes + 1) + y;
+				const int i1 = (x + 1) * (dispRes + 1) + y;
+				const int i2 = (x + 1) * (dispRes + 1) + (y + 1);
+				const int i3 = x * (dispRes + 1) + (y + 1);
 
 				polyPoints.Empty(4);
-				polyPoints.Add(dispVertices[idxA]);
-				polyPoints.Add(dispVertices[idxB]);
-				polyPoints.Add(dispVertices[idxC]);
-				polyPoints.Add(dispVertices[idxD]);
+
+				if (SourceToUnreal.ShouldReverseWinding())
+				{
+					polyPoints.Add(dispVertices[i3]);
+					polyPoints.Add(dispVertices[i2]);
+					polyPoints.Add(dispVertices[i1]);
+					polyPoints.Add(dispVertices[i0]);
+				}
+				else
+				{
+					polyPoints.Add(dispVertices[i0]);
+					polyPoints.Add(dispVertices[i1]);
+					polyPoints.Add(dispVertices[i2]);
+					polyPoints.Add(dispVertices[i3]);
+				}
 
 				const FPolygonID polyID = meshDesc.CreatePolygon(polyGroupID, polyPoints);
 				polyEdgeIDs.Empty(4);
@@ -1061,7 +1072,7 @@ void FBSPImporter::RenderTreeToVBSPInfo(uint32 nodeIndex)
 	vbspInfo->MarkPackageDirty();
 }
 
-float FBSPImporter::FindFaceArea(const Valve::BSP::dface_t& bspFace)
+float FBSPImporter::FindFaceArea(const Valve::BSP::dface_t& bspFace, bool unrealCoordSpace)
 {
 	TArray<FVector> vertices;
 	for (int i = 0; i < bspFace.m_Numedges; ++i)
@@ -1072,7 +1083,7 @@ float FBSPImporter::FindFaceArea(const Valve::BSP::dface_t& bspFace)
 		const uint16 vertIndex = surfEdge < 0 ? bspEdge.m_V[1] : bspEdge.m_V[0];
 		const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
 		const FVector pos(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
-		vertices.Add(pos);
+		vertices.Add(unrealCoordSpace ? SourceToUnreal.Position(pos) : pos);
 	}
 	float area = 0.0f;
 	for (int i = 2; i < vertices.Num(); ++i)
@@ -1080,6 +1091,34 @@ float FBSPImporter::FindFaceArea(const Valve::BSP::dface_t& bspFace)
 		area += FMeshUtils::AreaOfTriangle(vertices[0], vertices[i - 1], vertices[i]);
 	}
 	return area;
+}
+
+FBox FBSPImporter::GetModelBounds(const Valve::BSP::dmodel_t& model, bool unrealCoordSpace)
+{
+	FVector p0(model.m_Mins(0, 0), model.m_Mins(0, 1), model.m_Mins(0, 2));
+	FVector p1(model.m_Maxs(0, 0), model.m_Maxs(0, 1), model.m_Maxs(0, 2));
+	if (unrealCoordSpace)
+	{
+		p0 = SourceToUnreal.Position(p0);
+		p1 = SourceToUnreal.Position(p1);
+	}
+	const FVector min(FMath::Min(p0.X, p1.X), FMath::Min(p0.Y, p1.Y), FMath::Min(p0.Z, p1.Z));
+	const FVector max(FMath::Max(p0.X, p1.X), FMath::Max(p0.Y, p1.Y), FMath::Max(p0.Z, p1.Z));
+	return FBox(min, max);
+}
+
+FBox FBSPImporter::GetNodeBounds(const Valve::BSP::snode_t& node, bool unrealCoordSpace)
+{
+	FVector p0(node.m_Mins[0], node.m_Mins[1], node.m_Mins[2]);
+	FVector p1(node.m_Maxs[0], node.m_Maxs[1], node.m_Maxs[2]);
+	if (unrealCoordSpace)
+	{
+		p0 = SourceToUnreal.Position(p0);
+		p1 = SourceToUnreal.Position(p1);
+	}
+	const FVector min(FMath::Min(p0.X, p1.X), FMath::Min(p0.Y, p1.Y), FMath::Min(p0.Z, p1.Z));
+	const FVector max(FMath::Max(p0.X, p1.X), FMath::Max(p0.Y, p1.Y), FMath::Max(p0.Z, p1.Z));
+	return FBox(min, max);
 }
 
 FString FBSPImporter::ParseMaterialName(const char* bspMaterialName)
@@ -1133,7 +1172,7 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const FHL2EntityData& entityData)
 
 	// Setup transform
 	FTransform transform = FTransform::Identity;
-	transform.SetLocation(entityData.Origin);
+	transform.SetLocation(SourceToUnreal.Position(entityData.Origin));
 
 	// Spawn the entity
 	ABaseEntity* entity = world->SpawnActor<ABaseEntity>(blueprint->GeneratedClass, transform);

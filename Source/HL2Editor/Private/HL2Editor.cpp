@@ -181,6 +181,14 @@ void HL2EditorImpl::BulkImportModelsClicked()
 	TArray<FString> filesToImport;
 	platformFile.FindFilesRecursively(filesToImport, *rootPath, TEXT(".mdl"));
 	UE_LOG(LogHL2Editor, Log, TEXT("Importing %d files from '%s'..."), filesToImport.Num(), *rootPath);
+	filesToImport = filesToImport.FilterByPredicate([](const FString& file)
+		{
+			if (file.Contains(TEXT("_animations"), ESearchCase::IgnoreCase)) { return false; }
+			if (file.Contains(TEXT("_anims"), ESearchCase::IgnoreCase)) { return false; }
+			if (file.Contains(TEXT("_gestures"), ESearchCase::IgnoreCase)) { return false; }
+			if (file.Contains(TEXT("_postures"), ESearchCase::IgnoreCase)) { return false; }
+			return true;
+		});
 
 	// Import all
 	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();

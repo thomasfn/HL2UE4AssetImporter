@@ -1780,10 +1780,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 				else
 				{
 					check(aniHeader != nullptr);
-					const Valve::MDL::mstudioanimblock_t* block = animBlocks[animDesc->animblock];
-					// TODO: Load from ani
-					// Can we ever get here?
-					check(false);
+					for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
+					{
+						const Valve::MDL::mstudioanimsections_t* section = sections[sectionIndex];
+						const Valve::MDL::mstudioanimblock_t* block = animBlocks[section->animblock];
+						TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims = allSectionAnims[sectionIndex];
+						uint8* basePtr = ((uint8*)aniHeader) + block->datastart + section->animindex;
+						ReadAnimData(basePtr, skeletalMesh, sectionAnims);
+					}
 				}
 			}
 			else

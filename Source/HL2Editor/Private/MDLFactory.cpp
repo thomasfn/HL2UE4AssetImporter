@@ -1025,8 +1025,25 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		{
 			FMeshBoneInfo meshBoneInfo;
 			meshBoneInfo.ParentIndex = -1;
-			meshBoneInfo.ExportName = TEXT("GENERATED_ROOT");
-			meshBoneInfo.Name = FName(TEXT("root"));
+			meshBoneInfo.ExportName = TEXT("root");
+			bool isDuplicateName;
+			do
+			{
+				isDuplicateName = false;
+				for (const Valve::MDL::mstudiobone_t* bone : bones)
+				{
+					if (bone->GetName().Equals(meshBoneInfo.ExportName, ESearchCase::IgnoreCase))
+					{
+						isDuplicateName = true;
+						break;
+					}
+				}
+				if (isDuplicateName)
+				{
+					meshBoneInfo.ExportName = TEXT("actual_") + meshBoneInfo.ExportName;
+				}
+			} while (isDuplicateName);
+			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
 			refSkelSourceMod.Add(meshBoneInfo, FTransform::Identity);
 		}
 		for (int i = 0; i < bones.Num(); ++i)

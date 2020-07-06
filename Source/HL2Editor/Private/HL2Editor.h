@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
+#include "IHL2Editor.h"
 #include "AssetRegistryModule.h"
 #include "LevelEditor.h"
 
@@ -11,7 +12,7 @@ class UTexture;
 class UVMTMaterial;
 class UMaterial;
 
-class HL2EditorImpl : public IModuleInterface
+class HL2EditorImpl : public IHL2Editor
 {
 public:
 
@@ -20,10 +21,16 @@ public:
 	void ShutdownModule();
 	/** End IModuleInterface implementation */
 
+	/** Begin IHL2Editor implementation */
+	const FHL2EditorConfig& GetConfig() const;
+	/** End IHL2Editor implementation */
+
 private:
 
 	TSharedPtr<FUICommandList> utilMenuCommandList;
 	TSharedPtr<FExtender> myExtender;
+
+	FHL2EditorConfig editorConfig;
 
 private:
 

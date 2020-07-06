@@ -69,6 +69,11 @@ void HL2EditorImpl::ShutdownModule()
 	FUtilMenuStyle::Shutdown();
 }
 
+const FHL2EditorConfig& HL2EditorImpl::GetConfig() const
+{
+	return editorConfig;
+}
+
 void HL2EditorImpl::AddToolbarExtension(FToolBarBuilder& builder)
 {
 	FUIAction UtilMenuAction;

@@ -31,6 +31,7 @@
 #include "MeshUtilitiesCommon.h"
 #include "OverlappingCorners.h"
 #include "SourceCoord.h"
+#include "IHL2Editor.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -240,18 +241,17 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 
 void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 modelIndex)
 {
-	constexpr bool useCells = true;
-	constexpr float cellSize = 2048.0f;
+	const FHL2EditorBSPConfig& bspConfig = IHL2Editor::Get().GetConfig().BSP;
 
 	const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[modelIndex];
 
 	// Determine cell mins and maxs
 	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[bspModel.m_Headnode];
 	const FBox bspBounds = GetNodeBounds(bspNode, true);
-	const int cellMinX = FMath::FloorToInt(bspBounds.Min.X / cellSize);
-	const int cellMaxX = FMath::CeilToInt(bspBounds.Max.X / cellSize);
-	const int cellMinY = FMath::FloorToInt(bspBounds.Min.Y / cellSize);
-	const int cellMaxY = FMath::CeilToInt(bspBounds.Max.Y / cellSize);
+	const int cellMinX = FMath::FloorToInt(bspBounds.Min.X / bspConfig.CellSize);
+	const int cellMaxX = FMath::CeilToInt(bspBounds.Max.X / bspConfig.CellSize);
+	const int cellMinY = FMath::FloorToInt(bspBounds.Min.Y / bspConfig.CellSize);
+	const int cellMaxY = FMath::CeilToInt(bspBounds.Max.Y / bspConfig.CellSize);
 
 	FScopedSlowTask progress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1) + 23, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
 	progress.MakeDialog();
@@ -286,7 +286,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 		//FMeshUtils::Clean(meshDesc, FMeshCleanSettings::All);
 
-		if (useCells)
+		if (bspConfig.UseCells)
 		{
 			// Iterate each cell
 			int cellIndex = 0;
@@ -298,10 +298,10 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 
 					// Establish bounding planes for cell
 					TArray<FPlane> boundingPlanes;
-					boundingPlanes.Add(FPlane(FVector(cellX * cellSize), FVector::ForwardVector));
-					boundingPlanes.Add(FPlane(FVector((cellX + 1) * cellSize), FVector::BackwardVector));
-					boundingPlanes.Add(FPlane(FVector(cellY * cellSize), FVector::RightVector));
-					boundingPlanes.Add(FPlane(FVector((cellY + 1) * cellSize), FVector::LeftVector));
+					boundingPlanes.Add(FPlane(FVector(cellX * bspConfig.CellSize), FVector::ForwardVector));
+					boundingPlanes.Add(FPlane(FVector((cellX + 1) * bspConfig.CellSize), FVector::BackwardVector));
+					boundingPlanes.Add(FPlane(FVector(cellY * bspConfig.CellSize), FVector::RightVector));
+					boundingPlanes.Add(FPlane(FVector((cellY + 1) * bspConfig.CellSize), FVector::LeftVector));
 
 					// Clip the mesh by the planes into a new one
 					FMeshDescription cellMeshDesc = meshDesc;

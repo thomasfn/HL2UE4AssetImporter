@@ -27,6 +27,12 @@ public:
 	UPROPERTY()
 	int DisplacementCellSize = 4096;
 
+	// Whether to prevent dependency on HL2Runtime.
+	// If true, a limited set of unreal built-in entities will be used.
+	// The map will not function as a HL2 playable map, but can be exported and used in other projects.
+	// This is helpful if you're just using the plugin to import map geometry and basic entities without caring about functionality.
+	UPROPERTY()
+	bool Portable = false;
 };
 
 USTRUCT()

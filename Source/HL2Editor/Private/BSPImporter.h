@@ -74,7 +74,5 @@ private:
 	static FString ParseMaterialName(const char* bspMaterialName);
 	
 	static bool SharesSmoothingGroup(uint16 groupA, uint16 groupB);
-	
-	ABaseEntity* ImportEntityToWorld(const FHL2EntityData& entityData);
 
 };

@@ -32,6 +32,7 @@
 #include "OverlappingCorners.h"
 #include "SourceCoord.h"
 #include "IHL2Editor.h"
+#include "EntityEmitter.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -126,10 +127,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 {
 	world = targetWorld;
 
-	const FName entitiesFolder = TEXT("HL2Entities");
 	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing entities..."));
-	FActorFolders& folders = FActorFolders::Get();
-	folders.CreateFolder(*world, entitiesFolder);
 
 	// Read entities lump
 	const auto entityStrRaw = StringCast<TCHAR, ANSICHAR>(&bspFile.m_Entities[0], bspFile.m_Entities.size());
@@ -211,30 +209,29 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		entityDatas.Add(entityData);
 	}
 
+	// Generate models
+	TArray<UStaticMesh*> bspModels;
+	bspModels.Reserve(bspFile.m_Models.size());
+	for (int i = 1; i < bspFile.m_Models.size(); ++i)
+	{
+		const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[i];
+		TArray<uint16> faces;
+		GatherFaces(bspModel.m_Headnode, faces);
+		FMeshDescription meshDesc;
+		FStaticMeshAttributes staticMeshAttr(meshDesc);
+		staticMeshAttr.Register();
+		staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+		RenderFacesToMesh(faces, meshDesc, false);
+		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
+		meshDesc.TriangulateMesh();
+		const int lightmapResolution = 128;
+		bspModels.Add(RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), i), lightmapResolution));
+	}
+
 	// Convert into actors
 	FScopedSlowTask progress(entityDatas.Num(), LOCTEXT("MapEntitiesImporting", "Importing map entities..."));
-	GEditor->SelectNone(false, true, false);
-	bool importedLightEnv = false;
-	const static FName fnLightEnv(TEXT("light_environment"));
-	for (const FHL2EntityData& entityData : entityDatas)
-	{
-		progress.EnterProgressFrame();
-
-		// Skip duplicate light_environment
-		if (entityData.Classname == fnLightEnv && importedLightEnv) { continue; }
-
-		ABaseEntity* entity = ImportEntityToWorld(entityData);
-		if (entity != nullptr)
-		{
-			GEditor->SelectActor(entity, true, false, true, false);
-			if (entityData.Classname == fnLightEnv)
-			{
-				importedLightEnv = true;
-			}
-		}
-	}
-	folders.SetSelectedFolderPath(entitiesFolder);
-	GEditor->SelectNone(false, true, false);
+	FEntityEmitter emitter(targetWorld, bspFile, bspModels, vbspInfo);
+	emitter.GenerateActors(entityDatas, &progress);
 
 	return true;
 }
@@ -1221,63 +1218,3 @@ bool FBSPImporter::SharesSmoothingGroup(uint16 groupA, uint16 groupB)
 }
 
 #undef LOCTEXT_NAMESPACE
-
-ABaseEntity* FBSPImporter::ImportEntityToWorld(const FHL2EntityData& entityData)
-{
-	// Resolve blueprint
-	const FString assetPath = IHL2Runtime::Get().GetHL2EntityBasePath() + entityData.Classname.ToString() + TEXT(".") + entityData.Classname.ToString();
-	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(FName(*assetPath));
-	if (!assetData.IsValid()) { return false; }
-	UBlueprint* blueprint = CastChecked<UBlueprint>(assetData.GetAsset());
-
-	// Setup transform
-	FTransform transform = FTransform::Identity;
-	transform.SetLocation(SourceToUnreal.Position(entityData.Origin));
-
-	// Spawn the entity
-	ABaseEntity* entity = world->SpawnActor<ABaseEntity>(blueprint->GeneratedClass, transform);
-	if (entity == nullptr) { return nullptr; }
-
-	// Set brush model on it
-	static const FName kModel(TEXT("model"));
-	FString model;
-	if (entityData.TryGetString(kModel, model))
-	{
-		static const FRegexPattern patternWorldModel(TEXT("^\\*([0-9]+)$"));
-		FRegexMatcher matchWorldModel(patternWorldModel, model);
-		if (matchWorldModel.FindNext())
-		{
-			int modelIndex = FCString::Atoi(*matchWorldModel.GetCaptureGroup(1));
-			const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[modelIndex];
-			TArray<uint16> faces;
-			GatherFaces(bspModel.m_Headnode, faces);
-			FMeshDescription meshDesc;
-			FStaticMeshAttributes staticMeshAttr(meshDesc);
-			staticMeshAttr.Register();
-			staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
-			RenderFacesToMesh(faces, meshDesc, false);
-			FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
-			meshDesc.TriangulateMesh();
-			const int lightmapResolution = 128;
-			UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), modelIndex), lightmapResolution);
-			entity->WorldModel = staticMesh;
-		}
-	}
-
-	// Run ctor on the entity
-	entity->EntityData = entityData;
-	entity->VBSPInfo = vbspInfo;
-	if (!entityData.Targetname.IsEmpty())
-	{
-		entity->SetActorLabel(entityData.Targetname);
-		entity->TargetName = FName(*entityData.Targetname);
-	}
-	entity->RerunConstructionScripts();
-	entity->ResetLogicOutputs();
-	entity->PostEditChange();
-	entity->MarkPackageDirty();
-
-	return entity;
-}

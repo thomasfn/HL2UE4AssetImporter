@@ -352,34 +352,96 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 	}
 
 	{
-		// Render all displacements to individual static meshes
 		progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_DISPLACEMENTS", "Generating displacement geometry..."));
-		int displacementIndex = 0;
-		for (const uint16 displacementID : displacements)
+		
+		if (bspConfig.UseDisplacementCells)
 		{
+			// Render all displacements to a single static mesh, and split into cells
+			const int dcellMinX = FMath::FloorToInt(bspBounds.Min.X / bspConfig.DisplacementCellSize);
+			const int dcellMaxX = FMath::CeilToInt(bspBounds.Max.X / bspConfig.DisplacementCellSize);
+			const int dcellMinY = FMath::FloorToInt(bspBounds.Min.Y / bspConfig.DisplacementCellSize);
+			const int dcellMaxY = FMath::CeilToInt(bspBounds.Max.Y / bspConfig.DisplacementCellSize);
+
 			FMeshDescription meshDesc;
-			FStaticMeshAttributes staticMeshAttr(meshDesc);
-			staticMeshAttr.Register();
-			staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+			{
+				FStaticMeshAttributes staticMeshAttr(meshDesc);
+				staticMeshAttr.Register();
+				staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+			}
+			RenderDisplacementsToMesh(displacements, meshDesc);
 
-			TArray<uint16> tmp = { displacementID };
-			RenderDisplacementsToMesh(tmp, meshDesc);
+			// Iterate each cell
+			int cellIndex = 0;
+			for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
+			{
+				for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
+				{
+					// Establish bounding planes for cell
+					TArray<FPlane> boundingPlanes;
+					boundingPlanes.Add(FPlane(FVector(cellX * bspConfig.CellSize), FVector::ForwardVector));
+					boundingPlanes.Add(FPlane(FVector((cellX + 1) * bspConfig.CellSize), FVector::BackwardVector));
+					boundingPlanes.Add(FPlane(FVector(cellY * bspConfig.CellSize), FVector::RightVector));
+					boundingPlanes.Add(FPlane(FVector((cellY + 1) * bspConfig.CellSize), FVector::LeftVector));
 
-			FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
+					// Clip the mesh by the planes into a new one
+					FMeshDescription cellMeshDesc = meshDesc;
+					FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
 
-			const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(meshDesc);
-			constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
-			const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
+					FStaticMeshOperations::ComputeTangentsAndNormals(cellMeshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 
-			staticMeshAttr.GetVertexInstanceUVs().SetNumIndices(2);
-			FOverlappingCorners overlappingCorners;
-			FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, meshDesc, 1.0f / 512.0f);
-			FStaticMeshOperations::CreateLightMapUVLayout(meshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+					// Check if it has anything
+					if (cellMeshDesc.Polygons().Num() > 0)
+					{
+						const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(cellMeshDesc);
+						constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
+						const int lightmapResolution = (int)FMath::Max(4.0f, FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit)))));
 
-			// Create a static mesh for it
-			AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, FString::Printf(TEXT("Displacements/Displacement_%d"), displacementIndex++), lightmapResolution);
-			staticMeshActor->SetActorLabel(FString::Printf(TEXT("Displacement_%d"), displacementID));
-			out.Add(staticMeshActor);
+						FStaticMeshAttributes staticMeshAttr(cellMeshDesc);
+						staticMeshAttr.GetVertexInstanceUVs().SetNumIndices(2);
+						FOverlappingCorners overlappingCorners;
+						FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, cellMeshDesc, 1.0f / 512.0f);
+						FStaticMeshOperations::CreateLightMapUVLayout(cellMeshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+
+						// Create a static mesh for it
+						AStaticMeshActor* staticMeshActor = RenderMeshToActor(cellMeshDesc, FString::Printf(TEXT("Cells/DisplacementCell_%d"), cellIndex++), lightmapResolution);
+						staticMeshActor->SetActorLabel(FString::Printf(TEXT("DisplacementCell_%d_%d"), cellX, cellY));
+						out.Add(staticMeshActor);
+
+						// TODO: Insert to VBSPInfo
+					}
+				}
+			}
+		}
+		else
+		{
+			// Render all displacements to individual static meshes
+			int displacementIndex = 0;
+			for (const uint16 displacementID : displacements)
+			{
+				FMeshDescription meshDesc;
+				FStaticMeshAttributes staticMeshAttr(meshDesc);
+				staticMeshAttr.Register();
+				staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+
+				TArray<uint16> tmp = { displacementID };
+				RenderDisplacementsToMesh(tmp, meshDesc);
+
+				FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
+
+				const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(meshDesc);
+				constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
+				const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
+
+				staticMeshAttr.GetVertexInstanceUVs().SetNumIndices(2);
+				FOverlappingCorners overlappingCorners;
+				FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, meshDesc, 1.0f / 512.0f);
+				FStaticMeshOperations::CreateLightMapUVLayout(meshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
+
+				// Create a static mesh for it
+				AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, FString::Printf(TEXT("Displacements/Displacement_%d"), displacementIndex++), lightmapResolution);
+				staticMeshActor->SetActorLabel(FString::Printf(TEXT("Displacement_%d"), displacementID));
+				out.Add(staticMeshActor);
+			}
 		}
 	}
 

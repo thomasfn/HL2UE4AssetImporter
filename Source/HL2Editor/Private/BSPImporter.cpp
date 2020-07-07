@@ -212,6 +212,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	// Generate models
 	TArray<UStaticMesh*> bspModels;
 	bspModels.Reserve(bspFile.m_Models.size());
+	bspModels.Add(nullptr); // brushes aren't going to reference the worldmodel
 	for (int i = 1; i < bspFile.m_Models.size(); ++i)
 	{
 		const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[i];

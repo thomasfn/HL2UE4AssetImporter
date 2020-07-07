@@ -18,6 +18,7 @@ private:
 	AVBSPInfo* vbspInfo;
 
 	TMap<FName, PortableEntityImporterFunc> portableEntityImporters;
+	TMap<FName, int> importCountMap;
 
 public:
 
@@ -32,4 +33,14 @@ private:
 	ABaseEntity* ImportEntityToWorld(const FHL2EntityData& entityData);
 
 	AActor* ImportPortableEntityToWorld(const FHL2EntityData& entityData);
+
+#pragma region Portable Entity Importers
+
+	AActor* ImportPortableProp(const FHL2EntityData& entityData);
+
+	AActor* ImportPortableBrush(const FHL2EntityData& entityData);
+
+	AActor* ImportPortableLight(const FHL2EntityData& entityData);
+
+#pragma endregion
 };

@@ -51,6 +51,20 @@ public:
 };
 
 USTRUCT()
+struct FHL2EditorModelConfig
+{
+	GENERATED_BODY()
+
+public:
+
+	// Whether to prevent dependency on HL2Runtime.
+	// Any non-standard metadata, such as skins or body groups, will be discarded.
+	// This is helpful if you're just using the plugin to import static and skeletal meshes without caring about functionality.
+	UPROPERTY()
+	bool Portable = false;
+};
+
+USTRUCT()
 struct FHL2EditorConfig
 {
 	GENERATED_BODY()
@@ -62,5 +76,8 @@ public:
 
 	UPROPERTY()
 	FHL2EditorMaterialConfig Material;
+
+	UPROPERTY()
+	FHL2EditorModelConfig Model;
 
 };

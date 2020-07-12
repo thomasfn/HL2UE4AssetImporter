@@ -20,6 +20,7 @@
 #include "SkeletonUtils.h"
 #include "IMeshBuilderModule.h"
 #include "Engine/SkeletalMeshSocket.h"
+#include "IHL2Editor.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -770,10 +771,18 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	staticMesh->LightMapResolution = 64;
 
 	// Create model data
-	UHL2ModelData* modelData = NewObject<UHL2ModelData>(staticMesh);
-	modelData->Bodygroups = bodygroups;
-	staticMesh->AddAssetUserData(modelData);
-
+	UHL2ModelData* modelData;
+	if (!IHL2Editor::Get().GetConfig().Model.Portable)
+	{
+		modelData = NewObject<UHL2ModelData>(staticMesh);
+		modelData->Bodygroups = bodygroups;
+		staticMesh->AddAssetUserData(modelData);
+	}
+	else
+	{
+		modelData = nullptr;
+	}
+	
 	constexpr bool debugPhysics = false; // if true, the physics mesh is rendered instead
 
 	// Write all lods to the static mesh
@@ -933,6 +942,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	staticMesh->Build();
 
 	// Resolve skins
+	if (modelData != nullptr)
 	{
 		TArray<TArray<int>> rawSkinFamilies;
 		ReadSkins(header, rawSkinFamilies);
@@ -961,8 +971,11 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			modelData->Skins.Add(skinMapping);
 		}
 	}
-	modelData->PostEditChange();
-	modelData->MarkPackageDirty();
+	if (modelData != nullptr)
+	{
+		modelData->PostEditChange();
+		modelData->MarkPackageDirty();
+	}
 
 	return staticMesh;
 }
@@ -1013,8 +1026,16 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	skeletalMesh->Skeleton = skeleton;
 
 	// Create model data
-	UHL2ModelData* modelData = NewObject<UHL2ModelData>(skeletalMesh);
-	skeletalMesh->AddAssetUserData(modelData);
+	UHL2ModelData* modelData;
+	if (!IHL2Editor::Get().GetConfig().Model.Portable)
+	{
+		modelData = NewObject<UHL2ModelData>(skeletalMesh);
+		skeletalMesh->AddAssetUserData(modelData);
+	}
+	else
+	{
+		modelData = nullptr;
+	}
 
 	// Load bones into skeleton
 	FReferenceSkeleton refSkelSource;
@@ -1306,7 +1327,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			accumIndex += model.numvertices;
 		}
 
-		modelData->Bodygroups.Add(FName(*bodyPart.GetName()), bodygroup);
+		if (modelData != nullptr) { modelData->Bodygroups.Add(FName(*bodyPart.GetName()), bodygroup); }
 	}
 
 	// Build geometry
@@ -1404,6 +1425,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	}
 
 	// Resolve skins
+	if (modelData != nullptr)
 	{
 		TArray<TArray<int>> rawSkinFamilies;
 		ReadSkins(header, rawSkinFamilies);
@@ -1467,8 +1489,11 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			sockets.Add(socket);
 		}
 	}
-	modelData->PostEditChange();
-	modelData->MarkPackageDirty();
+	if (modelData != nullptr)
+	{
+		modelData->PostEditChange();
+		modelData->MarkPackageDirty();
+	}
 
 	// Done
 	return skeletalMesh;

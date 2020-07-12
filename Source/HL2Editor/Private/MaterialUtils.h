@@ -12,14 +12,13 @@ private:
 
 public:
 	
-	static bool SetFromVMT(UVMTMaterial* mtl, const UValveDocument* document);
-
-	static void TryResolveTextures(UVMTMaterial* mtl);
+	static bool SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocument* document);
 
 private:
 
 	static inline void ProcessVMTNode(
-		UVMTMaterial* mtl,
+		UMaterialInstanceConstant* mtl,
+		TMap<FName, FName> vmtTextures,
 		const TArray<FMaterialParameterInfo>& textureParams,
 		const TArray<FMaterialParameterInfo>& scalarParams,
 		const TArray<FMaterialParameterInfo>& vectorParams,
@@ -27,6 +26,8 @@ private:
 		FStaticParameterSet& staticParamSet,
 		const FValveGroupKeyValue& kv
 	);
+
+	static void CopyShadersToGame();
 
 	static FName GetVMTKeyAsParameterName(const FName key);
 	static FName GetVMTKeyAsParameterName(const FName key, const FString& postfix);

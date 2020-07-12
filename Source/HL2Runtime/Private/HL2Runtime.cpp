@@ -18,17 +18,13 @@ void HL2RuntimeImpl::ShutdownModule()
 FName HL2RuntimeImpl::HL2TexturePathToAssetPath(const FString& hl2TexturePath) const
 {
 	// e.g. "Brick/brickfloor001a" -> "/Content/hl2/materials/Brick/brickfloor001a.brickfloor001a"
-	FString tmp = hl2TexturePath;
-	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2TextureBasePath + tmp + '.' + FPaths::GetBaseFilename(tmp)));
+	return SourceToUnrealPath(GetHL2TextureBasePath(), hl2TexturePath);
 }
 
 FName HL2RuntimeImpl::HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const
 {
 	// e.g. "Brick/brickfloor001a" -> "/Content/hl2/materials/Brick/brickfloor001a_vmt.brickfloor001a_vmt"
-	FString tmp = hl2MaterialPath;
-	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2MaterialBasePath + tmp + '.' + FPaths::GetBaseFilename(tmp)));
+	return SourceToUnrealPath(GetHL2MaterialBasePath(), hl2MaterialPath);
 }
 
 FName HL2RuntimeImpl::HL2ModelPathToAssetPath(const FString& hl2ModelPath) const
@@ -37,49 +33,48 @@ FName HL2RuntimeImpl::HL2ModelPathToAssetPath(const FString& hl2ModelPath) const
 	FString tmp = hl2ModelPath;
 	tmp.ReplaceCharInline('\\', '/');
 	FPaths::MakePathRelativeTo(tmp, TEXT("models/"));
-	return FName(*(hl2ModelBasePath / FPaths::GetPath(tmp) / FPaths::GetBaseFilename(tmp) + '.' + FPaths::GetBaseFilename(tmp)));
+	return SourceToUnrealPath(GetHL2ModelBasePath(), tmp);
 }
 
 FName HL2RuntimeImpl::HL2SurfacePropToAssetPath(const FName& surfaceProp) const
 {
 	// e.g. "metal" -> "/Content/hl2/surfaceprops/metal.metal"
-	return FName(*(hl2SurfacePropBasePath + surfaceProp.ToString() + '.' + surfaceProp.ToString()));
+	return SourceToUnrealPath(GetHL2SurfacePropBasePath(), surfaceProp.ToString());
 }
 
-FName HL2RuntimeImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath) const
+FName HL2RuntimeImpl::HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool pluginContent) const
 {
-	// e.g. "VertexLitGeneric" -> "/HL2Editor/Shaders/VertexLitGeneric.VertexLitGeneric"
-	FString tmp = hl2ShaderPath;
-	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(hl2ShaderBasePath + tmp + '.' + FPaths::GetBaseFilename(tmp)));
+	// e.g. "VertexLitGeneric" -> "/HL2Editor/Shaders/VertexLitGeneric.VertexLitGeneric" when pluginContent = true,
+	//      "VertexLitGeneric" -> "/Content/hl2/Shaders/VertexLitGeneric.VertexLitGeneric" when pluginContent = false
+	return SourceToUnrealPath(GetHL2ShaderBasePath(pluginContent), hl2ShaderPath);
 }
 
 UTexture* HL2RuntimeImpl::TryResolveHL2Texture(const FString& hl2TexturePath) const
 {
-	FName assetPath = HL2TexturePathToAssetPath(hl2TexturePath);
+	const FName assetPath = HL2TexturePathToAssetPath(hl2TexturePath);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return nullptr; }
 	return CastChecked<UTexture>(assetData.GetAsset());
 }
 
 UVMTMaterial* HL2RuntimeImpl::TryResolveHL2Material(const FString& hl2MaterialPath) const
 {
-	FName assetPath = HL2MaterialPathToAssetPath(hl2MaterialPath);
+	const FName assetPath = HL2MaterialPathToAssetPath(hl2MaterialPath);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return nullptr; }
 	return CastChecked<UVMTMaterial>(assetData.GetAsset());
 }
 
 UStaticMesh* HL2RuntimeImpl::TryResolveHL2StaticProp(const FString& hl2ModelPath) const
 {
-	FName assetPath = HL2ModelPathToAssetPath(hl2ModelPath);
+	const FName assetPath = HL2ModelPathToAssetPath(hl2ModelPath);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return nullptr; }
 	// It might not be a UStaticMesh if the model is animated, so let Cast just return nullptr in this case
 	return Cast<UStaticMesh>(assetData.GetAsset());
@@ -87,10 +82,10 @@ UStaticMesh* HL2RuntimeImpl::TryResolveHL2StaticProp(const FString& hl2ModelPath
 
 USkeletalMesh* HL2RuntimeImpl::TryResolveHL2AnimatedProp(const FString& hl2ModelPath) const
 {
-	FName assetPath = HL2ModelPathToAssetPath(hl2ModelPath);
+	const FName assetPath = HL2ModelPathToAssetPath(hl2ModelPath);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return nullptr; }
 	// It might not be a USkeletalMesh if the model is not animated, so let Cast just return nullptr in this case
 	return Cast<USkeletalMesh>(assetData.GetAsset());
@@ -98,22 +93,32 @@ USkeletalMesh* HL2RuntimeImpl::TryResolveHL2AnimatedProp(const FString& hl2Model
 
 USurfaceProp* HL2RuntimeImpl::TryResolveHL2SurfaceProp(const FName& surfaceProp) const
 {
-	FName assetPath = HL2SurfacePropToAssetPath(surfaceProp);
+	const FName assetPath = HL2SurfacePropToAssetPath(surfaceProp);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return nullptr; }
 	return Cast<USurfaceProp>(assetData.GetAsset());
 }
 
-UMaterial* HL2RuntimeImpl::TryResolveHL2Shader(const FString& hl2ShaderPath) const
+UMaterial* HL2RuntimeImpl::TryResolveHL2Shader(const FString& hl2ShaderPath, bool searchGameFirst) const
 {
-	FName assetPath = HL2ShaderPathToAssetPath(hl2ShaderPath);
+	UObject* asset = nullptr;
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
-	if (!assetData.IsValid()) { return nullptr; }
-	return CastChecked<UMaterial>(assetData.GetAsset());
+	if (searchGameFirst)
+	{
+		const FName assetPath = HL2ShaderPathToAssetPath(hl2ShaderPath, false);
+		const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+		if (assetData.IsValid()) { asset = assetData.GetAsset(); }
+	}
+	if (asset == nullptr)
+	{
+		const FName assetPath = HL2ShaderPathToAssetPath(hl2ShaderPath, true);
+		const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+		if (assetData.IsValid()) { asset = assetData.GetAsset(); }
+	}
+	return asset != nullptr ? CastChecked<UMaterial>(asset) : nullptr;
 }
 
 void HL2RuntimeImpl::FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const

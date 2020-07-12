@@ -481,12 +481,17 @@ UValveDocument* UValveDocument::Parse(const FString& text, UObject* outer)
 	{ Token token; token.start = 0; token.end = 0; token.type = TokenType::CloseGroup; tokens.Add(token); }
 
 	if (outer == nullptr) { outer = (UObject*)GetTransientPackage(); }
+	static const FName fnValveDoc(TEXT("Valve Document"));
+	UValveDocument* doc = NewObject<UValveDocument>(outer, NAME_None, RF_Standalone);
 
 	int pos = 0;
-	UValveComplexValue* value = ParseGroup(text, tokens, pos, outer);
-	if (value == nullptr) { return nullptr; }
-
-	UValveDocument* doc = NewObject<UValveDocument>(outer);
+	UValveComplexValue* value = ParseGroup(text, tokens, pos, doc);
+	if (value == nullptr)
+	{
+		doc->MarkPendingKill();
+		return nullptr;
+	}
+	
 	doc->Root = value;
 	return doc;
 }

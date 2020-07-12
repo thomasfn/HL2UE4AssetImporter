@@ -36,6 +36,21 @@ public:
 };
 
 USTRUCT()
+struct FHL2EditorMaterialConfig
+{
+	GENERATED_BODY()
+
+public:
+
+	// Whether to prevent dependency on HL2Runtime.
+	// If true, standard unreal materials will be emitted, and shaders will be copied to the local project.
+	// Any non-standard metadata, such as surface prop, will be discarded.
+	// This is helpful if you're just using the plugin to import textures and materials without caring about functionality.
+	UPROPERTY()
+	bool Portable = false;
+};
+
+USTRUCT()
 struct FHL2EditorConfig
 {
 	GENERATED_BODY()
@@ -44,5 +59,8 @@ public:
 
 	UPROPERTY()
 	FHL2EditorBSPConfig BSP;
+
+	UPROPERTY()
+	FHL2EditorMaterialConfig Material;
 
 };

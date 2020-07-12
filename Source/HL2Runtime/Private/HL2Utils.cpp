@@ -10,9 +10,9 @@ UTexture* UHL2Utils::TryResolveHL2Texture(const FString& hl2TexturePath, bool& o
 	return texture;
 }
 
-UVMTMaterial* UHL2Utils::TryResolveHL2Material(const FString& hl2TexturePath, bool& outSuccess)
+UMaterialInterface* UHL2Utils::TryResolveHL2Material(const FString& hl2TexturePath, bool& outSuccess)
 {
-	UVMTMaterial* material = IHL2Runtime::Get().TryResolveHL2Material(hl2TexturePath);
+	UMaterialInterface* material = IHL2Runtime::Get().TryResolveHL2Material(hl2TexturePath);
 	outSuccess = material != nullptr;
 	return material;
 }

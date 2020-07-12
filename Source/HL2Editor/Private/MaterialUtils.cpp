@@ -227,7 +227,7 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 
 void FMaterialUtils::ProcessVMTNode(
 	UMaterialInstanceConstant* mtl,
-	TMap<FName, FName> vmtTextures,
+	TMap<FName, FName>& vmtTextures,
 	const TArray<FMaterialParameterInfo>& textureParams,
 	const TArray<FMaterialParameterInfo>& scalarParams,
 	const TArray<FMaterialParameterInfo>& vectorParams,
@@ -259,6 +259,7 @@ void FMaterialUtils::ProcessVMTNode(
 			{
 				mtl->GetTextureParameterDefaultValue(info, texture);
 			}
+			mtl->SetTextureParameterValueEditorOnly(info, texture);
 			if (GetMaterialParameterByKey(staticSwitchParams, GetVMTKeyAsParameterName(kv.Key, "_present"), info))
 			{
 				FStaticSwitchParameter staticSwitchParam;
@@ -267,7 +268,6 @@ void FMaterialUtils::ProcessVMTNode(
 				staticSwitchParam.Value = true;
 				staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
 			}
-			mtl->SetTextureParameterValueEditorOnly(info, texture);
 		}
 		// Static switch
 		else if (GetMaterialParameterByKey(staticSwitchParams, key, info))

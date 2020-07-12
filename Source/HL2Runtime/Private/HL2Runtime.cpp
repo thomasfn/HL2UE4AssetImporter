@@ -59,14 +59,14 @@ UTexture* HL2RuntimeImpl::TryResolveHL2Texture(const FString& hl2TexturePath) co
 	return CastChecked<UTexture>(assetData.GetAsset());
 }
 
-UVMTMaterial* HL2RuntimeImpl::TryResolveHL2Material(const FString& hl2MaterialPath) const
+UMaterialInterface* HL2RuntimeImpl::TryResolveHL2Material(const FString& hl2MaterialPath) const
 {
 	const FName assetPath = HL2MaterialPathToAssetPath(hl2MaterialPath);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
 	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return nullptr; }
-	return CastChecked<UVMTMaterial>(assetData.GetAsset());
+	return CastChecked<UMaterialInterface>(assetData.GetAsset());
 }
 
 UStaticMesh* HL2RuntimeImpl::TryResolveHL2StaticProp(const FString& hl2ModelPath) const
@@ -121,12 +121,12 @@ UMaterial* HL2RuntimeImpl::TryResolveHL2Shader(const FString& hl2ShaderPath, boo
 	return asset != nullptr ? CastChecked<UMaterial>(asset) : nullptr;
 }
 
-void HL2RuntimeImpl::FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const
+void HL2RuntimeImpl::FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UMaterialInterface*>& out) const
 {
 	FindAllMaterialsThatReferenceTexture(HL2TexturePathToAssetPath(hl2TexturePath), out);
 }
 
-void HL2RuntimeImpl::FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const
+void HL2RuntimeImpl::FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UMaterialInterface*>& out) const
 {
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
@@ -137,7 +137,7 @@ void HL2RuntimeImpl::FindAllMaterialsThatReferenceTexture(FName assetPath, TArra
 		UVMTMaterial* material = Cast<UVMTMaterial>(assetData.GetAsset());
 		if (material && material->DoesReferenceTexture(assetPath))
 		{
-			out.Add(material);
+			out.Add(CastChecked<UMaterialInterface>(material));
 		}
 	}
 }

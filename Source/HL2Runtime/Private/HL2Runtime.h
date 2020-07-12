@@ -6,8 +6,8 @@
 #include "IHL2Runtime.h"
 
 class UTexture;
-class UVMTMaterial;
 class UMaterial;
+class UMaterialInterface;
 
 class HL2RuntimeImpl : public IHL2Runtime
 {
@@ -57,14 +57,14 @@ public:
 	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool pluginContent = true) const override;
 	
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const override;
-	virtual UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath) const override;
+	virtual UMaterialInterface* TryResolveHL2Material(const FString& hl2TexturePath) const override;
 	virtual UStaticMesh* TryResolveHL2StaticProp(const FString& hl2ModelPath) const override;
 	virtual USkeletalMesh* TryResolveHL2AnimatedProp(const FString& hl2ModelPath) const override;
 	virtual USurfaceProp* TryResolveHL2SurfaceProp(const FName& surfaceProp) const override;
 	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, bool searchGameFirst = true) const override;
 	
-	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UVMTMaterial*>& out) const override;
-	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UVMTMaterial*>& out) const override;
+	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UMaterialInterface*>& out) const override;
+	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UMaterialInterface*>& out) const override;
 
 	/* Supports wildcards and classnames. */
 	virtual void FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities) const override;

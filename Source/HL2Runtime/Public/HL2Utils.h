@@ -23,7 +23,7 @@ public:
 	static UTexture* TryResolveHL2Texture(const FString& hl2TexturePath, bool& outSuccess);
 
 	UFUNCTION(BlueprintCallable, Category = "HL2")
-	static UVMTMaterial* TryResolveHL2Material(const FString& hl2TexturePath, bool& outSuccess);
+	static UMaterialInterface* TryResolveHL2Material(const FString& hl2TexturePath, bool& outSuccess);
 
 	UFUNCTION(BlueprintCallable, Category = "HL2")
 	static UStaticMesh* TryResolveHL2StaticProp(const FString& hl2ModelPath, bool& outSuccess);

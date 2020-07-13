@@ -42,6 +42,7 @@ private:
 	void BulkImportModelsClicked();
 	void ConvertSkyboxes();
 	void ImportBSPClicked();
+	void TraceTerrainClicked();
 
 	static void GroupFileListByDirectory(const TArray<FString>& files, TMap<FString, TArray<FString>>& outMap);
 

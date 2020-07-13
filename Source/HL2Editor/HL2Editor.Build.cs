@@ -13,6 +13,7 @@ public class HL2Editor : ModuleRules
             "RenderCore", "RHI",
             "UnrealEd", "Slate", "SlateCore", "EditorStyle", "DesktopPlatform", "AssetTools", "ContentBrowser", "EditorScriptingUtilities",
             "MeshDescription", "StaticMeshDescription", "MeshUtilitiesCommon", "MeshDescriptionOperations",
+            "Landscape", "Foliage",
             "HL2Runtime"
         });
     }

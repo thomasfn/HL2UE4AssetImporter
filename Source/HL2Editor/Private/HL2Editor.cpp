@@ -14,6 +14,8 @@
 #include "VMTMaterial.h"
 #include "MaterialUtils.h"
 #include "SkyboxConverter.h"
+#include "TerrainTracer.h"
+#include "Engine/Selection.h"
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
 
@@ -49,6 +51,11 @@ void HL2EditorImpl::StartupModule()
 	utilMenuCommandList->MapAction(
 		FUtilMenuCommands::Get().ImportBSP,
 		FExecuteAction::CreateRaw(this, &HL2EditorImpl::ImportBSPClicked),
+		FCanExecuteAction()
+	);
+	utilMenuCommandList->MapAction(
+		FUtilMenuCommands::Get().TraceTerrain,
+		FExecuteAction::CreateRaw(this, &HL2EditorImpl::TraceTerrainClicked),
 		FCanExecuteAction()
 	);
 
@@ -103,6 +110,12 @@ TSharedRef<SWidget> HL2EditorImpl::GenerateUtilityMenu(TSharedRef<FUICommandList
 	menuBuilder.BeginSection("Map Import");
 	{
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().ImportBSP);
+	}
+	menuBuilder.EndSection();
+
+	menuBuilder.BeginSection("Tools");
+	{
+		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().TraceTerrain);
 	}
 	menuBuilder.EndSection();
 
@@ -254,7 +267,6 @@ void HL2EditorImpl::ConvertSkyboxes()
 		}
 	}
 	
-
 	FScopedSlowTask loopProgress(skyboxNames.Num(), LOCTEXT("SkyboxesConverting", "Converting skyboxes to cubemaps..."));
 	loopProgress.MakeDialog();
 	for (const FString& skyboxName : skyboxNames)
@@ -295,6 +307,18 @@ void HL2EditorImpl::ImportBSPClicked()
 	if (importer.Load())
 	{
 		importer.ImportToCurrentLevel();
+	}
+}
+
+void HL2EditorImpl::TraceTerrainClicked()
+{
+	USelection* selection = GEditor->GetSelectedActors();
+	TArray<ALandscape*> selectedLandscapes;
+	selection->GetSelectedObjects(selectedLandscapes);
+	for (ALandscape* landscape : selectedLandscapes)
+	{
+		FTerrainTracer tracer(landscape);
+		tracer.Trace();
 	}
 }
 

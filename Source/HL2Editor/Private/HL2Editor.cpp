@@ -23,6 +23,9 @@ DEFINE_LOG_CATEGORY(LogHL2Editor);
 
 void HL2EditorImpl::StartupModule()
 {
+	vtfLibDllHandle = FPlatformProcess::GetDllHandle(*GetVTFLibDllPath());
+	check(vtfLibDllHandle);
+
 	FUtilMenuStyle::Initialize();
 
 	FUtilMenuCommands::Register();
@@ -74,6 +77,8 @@ void HL2EditorImpl::ShutdownModule()
 	FUtilMenuCommands::Unregister();
 
 	FUtilMenuStyle::Shutdown();
+
+	FPlatformProcess::FreeDllHandle(vtfLibDllHandle);
 }
 
 const FHL2EditorConfig& HL2EditorImpl::GetConfig() const

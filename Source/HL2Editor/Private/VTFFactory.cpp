@@ -6,7 +6,7 @@
 #include "Runtime/Engine/Classes/Engine/TextureCube.h"
 #include "Runtime/JsonUtilities/Public/JsonObjectConverter.h"
 
-#include "VTFLib/VTFLib.h"
+#include "VTFLib.h"
 
 UVTFFactory::UVTFFactory()
 {
@@ -351,8 +351,7 @@ UTexture* UVTFFactory::ImportTexture(UClass* Class, UObject* InParent, FName Nam
 	VTFLib::CVTFFile vtfFile;
 	if (!vtfFile.Load(Buffer, Length))
 	{
-		FString err = VTFLib::LastError.Get();
-		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to load VTF: %s"), *err);
+		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to load VTF"));
 		return nullptr;
 	}
 
@@ -409,13 +408,12 @@ UTexture* UVTFFactory::ImportTexture(UClass* Class, UObject* InParent, FName Nam
 		);
 
 		uint8* mipData = texture->Source.LockMip(0);
-		bool success = VTFLib::CVTFFile::Convert(vtfFile.GetData(0, 0, 0, 0), mipData, vtfFile.GetWidth(), vtfFile.GetHeight(), vtfFile.GetFormat(), hdr ? VTFImageFormat::IMAGE_FORMAT_RGBA16161616 : VTFImageFormat::IMAGE_FORMAT_BGRA8888);
+		const vlBool success = VTFLib::CVTFFile::Convert(vtfFile.GetData(0, 0, 0, 0), mipData, vtfFile.GetWidth(), vtfFile.GetHeight(), vtfFile.GetFormat(), hdr ? VTFImageFormat::IMAGE_FORMAT_RGBA16161616 : VTFImageFormat::IMAGE_FORMAT_BGRA8888);
 
 		if (!success)
 		{
 			texture->Source.UnlockMip(0);
-			FString err = VTFLib::LastError.Get();
-			Warn->Logf(ELogVerbosity::Error, TEXT("Failed to convert VTF image data to RGBA8: %s"), *err);
+			Warn->Logf(ELogVerbosity::Error, TEXT("Failed to convert VTF image data to RGBA8"));
 			return nullptr;
 		}
 
@@ -504,11 +502,10 @@ UTexture* UVTFFactory::ImportTexture(UClass* Class, UObject* InParent, FName Nam
 		uint8* mipData = texture->Source.LockMip(0);
 		for (int i = 0; i < faceCount; ++i)
 		{
-			bool success = VTFLib::CVTFFile::Convert(vtfFile.GetData(0, (uint32)faceCount, 0, 0), mipData + mipSize * i, vtfFile.GetWidth(), vtfFile.GetHeight(), vtfFile.GetFormat(), hdr ? VTFImageFormat::IMAGE_FORMAT_RGBA16161616 : VTFImageFormat::IMAGE_FORMAT_BGRA8888);
+			const vlBool success = VTFLib::CVTFFile::Convert(vtfFile.GetData(0, (uint32)faceCount, 0, 0), mipData + mipSize * i, vtfFile.GetWidth(), vtfFile.GetHeight(), vtfFile.GetFormat(), hdr ? VTFImageFormat::IMAGE_FORMAT_RGBA16161616 : VTFImageFormat::IMAGE_FORMAT_BGRA8888);
 			if (!success)
 			{
-				FString err = VTFLib::LastError.Get();
-				Warn->Logf(ELogVerbosity::Error, TEXT("Failed to convert VTF image data to RGBA8: %s"), *err);
+				Warn->Logf(ELogVerbosity::Error, TEXT("Failed to convert VTF image data to RGBA8"));
 				return nullptr;
 			}
 		}

@@ -113,7 +113,7 @@ UVMTMaterial* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FNam
 	}
 
 	// Clean up
-	document->MarkPendingKill();
+	document->MarkAsGarbage();
 
 	return material;
 }

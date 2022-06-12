@@ -16,11 +16,10 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 
 	FStaticMeshAttributes staticMeshAttr(meshDesc);
 	
-	TMeshAttributesRef<FVertexID, FVector> vertexPosAttr = staticMeshAttr.GetVertexPositions();
-	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstUVAttr = staticMeshAttr.GetVertexInstanceUVs();
+	TMeshAttributesRef<FVertexID, FVector3f> vertexPosAttr = staticMeshAttr.GetVertexPositions();
+	TMeshAttributesRef<FVertexInstanceID, FVector2f> vertexInstUVAttr = staticMeshAttr.GetVertexInstanceUVs();
 	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterialAttr = staticMeshAttr.GetPolygonGroupMaterialSlotNames();
 	TMeshAttributesRef<FEdgeID, bool> edgeIsHardAttr = staticMeshAttr.GetEdgeHardnesses();
-	TMeshAttributesRef<FEdgeID, float> edgeCreaseSharpnessAttr = staticMeshAttr.GetEdgeCreaseSharpnesses();
 
 	// Iterate all planes
 	TMap<FPolygonID, int> polyToSideMap;
@@ -31,11 +30,11 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 		if (!side.EmitGeometry) { continue; }
 
 		// Check that the texture is aligned to the face - if not, discard the face
-		const FVector textureNorm = FVector::CrossProduct(side.TextureU, side.TextureV).GetUnsafeNormal();
-		if (FMath::Abs(FVector::DotProduct(textureNorm, side.Plane)) < 0.1f) { continue; }
+		const FVector3f textureNorm = FVector3f::CrossProduct((FVector3f)side.TextureU, (FVector3f)side.TextureV).GetUnsafeNormal();
+		if (FMath::Abs(FVector3f::DotProduct(textureNorm, side.Plane)) < 0.1f) { continue; }
 
 		// Create a poly for this side
-		FPoly poly = FPoly::BuildInfiniteFPoly(side.Plane);
+		FPoly poly = FPoly::BuildInfiniteFPoly((FPlane)side.Plane);
 		
 		// Iterate all other sides
 		int numVerts = 0;
@@ -46,8 +45,8 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 				const FBSPBrushSide& otherSide = brush.Sides[j];
 
 				// Slice poly with it
-				FVector normal = FVector(otherSide.Plane) * -1.0f;
-				numVerts = poly.Split(normal, FVector::PointPlaneProject(FVector::ZeroVector, otherSide.Plane));
+				const FVector3f normal = FVector3f(otherSide.Plane) * -1.0f;
+				numVerts = poly.Split(normal, normal * otherSide.Plane.W * -1.0f);
 				if (numVerts < 3) { break; }
 			}
 		}
@@ -85,7 +84,7 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 		{
 			SnapVertex(pos);
 		}*/
-		for (const FVector& pos : poly.Vertices)
+		for (const FVector3f& pos : poly.Vertices)
 		{
 			// Get or create vertex
 			FVertexID vertID;
@@ -93,7 +92,7 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 				bool found = false;
 				for (const FVertexID& otherVertID : meshDesc.Vertices().GetElementIDs())
 				{
-					const FVector& otherPos = vertexPosAttr[otherVertID];
+					const FVector3f& otherPos = vertexPosAttr[otherVertID];
 					if (otherPos.Equals(pos, snapThreshold))
 					{
 						found = true;
@@ -116,10 +115,10 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 			polyContour.Add(vertInstID);
 
 			// Calculate UV
-			FVector vertPos = vertexPosAttr[vertID];
-			vertexInstUVAttr.Set(vertInstID, 0, FVector2D(
-				(FVector::DotProduct(side.TextureU, vertPos) + side.TextureU.W) / side.TextureW,
-				(FVector::DotProduct(side.TextureV, vertPos) + side.TextureV.W) / side.TextureH
+			FVector3f vertPos = vertexPosAttr[vertID];
+			vertexInstUVAttr.Set(vertInstID, 0, FVector2f(
+				(FVector3f::DotProduct((FVector3f)(FVector3d)side.TextureU, vertPos) + side.TextureU.W) / side.TextureW,
+				(FVector3f::DotProduct((FVector3f)(FVector3d)side.TextureV, vertPos) + side.TextureV.W) / side.TextureH
 			));
 			
 		}
@@ -154,18 +153,16 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 			if (accumSmoothingGroup > 0)
 			{
 				edgeIsHardAttr[edgeID] = false;
-				edgeCreaseSharpnessAttr[edgeID] = 0.0f;
 			}
 			else
 			{
 				edgeIsHardAttr[edgeID] = true;
-				edgeCreaseSharpnessAttr[edgeID] = 1.0f;
 			}
 		}
 	}
 }
 
-inline void FBSPBrushUtils::SnapVertex(FVector& vertex)
+inline void FBSPBrushUtils::SnapVertex(FVector3f& vertex)
 {
 	vertex.X = FMath::GridSnap(vertex.X, snapThreshold);
 	vertex.Y = FMath::GridSnap(vertex.Y, snapThreshold);

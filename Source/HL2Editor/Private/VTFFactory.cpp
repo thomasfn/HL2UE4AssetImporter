@@ -443,7 +443,7 @@ UTexture* UVTFFactory::ImportTexture(UClass* Class, UObject* InParent, FName Nam
 			if (alphaFound)
 			{
 				FString alphaTexPathName = InParent->GetPathName() + TEXT("_a");
-				UPackage* alphaTexPackage = CreatePackage(nullptr, *alphaTexPathName);
+				UPackage* alphaTexPackage = CreatePackage(*alphaTexPathName);
 				UTexture* alphaTex = ExtractAlpha(alphaTexPackage, FName(*FPaths::GetCleanFilename(alphaTexPathName)), RF_Public | RF_Standalone, vtfFile.GetWidth(), vtfFile.GetHeight(), mipData, Warn);
 				if (alphaTex != nullptr)
 				{

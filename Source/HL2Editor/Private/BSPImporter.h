@@ -49,7 +49,7 @@ private:
 	
 	void GatherDisplacements(const TArray<uint16>& faceIndices, TArray<uint16>& out);
 	
-	FPlane ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
+	FPlane4f ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
 	
 	void RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 modelIndex);
 	

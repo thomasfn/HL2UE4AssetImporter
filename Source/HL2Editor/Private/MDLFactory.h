@@ -60,7 +60,7 @@ public:
 	TArray<int32> FaceIndices;
 
 	UPROPERTY()
-	TArray<FVector> Vertices;
+	TArray<FVector3f> Vertices;
 };
 
 UCLASS()
@@ -147,7 +147,7 @@ private:
 
 	static void ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray<int>>& out);
 
-	static FQuat SourceAnglesToQuat(const FVector& angles);
+	static FQuat4f SourceAnglesToQuat(const FVector3f& angles);
 
-	static FVector QuatToSourceAngles(const FQuat& quat);
+	static FVector3f QuatToSourceAngles(const FQuat4f& quat);
 };

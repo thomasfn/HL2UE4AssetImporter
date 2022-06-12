@@ -36,7 +36,7 @@ public:
 	 * Any polygons intersecting a plane will be cut.
 	 * Normals, tangents and texture coordinates will be preserved.
 	 */
-	static void Clip(FMeshDescription& meshDesc, const TArray<FPlane>& clipPlanes);
+	static void Clip(FMeshDescription& meshDesc, const TArray<FPlane4f>& clipPlanes);
 
 	/**
 	 * Cleans a mesh, removing degenerate edges and polys, and removing unused elements.
@@ -51,12 +51,12 @@ public:
 	/**
 	 * Decomposes a UCX mesh into a body setup.
 	 */
-	static void DecomposeUCXMesh(const TArray<FVector>& CollisionVertices, const TArray<int32>& CollisionFaceIdx, UBodySetup* BodySetup);
+	static void DecomposeUCXMesh(const TArray<FVector3f>& CollisionVertices, const TArray<int32>& CollisionFaceIdx, UBodySetup* BodySetup);
 
 	/**
 	 * Finds the area of a triangle with the given points.
 	 */
-	static inline float AreaOfTriangle(const FVector& v0, const FVector& v1, const FVector& v2);
+	static inline float AreaOfTriangle(const FVector3f& v0, const FVector3f& v1, const FVector3f& v2);
 
 	/**
 	 * Finds the total surface area of a mesh.
@@ -65,11 +65,11 @@ public:
 
 private:
 
-	static FVertexInstanceID ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& a, const FVertexInstanceID& b, const FPlane& clipPlane);
+	static FVertexInstanceID ClipEdge(FMeshDescription& meshDesc, const FVertexInstanceID& a, const FVertexInstanceID& b, const FPlane4f& clipPlane);
 	
-	static FPlane DerivePolygonPlane(const FMeshDescription& meshDesc, const FPolygonID polyID);
+	static FPlane4f DerivePolygonPlane(const FMeshDescription& meshDesc, const FPolygonID polyID);
 
-	static FMatrix DerivePlanarProjection(const FPlane& plane);
+	static FMatrix44f DerivePlanarProjection(const FPlane4f& plane);
 
-	static FVector GetTriangleNormal(const FMeshDescription& meshDesc, const FMeshTriangle& tri, FVector* outCentroid = nullptr);
+	static FVector3f GetTriangleNormal(const FMeshDescription& meshDesc, FTriangleID triangleId, FVector3f* outCentroid = nullptr);
 };

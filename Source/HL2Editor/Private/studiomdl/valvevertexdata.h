@@ -1,4 +1,4 @@
-#pragma once;
+#pragma once
 
 #include "CoreMinimal.h"
 #include "utils.h"
@@ -23,9 +23,9 @@ namespace Valve
 		struct mstudiovertex_t
 		{
 			mstudioboneweight_t	m_BoneWeights;
-			FVector			m_vecPosition;
-			FVector			m_vecNormal;
-			FVector2D		m_vecTexCoord;
+			FVector3f			m_vecPosition;
+			FVector3f			m_vecNormal;
+			FVector2f		m_vecTexCoord;
 		};
 
 		// apply sequentially to lod sorted vertex and tangent pools to re-establish mesh order
@@ -49,10 +49,10 @@ namespace Valve
 
 			int	vertexDataStart;		// offset from base to vertex block
 			int	tangentDataStart;		// offset from base to tangent block
-			void GetVertex(int index, mstudiovertex_t& outVertex, FVector4& outTangent) const
+			void GetVertex(int index, mstudiovertex_t& outVertex, FVector4f& outTangent) const
 			{
 				outVertex = ((mstudiovertex_t*)(((uint8*)this) + vertexDataStart))[index];
-				outTangent = ((FVector4*)(((uint8*)this) + tangentDataStart))[index];
+				outTangent = ((FVector4f*)(((uint8*)this) + tangentDataStart))[index];
 			}
 		};
 	}

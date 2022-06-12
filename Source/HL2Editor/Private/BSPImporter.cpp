@@ -49,8 +49,8 @@ bool FBSPImporter::Load()
 	FString fileName = FPaths::GetCleanFilename(bspFileName);
 	mapName = FPaths::GetBaseFilename(bspFileName);
 	UE_LOG(LogHL2BSPImporter, Log, TEXT("Loading map '%s'..."), *mapName);
-	const auto pathConvert = StringCast<ANSICHAR, TCHAR>(*path);
-	const auto fileNameConvert = StringCast<ANSICHAR, TCHAR>(*fileName);
+	const auto pathConvert = StringCast<ANSICHAR>(*path, path.Len());
+	const auto fileNameConvert = StringCast<ANSICHAR>(*fileName, fileName.Len());
 	if (!bspFile.parse(std::string(pathConvert.Get()), std::string(fileNameConvert.Get())))
 	{
 		UE_LOG(LogHL2BSPImporter, Error, TEXT("Failed to parse BSP"));
@@ -86,7 +86,7 @@ bool FBSPImporter::ImportGeometryToWorld(UWorld* targetWorld)
 {
 	world = targetWorld;
 
-	const FName geometryFolder = TEXT("HL2Geometry");
+	const FFolder geometryFolder(TEXT("HL2Geometry"));
 	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing geometry..."));
 	FActorFolders& folders = FActorFolders::Get();
 	folders.CreateFolder(*world, geometryFolder);
@@ -103,14 +103,14 @@ bool FBSPImporter::ImportGeometryToWorld(UWorld* targetWorld)
 	folders.SetSelectedFolderPath(geometryFolder);
 	GEditor->SelectNone(false, true, false);
 
-	FVector mins(bspWorldModel.m_Mins(0, 0), bspWorldModel.m_Mins(0, 1), bspWorldModel.m_Mins(0, 2));
-	FVector maxs(bspWorldModel.m_Maxs(0, 0), bspWorldModel.m_Maxs(0, 1), bspWorldModel.m_Maxs(0, 2));
+	FVector3f mins(bspWorldModel.m_Mins(0, 0), bspWorldModel.m_Mins(0, 1), bspWorldModel.m_Mins(0, 2));
+	FVector3f maxs(bspWorldModel.m_Maxs(0, 0), bspWorldModel.m_Maxs(0, 1), bspWorldModel.m_Maxs(0, 2));
 	ALightmassImportanceVolume* lightmassImportanceVolume = world->SpawnActor<ALightmassImportanceVolume>();
 	lightmassImportanceVolume->Brush = NewObject<UModel>(lightmassImportanceVolume, NAME_None, RF_Transactional);
 	lightmassImportanceVolume->Brush->Initialize(nullptr, true);
 	lightmassImportanceVolume->Brush->Polys = NewObject<UPolys>(lightmassImportanceVolume->Brush, NAME_None, RF_Transactional);
 	lightmassImportanceVolume->GetBrushComponent()->Brush = lightmassImportanceVolume->Brush;
-	lightmassImportanceVolume->SetActorLocation(FMath::Lerp(mins, maxs, 0.5f) * FVector(1.0f, -1.0f, 1.0f));
+	lightmassImportanceVolume->SetActorLocation(FVector(FMath::Lerp(mins, maxs, 0.5f) * FVector3f(1.0f, -1.0f, 1.0f)));
 	UCubeBuilder* brushBuilder = NewObject<UCubeBuilder>(lightmassImportanceVolume);
 	brushBuilder->X = maxs.X - mins.X;
 	brushBuilder->Y = maxs.Y - mins.Y;
@@ -124,13 +124,13 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 {
 	world = targetWorld;
 
-	const FName entitiesFolder = TEXT("HL2Entities");
+	const FFolder entitiesFolder(TEXT("HL2Entities"));
 	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing entities..."));
 	FActorFolders& folders = FActorFolders::Get();
 	folders.CreateFolder(*world, entitiesFolder);
 
 	// Read entities lump
-	const auto entityStrRaw = StringCast<TCHAR, ANSICHAR>(&bspFile.m_Entities[0], bspFile.m_Entities.size());
+	const auto entityStrRaw = StringCast<TCHAR>(&bspFile.m_Entities[0], bspFile.m_Entities.size());
 	FString entityStr(entityStrRaw.Get());
 
 	// Parse into entity data
@@ -148,10 +148,10 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
-		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.Origin = FVector3f(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
 		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
-		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
+		const auto& modelRaw = StringCast<TCHAR, 128>(modelStr);
 		entityData.KeyValues[fnModel] = FString(modelRaw.Length(), modelRaw.Get());
 		entityData.KeyValues[fnAngles] = FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2));
 		entityData.KeyValues[fnSkin] = FString::FromInt(staticProp.m_Skin);
@@ -161,10 +161,10 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
-		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.Origin = FVector3f(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
 		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
-		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
+		const auto& modelRaw = StringCast<TCHAR, 128>(modelStr);
 		entityData.KeyValues[fnModel] = FString(modelRaw.Length(), modelRaw.Get());
 		entityData.KeyValues[fnAngles] = FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2));
 		entityData.KeyValues[fnSkin] = FString::FromInt(staticProp.m_Skin);
@@ -174,10 +174,10 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
-		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.Origin = FVector3f(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
 		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
-		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
+		const auto& modelRaw = StringCast<TCHAR, 128>(modelStr);
 		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
 		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
 		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
@@ -187,10 +187,10 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
-		entityData.Origin = FVector(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
+		entityData.Origin = FVector3f(staticProp.m_Origin(0, 0), -staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
 		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
-		const auto& modelRaw = StringCast<TCHAR, ANSICHAR>(modelStr, 128);
+		const auto& modelRaw = StringCast<TCHAR, 128>(modelStr);
 		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
 		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
 		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
@@ -204,7 +204,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnCubemap;
-		entityData.Origin = FVector(cubemap.m_Origin[0], -cubemap.m_Origin[1], cubemap.m_Origin[2]);
+		entityData.Origin = FVector3f(cubemap.m_Origin[0], -cubemap.m_Origin[1], cubemap.m_Origin[2]);
 		entityData.KeyValues.Add(fnSize, FString::FromInt(cubemap.m_Size));
 		entityDatas.Add(entityData);
 	}
@@ -277,7 +277,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		FMeshDescription meshDesc;
 		FStaticMeshAttributes staticMeshAttr(meshDesc);
 		staticMeshAttr.Register();
-		staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
 		//RenderFacesToMesh(faces, meshDesc, false);
 		RenderBrushesToMesh(brushes, meshDesc);
 		//RenderDisplacementsToMesh(displacements, meshDesc);
@@ -295,11 +295,11 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 					progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_CELL", "Splitting cells..."));
 
 					// Establish bounding planes for cell
-					TArray<FPlane> boundingPlanes;
-					boundingPlanes.Add(FPlane(FVector(cellX * cellSize), FVector::ForwardVector));
-					boundingPlanes.Add(FPlane(FVector((cellX + 1) * cellSize), FVector::BackwardVector));
-					boundingPlanes.Add(FPlane(FVector(cellY * cellSize), FVector::RightVector));
-					boundingPlanes.Add(FPlane(FVector((cellY + 1) * cellSize), FVector::LeftVector));
+					TArray<FPlane4f> boundingPlanes;
+					boundingPlanes.Add(FPlane4f(FVector3f(cellX * cellSize), FVector3f::ForwardVector));
+					boundingPlanes.Add(FPlane4f(FVector3f((cellX + 1) * cellSize), FVector3f::BackwardVector));
+					boundingPlanes.Add(FPlane4f(FVector3f(cellY * cellSize), FVector3f::RightVector));
+					boundingPlanes.Add(FPlane4f(FVector3f((cellY + 1) * cellSize), FVector3f::LeftVector));
 
 					// Clip the mesh by the planes into a new one
 					FMeshDescription cellMeshDesc = meshDesc;
@@ -358,7 +358,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 			FMeshDescription meshDesc;
 			FStaticMeshAttributes staticMeshAttr(meshDesc);
 			staticMeshAttr.Register();
-			staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+			staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
 
 			TArray<uint16> tmp = { displacementID };
 			RenderDisplacementsToMesh(tmp, meshDesc);
@@ -369,7 +369,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 			constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
 			const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
 
-			staticMeshAttr.GetVertexInstanceUVs().SetNumIndices(2);
+			staticMeshAttr.GetVertexInstanceUVs().SetNumChannels(2);
 			FOverlappingCorners overlappingCorners;
 			FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, meshDesc, 1.0f / 512.0f);
 			FStaticMeshOperations::CreateLightMapUVLayout(meshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
@@ -388,7 +388,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		FMeshDescription meshDesc;
 		FStaticMeshAttributes staticMeshAttr(meshDesc);
 		staticMeshAttr.Register();
-		staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
 		RenderFacesToMesh(faces, meshDesc, true);
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 		meshDesc.TriangulateMesh();
@@ -407,7 +407,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName, int lightmapResolution)
 {
 	FString packageName = TEXT("/Game/hl2/maps") / mapName / assetName;
-	UPackage* package = CreatePackage(nullptr, *packageName);
+	UPackage* package = CreatePackage(*packageName);
 
 	UStaticMesh* staticMesh = NewObject<UStaticMesh>(package, FName(*(FPaths::GetBaseFilename(assetName))), RF_Public | RF_Standalone);
 	FStaticMeshSourceModel& staticMeshSourceModel = staticMesh->AddSourceModel();
@@ -420,22 +420,24 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	settings.bRemoveDegenerates = false;
 	settings.bUseFullPrecisionUVs = true;
 	settings.MinLightmapResolution = lightmapResolution;
-	staticMesh->LightMapResolution = lightmapResolution;
+	staticMesh->SetLightMapResolution(lightmapResolution);
 	FMeshDescription* worldModelMesh = staticMesh->CreateMeshDescription(0);
 	*worldModelMesh = meshDesc;
 	const auto& importedMaterialSlotNameAttr = worldModelMesh->PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
+	TArray<FStaticMaterial> staticMaterials;
 	for (const FPolygonGroupID& polyGroupID : worldModelMesh->PolygonGroups().GetElementIDs())
 	{
 		FName material = importedMaterialSlotNameAttr[polyGroupID];
-		const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
+		const int32 meshSlot = staticMaterials.Emplace(nullptr, material, material);
 		staticMesh->GetSectionInfoMap().Set(0, meshSlot, FMeshSectionInfo(meshSlot));
 		staticMesh->SetMaterial(meshSlot, Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(material.ToString())));
 	}
+	staticMesh->SetStaticMaterials(staticMaterials);
 	staticMesh->CommitMeshDescription(0);
-	staticMesh->LightMapCoordinateIndex = 1;
+	staticMesh->SetLightMapCoordinateIndex(1);
 	staticMesh->Build();
 	staticMesh->CreateBodySetup();
-	staticMesh->BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseComplexAsSimple;
+	staticMesh->GetBodySetup()->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseComplexAsSimple;
 
 	staticMesh->PostEditChange();
 	FAssetRegistryModule::AssetCreated(staticMesh);
@@ -448,10 +450,10 @@ AStaticMeshActor* FBSPImporter::RenderMeshToActor(const FMeshDescription& meshDe
 {
 	UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, assetName, lightmapResolution);
 
-	FTransform transform = FTransform::Identity;
-	transform.SetScale3D(FVector(1.0f, -1.0f, 1.0f));
+	FTransform3f transform = FTransform3f::Identity;
+	transform.SetScale3D(FVector3f(1.0f, -1.0f, 1.0f));
 
-	AStaticMeshActor* staticMeshActor = world->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), transform);
+	AStaticMeshActor* staticMeshActor = world->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), FTransform(transform));
 	UStaticMeshComponent* staticMeshComponent = staticMeshActor->GetStaticMeshComponent();
 	staticMeshComponent->SetStaticMesh(staticMesh);
 	FLightmassPrimitiveSettings& lightmassSettings = staticMeshComponent->LightmassSettings;
@@ -536,9 +538,9 @@ void FBSPImporter::GatherDisplacements(const TArray<uint16>& faceIndices, TArray
 	}
 }
 
-FPlane FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
+FPlane4f FBSPImporter::ValveToUnrealPlane(const Valve::BSP::cplane_t& plane)
 {
-	return FPlane(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
+	return FPlane4f(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
 }
 
 void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter)
@@ -548,16 +550,15 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 	TMap<FPolygonID, const Valve::BSP::dface_t*> polyToValveFaceMap;
 
 	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
-	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+	TMeshAttributesRef<FVertexID, FVector3f> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector3f>(MeshAttribute::Vertex::Position);
 
 	TAttributesSet<FVertexInstanceID>& vertexInstanceAttr = meshDesc.VertexInstanceAttributes();
-	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstanceAttrUV = vertexInstanceAttr.GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
-	TMeshAttributesRef<FVertexInstanceID, FVector4> vertexInstanceAttrCol = vertexInstanceAttr.GetAttributesRef<FVector4>(MeshAttribute::VertexInstance::Color);
+	TMeshAttributesRef<FVertexInstanceID, FVector2f> vertexInstanceAttrUV = vertexInstanceAttr.GetAttributesRef<FVector2f>(MeshAttribute::VertexInstance::TextureCoordinate);
+	TMeshAttributesRef<FVertexInstanceID, FVector4f> vertexInstanceAttrCol = vertexInstanceAttr.GetAttributesRef<FVector4f>(MeshAttribute::VertexInstance::Color);
 	// vertexInstanceAttrUV.SetNumIndices(2);
 
 	TAttributesSet<FEdgeID>& edgeAttr = meshDesc.EdgeAttributes();
 	TMeshAttributesRef<FEdgeID, bool> edgeAttrIsHard = edgeAttr.GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
-	TMeshAttributesRef<FEdgeID, float> edgeCreaseSharpness = edgeAttr.GetAttributesRef<float>(MeshAttribute::Edge::CreaseSharpness);
 
 	TAttributesSet<FPolygonGroupID>& polyGroupAttr = meshDesc.PolygonGroupAttributes();
 	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterial = polyGroupAttr.GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
@@ -630,7 +631,7 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 				{
 					vertID = meshDesc.CreateVertex();
 					const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
-					vertexAttrPosition[vertID] = FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
+					vertexAttrPosition[vertID] = FVector3f(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
 					valveToUnrealVertexMap.Add(vertIndex, vertID);
 				}
 			}
@@ -639,30 +640,30 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 			FVertexInstanceID vertInstID = meshDesc.CreateVertexInstance(vertID);
 
 			// Calculate texture coords
-			FVector pos = vertexAttrPosition[vertID];
+			FVector3f pos = vertexAttrPosition[vertID];
 			{
-				const FVector texU_XYZ = FVector(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2]);
+				const FVector3f texU_XYZ = FVector3f(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2]);
 				const float texU_W = bspTexInfo.m_TextureVecs[0][3];
-				const FVector texV_XYZ = FVector(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2]);
+				const FVector3f texV_XYZ = FVector3f(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2]);
 				const float texV_W = bspTexInfo.m_TextureVecs[1][3];
-				vertexInstanceAttrUV.Set(vertInstID, 0, FVector2D(
-					(FVector::DotProduct(texU_XYZ, pos) + texU_W) / bspTexData.m_Width,
-					(FVector::DotProduct(texV_XYZ, pos) + texV_W) / bspTexData.m_Height
+				vertexInstanceAttrUV.Set(vertInstID, 0, FVector2f(
+					(FVector3f::DotProduct(texU_XYZ, pos) + texU_W) / bspTexData.m_Width,
+					(FVector3f::DotProduct(texV_XYZ, pos) + texV_W) / bspTexData.m_Height
 				));
 			}
 			//{
-			//	const FVector texU_XYZ = FVector(bspTexInfo.m_LightmapVecs[0][0], bspTexInfo.m_LightmapVecs[0][1], bspTexInfo.m_LightmapVecs[0][2]);
+			//	const FVector3f texU_XYZ = FVector3f(bspTexInfo.m_LightmapVecs[0][0], bspTexInfo.m_LightmapVecs[0][1], bspTexInfo.m_LightmapVecs[0][2]);
 			//	const float texU_W = bspTexInfo.m_LightmapVecs[0][3];
-			//	const FVector texV_XYZ = FVector(bspTexInfo.m_LightmapVecs[1][0], bspTexInfo.m_LightmapVecs[1][1], bspTexInfo.m_LightmapVecs[1][2]);
+			//	const FVector3f texV_XYZ = FVector3f(bspTexInfo.m_LightmapVecs[1][0], bspTexInfo.m_LightmapVecs[1][1], bspTexInfo.m_LightmapVecs[1][2]);
 			//	const float texV_W = bspTexInfo.m_LightmapVecs[1][3];
-			//	vertexInstanceAttrUV.Set(vertInst, 1, FVector2D(
-			//		((FVector::DotProduct(texU_XYZ, pos) + texU_W)/* - bspFace.m_LightmapTextureMinsInLuxels[0]*/) / (bspFace.m_LightmapTextureSizeInLuxels[0] + 1),
-			//		((FVector::DotProduct(texV_XYZ, pos) + texV_W)/* - bspFace.m_LightmapTextureMinsInLuxels[1]*/) / (bspFace.m_LightmapTextureSizeInLuxels[1] + 1)
+			//	vertexInstanceAttrUV.Set(vertInst, 1, FVector2f(
+			//		((FVector3f::DotProduct(texU_XYZ, pos) + texU_W)/* - bspFace.m_LightmapTextureMinsInLuxels[0]*/) / (bspFace.m_LightmapTextureSizeInLuxels[0] + 1),
+			//		((FVector3f::DotProduct(texV_XYZ, pos) + texV_W)/* - bspFace.m_LightmapTextureMinsInLuxels[1]*/) / (bspFace.m_LightmapTextureSizeInLuxels[1] + 1)
 			//	));
 			//}
 
 			// Default color
-			vertexInstanceAttrCol[vertInstID] = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+			vertexInstanceAttrCol[vertInstID] = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
 
 			// Push
 			polyVerts.Add(vertInstID);
@@ -672,9 +673,9 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 		if (polyVerts.Num() > 2)
 		{
 			// Sort vertices to be convex
-			const FPlane plane = ValveToUnrealPlane(bspFile.m_Planes[bspFace.m_Planenum]);
-			const FQuat rot = FQuat::FindBetweenNormals(plane, FVector::UpVector);
-			FVector centroid = FVector::ZeroVector;
+			const FPlane4f plane = ValveToUnrealPlane(bspFile.m_Planes[bspFace.m_Planenum]);
+			const FQuat4f rot = FQuat4f::FindBetweenNormals(plane, FVector3f::UpVector);
+			FVector3f centroid = FVector3f::ZeroVector;
 			for (const FVertexInstanceID vertInstID : polyVerts)
 			{
 				centroid += vertexAttrPosition[meshDesc.GetVertexInstanceVertex(vertInstID)];
@@ -684,14 +685,13 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 			polyVerts.Sort([&rot, &meshDesc, vertexAttrPosition, &centroid](FVertexInstanceID vertInstAID, FVertexInstanceID vertInstBID)
 				{
 					// a > b
-					const FVector toA = (rot * vertexAttrPosition[meshDesc.GetVertexInstanceVertex(vertInstAID)]) - centroid;
-					const FVector toB = (rot * vertexAttrPosition[meshDesc.GetVertexInstanceVertex(vertInstBID)]) - centroid;
+					const FVector3f toA = (rot * vertexAttrPosition[meshDesc.GetVertexInstanceVertex(vertInstAID)]) - centroid;
+					const FVector3f toB = (rot * vertexAttrPosition[meshDesc.GetVertexInstanceVertex(vertInstBID)]) - centroid;
 					return FMath::Atan2(toA.Y, toA.X) > FMath::Atan2(toB.Y, toB.X);
 				});
 
 			// Create poly
 			FPolygonID poly = meshDesc.CreatePolygon(polyGroup, polyVerts);
-			FMeshPolygon& polygon = meshDesc.Polygons()[poly];
 			polyToValveFaceMap.Add(poly, ptr);
 		}
 	}
@@ -716,7 +716,6 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 					const Valve::BSP::dface_t& bspOtherFace = *polyToValveFaceMap[otherPoly];
 					const bool isHard = !SharesSmoothingGroup(bspFace.m_SmoothingGroups, bspOtherFace.m_SmoothingGroups);
 					edgeAttrIsHard[edge] = isHard;
-					edgeCreaseSharpness[edge] = isHard ? 1.0f : 0.0f;
 				}
 			}
 		}
@@ -740,8 +739,8 @@ void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMesh
 				FBSPBrushSide side;
 				side.Plane = ValveToUnrealPlane(bspFile.m_Planes[bspBrushSide.m_Planenum]);
 				side.EmitGeometry = false;
-				side.TextureU = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
-				side.TextureV = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+				side.TextureU = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+				side.TextureV = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
 				side.TextureW = 0;
 				side.TextureH = 0;
 				side.Material = NAME_None;
@@ -754,8 +753,8 @@ void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMesh
 						const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
 						const char* bspMaterialName = &bspFile.m_TexdataStringData[0] + bspFile.m_TexdataStringTable[bspTexData.m_NameStringTableID];
 						FString parsedMaterialName = ParseMaterialName(bspMaterialName);
-						side.TextureU = FVector4(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2], bspTexInfo.m_TextureVecs[0][3]);
-						side.TextureV = FVector4(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2], bspTexInfo.m_TextureVecs[1][3]);
+						side.TextureU = FVector4f(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2], bspTexInfo.m_TextureVecs[0][3]);
+						side.TextureV = FVector4f(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2], bspTexInfo.m_TextureVecs[1][3]);
 						side.TextureW = (uint16)bspTexData.m_Width;
 						side.TextureH = (uint16)bspTexData.m_Height;
 						side.Material = FName(*parsedMaterialName);
@@ -779,13 +778,12 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 {
 	FStaticMeshAttributes staticMeshAttr(meshDesc);
 
-	TMeshAttributesRef<FVertexID, FVector> vertexAttrPosition = staticMeshAttr.GetVertexPositions();
+	TMeshAttributesRef<FVertexID, FVector3f> vertexAttrPosition = staticMeshAttr.GetVertexPositions();
 
-	TMeshAttributesRef<FVertexInstanceID, FVector2D> vertexInstanceAttrUV = staticMeshAttr.GetVertexInstanceUVs();
-	TMeshAttributesRef<FVertexInstanceID, FVector4> vertexInstanceAttrCol = staticMeshAttr.GetVertexInstanceColors();
+	TMeshAttributesRef<FVertexInstanceID, FVector2f> vertexInstanceAttrUV = staticMeshAttr.GetVertexInstanceUVs();
+	TMeshAttributesRef<FVertexInstanceID, FVector4f> vertexInstanceAttrCol = staticMeshAttr.GetVertexInstanceColors();
 
 	TMeshAttributesRef<FEdgeID, bool> edgeAttrIsHard = staticMeshAttr.GetEdgeHardnesses();
-	TMeshAttributesRef<FEdgeID, float> edgeCreaseSharpness = staticMeshAttr.GetEdgeCreaseSharpnesses();
 
 	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterial = staticMeshAttr.GetPolygonGroupMaterialSlotNames();
 
@@ -794,7 +792,7 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 		const Valve::BSP::ddispinfo_t& bspDispinfo = bspFile.m_Dispinfos[dispIndex];
 		const Valve::BSP::dface_t& bspFace = bspFile.m_Surfaces[bspDispinfo.m_MapFace];
 		const int dispRes = 1 << bspDispinfo.m_Power;
-		const FVector dispStartPos = FVector(bspDispinfo.m_StartPosition(0, 0), bspDispinfo.m_StartPosition(0, 1), bspDispinfo.m_StartPosition(0, 2));
+		const FVector3f dispStartPos(bspDispinfo.m_StartPosition(0, 0), bspDispinfo.m_StartPosition(0, 1), bspDispinfo.m_StartPosition(0, 2));
 
 		const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspFace.m_Texinfo];
 		const uint16 texDataIndex = (uint16)bspTexInfo.m_Texdata;
@@ -808,7 +806,7 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 		polyGroupMaterial[polyGroupID] = material;
 
 		// Gather face verts
-		TArray<FVector> faceVerts;
+		TArray<FVector3f> faceVerts;
 		for (uint16 i = 0; i < bspFace.m_Numedges; ++i)
 		{
 			const int32 surfEdge = bspFile.m_Surfedges[bspFace.m_Firstedge + i];
@@ -819,7 +817,7 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 
 			const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
 
-			faceVerts.Add(FVector(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2)));
+			faceVerts.Add(FVector3f(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2)));
 		}
 
 		// Check that it has 4 verts (we can't map a displacement to anything other than a quad)
@@ -832,12 +830,12 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 		// Find the face vert nearest the given starting position
 		int startFaceVertIndex = 0;
 		{
-			FVector bestFaceVert = faceVerts[startFaceVertIndex];
-			float bestFaceVertDist = FVector::DistSquared(bestFaceVert, dispStartPos);
+			FVector3f bestFaceVert = faceVerts[startFaceVertIndex];
+			float bestFaceVertDist = FVector3f::DistSquared(bestFaceVert, dispStartPos);
 			for (int i = startFaceVertIndex + 1; i < faceVerts.Num(); ++i)
 			{
-				const FVector faceVert = faceVerts[i];
-				const float faceVertDist = FVector::DistSquared(faceVert, dispStartPos);
+				const FVector3f faceVert = faceVerts[i];
+				const float faceVertDist = FVector3f::DistSquared(faceVert, dispStartPos);
 				if (faceVertDist < bestFaceVertDist)
 				{
 					bestFaceVert = faceVert;
@@ -848,10 +846,10 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 		}
 
 		// Determine corners vectors
-		const FVector p0 = faceVerts[startFaceVertIndex];
-		const FVector p1 = faceVerts[(startFaceVertIndex + 1) % faceVerts.Num()];
-		const FVector p2 = faceVerts[(startFaceVertIndex + 2) % faceVerts.Num()];
-		const FVector p3 = faceVerts[(startFaceVertIndex + 3) % faceVerts.Num()];
+		const FVector3f p0 = faceVerts[startFaceVertIndex];
+		const FVector3f p1 = faceVerts[(startFaceVertIndex + 1) % faceVerts.Num()];
+		const FVector3f p2 = faceVerts[(startFaceVertIndex + 2) % faceVerts.Num()];
+		const FVector3f p3 = faceVerts[(startFaceVertIndex + 3) % faceVerts.Num()];
 
 		// Create all verts
 		TArray<FVertexInstanceID> dispVertices;
@@ -859,34 +857,34 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 		for (int x = 0; x <= dispRes; ++x)
 		{
 			const float dX = x / (float)dispRes;
-			const FVector mp0 = FMath::Lerp(p0, p1, dX);
-			const FVector mp1 = FMath::Lerp(p3, p2, dX);
+			const FVector3f mp0 = FMath::Lerp(p0, p1, dX);
+			const FVector3f mp1 = FMath::Lerp(p3, p2, dX);
 			for (int y = 0; y <= dispRes; ++y)
 			{
 				const float dY = y / (float)dispRes;
 
 				const int idx = x * (dispRes + 1) + y;
 				const Valve::BSP::ddispvert_t& bspVert = bspFile.m_Dispverts[bspDispinfo.m_DispVertStart + idx];
-				const FVector bspVertVec = FVector(bspVert.m_Vec(0, 0), bspVert.m_Vec(0, 1), bspVert.m_Vec(0, 2));
+				const FVector3f bspVertVec = FVector3f(bspVert.m_Vec(0, 0), bspVert.m_Vec(0, 1), bspVert.m_Vec(0, 2));
 
-				const FVector basePos = FMath::Lerp(mp0, mp1, dY);
-				const FVector dispPos = basePos + bspVertVec * bspVert.m_Dist;
+				const FVector3f basePos = FMath::Lerp(mp0, mp1, dY);
+				const FVector3f dispPos = basePos + bspVertVec * bspVert.m_Dist;
 
 				const FVertexID meshVertID = meshDesc.CreateVertex();
 				vertexAttrPosition[meshVertID] = dispPos;
 
 				const FVertexInstanceID meshVertInstID = meshDesc.CreateVertexInstance(meshVertID);
 
-				const FVector texU_XYZ = FVector(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2]);
+				const FVector3f texU_XYZ(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2]);
 				const float texU_W = bspTexInfo.m_TextureVecs[0][3];
-				const FVector texV_XYZ = FVector(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2]);
+				const FVector3f texV_XYZ(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2]);
 				const float texV_W = bspTexInfo.m_TextureVecs[1][3];
-				vertexInstanceAttrUV.Set(meshVertInstID, 0, FVector2D(
-					(FVector::DotProduct(texU_XYZ, basePos) + texU_W) / bspTexData.m_Width,
-					(FVector::DotProduct(texV_XYZ, basePos) + texV_W) / bspTexData.m_Height
+				vertexInstanceAttrUV.Set(meshVertInstID, 0, FVector2f(
+					(FVector3f::DotProduct(texU_XYZ, basePos) + texU_W) / bspTexData.m_Width,
+					(FVector3f::DotProduct(texV_XYZ, basePos) + texV_W) / bspTexData.m_Height
 				));
 
-				FVector4 col;
+				FVector4f col;
 				col.X = FMath::Clamp(bspVert.m_Alpha / 255.0f, 0.0f, 1.0f);
 				col.Y = 1.0f - col.X;
 				col.Z = 0.0f;
@@ -921,7 +919,6 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 				for (const FEdgeID& edgeID : polyEdgeIDs)
 				{
 					edgeAttrIsHard[edgeID] = false;
-					edgeCreaseSharpness[edgeID] = 0.0f;
 				}
 			}
 		}
@@ -1063,7 +1060,7 @@ void FBSPImporter::RenderTreeToVBSPInfo(uint32 nodeIndex)
 
 float FBSPImporter::FindFaceArea(const Valve::BSP::dface_t& bspFace)
 {
-	TArray<FVector> vertices;
+	TArray<FVector3f> vertices;
 	for (int i = 0; i < bspFace.m_Numedges; ++i)
 	{
 		const int32 surfEdge = bspFile.m_Surfedges[bspFace.m_Firstedge + i];
@@ -1071,7 +1068,7 @@ float FBSPImporter::FindFaceArea(const Valve::BSP::dface_t& bspFace)
 		const Valve::BSP::dedge_t& bspEdge = bspFile.m_Edges[edgeIndex];
 		const uint16 vertIndex = surfEdge < 0 ? bspEdge.m_V[1] : bspEdge.m_V[0];
 		const Valve::BSP::mvertex_t& bspVertex = bspFile.m_Vertexes[vertIndex];
-		const FVector pos(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
+		const FVector3f pos(bspVertex.m_Position(0, 0), bspVertex.m_Position(0, 1), bspVertex.m_Position(0, 2));
 		vertices.Add(pos);
 	}
 	float area = 0.0f;
@@ -1132,11 +1129,11 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const FHL2EntityData& entityData)
 	UBlueprint* blueprint = CastChecked<UBlueprint>(assetData.GetAsset());
 
 	// Setup transform
-	FTransform transform = FTransform::Identity;
+	FTransform3f transform = FTransform3f::Identity;
 	transform.SetLocation(entityData.Origin);
 
 	// Spawn the entity
-	ABaseEntity* entity = world->SpawnActor<ABaseEntity>(blueprint->GeneratedClass, transform);
+	ABaseEntity* entity = world->SpawnActor<ABaseEntity>(blueprint->GeneratedClass, FTransform(transform));
 	if (entity == nullptr) { return nullptr; }
 
 	// Set brush model on it
@@ -1155,7 +1152,7 @@ ABaseEntity* FBSPImporter::ImportEntityToWorld(const FHL2EntityData& entityData)
 			FMeshDescription meshDesc;
 			FStaticMeshAttributes staticMeshAttr(meshDesc);
 			staticMeshAttr.Register();
-			staticMeshAttr.RegisterPolygonNormalAndTangentAttributes();
+			staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
 			RenderFacesToMesh(faces, meshDesc, false);
 			FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 			meshDesc.TriangulateMesh();

@@ -2496,7 +2496,7 @@ bool CVTFFile::GenerateNormalMap(unsigned int uiFrame, VTFKernelFilter KernelFil
 struct SphereMapFace
 {
 	unsigned int *buf;			// pointer to the address where the image data is.
-	FVector u, v, n, o;		// vectors for plane equations
+	FVector3f u, v, n, o;		// vectors for plane equations
 };
 
 // Define our faces and vectors (don't moan about the order!)
@@ -2518,7 +2518,7 @@ struct NColour
 	float r, g, b;
 };
 
-int Intersect(const FVector& v)
+int Intersect(const FVector3f& v)
 {
 	int f;
 	float x, y, z;
@@ -2574,7 +2574,7 @@ bool CVTFFile::GenerateSphereMap()
 
 	unsigned int i, j, x, y, f;
 	NColour c, texel, average;
-	FVector v, r, p;
+	FVector3f v, r, p;
 	float s, t, temp, k;
 	 
 	// load the faces into the buffers and convert as needed
@@ -2679,13 +2679,13 @@ bool CVTFFile::GenerateSphereMap()
 
 				//Intersect reflected ray with cube
 				f = Intersect(r);
-				k = FVector::DotProduct(SFace[f].o, SFace[f].n) / FVector::DotProduct(r, SFace[f].n);
+				k = FVector3f::DotProduct(SFace[f].o, SFace[f].n) / FVector3f::DotProduct(r, SFace[f].n);
 				r *= k;
 				v = r - SFace[f].o;
 
 				//Get texture map-indices
-				s = FVector::DotProduct(v, SFace[f].u);
-				t = FVector::DotProduct(v, SFace[f].v);
+				s = FVector3f::DotProduct(v, SFace[f].u);
+				t = FVector3f::DotProduct(v, SFace[f].v);
 
 				//Sample to get color
 				SphereMapFace *pf = &SFace[f];

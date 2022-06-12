@@ -50,16 +50,16 @@ bool vlBindMaterial(unsigned int uiMaterial)
 		return false;
 	}
 
-	if(uiMaterial >= (unsigned int)MaterialFVector->Num() || (*MaterialFVector)[uiMaterial] == 0)
+	if(uiMaterial >= (unsigned int)MaterialFVector3f->Num() || (*MaterialFVector3f)[uiMaterial] == 0)
 	{
 		LastError.Set("Invalid material.");
 		return false;
 	}
 
-	if(Material == (*MaterialFVector)[uiMaterial])	// If it is already bound do nothing.
+	if(Material == (*MaterialFVector3f)[uiMaterial])	// If it is already bound do nothing.
 		return true;
 
-	Material = (*MaterialFVector)[uiMaterial];
+	Material = (*MaterialFVector3f)[uiMaterial];
 
 	CurrentIndex.Empty();
 	CurrentNode = 0;
@@ -79,8 +79,8 @@ bool vlCreateMaterial(unsigned int *uiMaterial)
 		return false;
 	}
 
-	MaterialFVector->Add(new CVMTFile());
-	*uiMaterial = (unsigned int)MaterialFVector->Num() - 1;
+	MaterialFVector3f->Add(new CVMTFile());
+	*uiMaterial = (unsigned int)MaterialFVector3f->Num() - 1;
 
 	return true;
 }
@@ -95,13 +95,13 @@ void vlDeleteMaterial(unsigned int uiMaterial)
 	if(!bInitialized)
 		return;
 
-	if(uiMaterial >= (unsigned int)MaterialFVector->Num())
+	if(uiMaterial >= (unsigned int)MaterialFVector3f->Num())
 		return;
 
-	if((*MaterialFVector)[uiMaterial] == 0)
+	if((*MaterialFVector3f)[uiMaterial] == 0)
 		return;
 
-	if((*MaterialFVector)[uiMaterial] == Material)
+	if((*MaterialFVector3f)[uiMaterial] == Material)
 	{
 		Material = 0;
 
@@ -109,8 +109,8 @@ void vlDeleteMaterial(unsigned int uiMaterial)
 		CurrentNode = 0;
 	}
 
-	delete (*MaterialFVector)[uiMaterial];
-	(*MaterialFVector)[uiMaterial] = 0;
+	delete (*MaterialFVector3f)[uiMaterial];
+	(*MaterialFVector3f)[uiMaterial] = 0;
 }
 
 bool vlMaterialCreate(const char *cRoot)

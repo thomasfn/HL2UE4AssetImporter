@@ -34,12 +34,12 @@ private:
 	static bool GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParameters, const char* key, FMaterialParameterInfo& out);
 	static bool GetMaterialParameterByKey(const TArray<FMaterialParameterInfo>& materialParameters, FName key, FMaterialParameterInfo& out);
 
-	static bool ParseFloatVec3(const FString& value, FVector& out);
+	static bool ParseFloatVec3(const FString& value, FVector3f& out);
 	static bool ParseFloatVec3(const FString& value, FLinearColor& out);
 
 	static bool ParseIntVec3(const FString& value, FIntVector& out);
-	static bool ParseIntVec3(const FString& value, FVector& out);
+	static bool ParseIntVec3(const FString& value, FVector3f& out);
 	static bool ParseIntVec3(const FString& value, FLinearColor& out);
 
-	static bool ParseTransform(const FString& value, FMatrix& out);
+	static bool ParseTransform(const FString& value, FMatrix44f& out);
 };

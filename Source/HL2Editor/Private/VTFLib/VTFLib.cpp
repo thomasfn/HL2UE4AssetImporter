@@ -21,10 +21,10 @@ namespace VTFLib
 	Diagnostics::CError LastError;
 
 	CVTFFile *Image = 0;
-	CImageArray *ImageFVector = 0;
+	CImageArray *ImageFVector3f = 0;
 
 	CVMTFile *Material = 0;
-	CMaterialArray *MaterialFVector = 0;
+	CMaterialArray *MaterialFVector3f = 0;
 
 	unsigned int uiDXTQuality = DXT_QUALITY_HIGH;
 
@@ -95,8 +95,8 @@ bool vlInitialize()
 
 	bInitialized = true;
 
-	ImageFVector = new CImageArray();
-	MaterialFVector = new CMaterialArray();
+	ImageFVector3f = new CImageArray();
+	MaterialFVector3f = new CMaterialArray();
 
 	return true;
 }
@@ -117,21 +117,21 @@ void vlShutdown()
 	Image = 0;
 	Material = 0;
 
-	for(i = 0; i < ImageFVector->Num(); i++)
+	for(i = 0; i < ImageFVector3f->Num(); i++)
 	{
-		delete (*ImageFVector)[i];
+		delete (*ImageFVector3f)[i];
 	}
 
-	delete ImageFVector;
-	ImageFVector = 0;
+	delete ImageFVector3f;
+	ImageFVector3f = 0;
 
-	for(i = 0; i < MaterialFVector->Num(); i++)
+	for(i = 0; i < MaterialFVector3f->Num(); i++)
 	{
-		delete (*MaterialFVector)[i];
+		delete (*MaterialFVector3f)[i];
 	}
 
-	delete MaterialFVector;
-	MaterialFVector = 0;
+	delete MaterialFVector3f;
+	MaterialFVector3f = 0;
 }
 
 bool vlGetBoolean(VTFLibOption Option)

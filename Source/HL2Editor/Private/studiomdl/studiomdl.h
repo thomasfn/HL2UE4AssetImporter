@@ -1,4 +1,4 @@
-#pragma once;
+#pragma once
 
 #include "CoreMinimal.h"
 #include "utils.h"
@@ -133,7 +133,7 @@ namespace Valve
 			// a unique ordinal for this mesh
 			int					meshid;
 
-			FVector				center;
+			FVector3f				center;
 
 			mstudio_meshvertexdata_t vertexdata;
 
@@ -187,8 +187,8 @@ namespace Valve
 			float				v0;			// velocity at start of block
 			float				v1;			// velocity at end of block
 			float				angle;		// YAW rotation at end of this blocks movement
-			FVector				vector;		// movement vector relative to this blocks initial angle
-			FVector				position;	// relative to start of animation???
+			FVector3f				vector;		// movement vector relative to this blocks initial angle
+			FVector3f				position;	// relative to start of animation???
 		};
 
 		union mstudioanimvalue_t
@@ -334,8 +334,8 @@ namespace Valve
 			int					eventindex;
 			//inline mstudioevent_t* pEvent(int i) const { Assert(i >= 0 && i < numevents); return (mstudioevent_t*)(((byte*)this) + eventindex) + i; };
 
-			FVector				bbmin;		// per sequence bounding box
-			FVector				bbmax;
+			FVector3f				bbmin;		// per sequence bounding box
+			FVector3f				bbmax;
 
 			int					numblends;
 
@@ -452,12 +452,12 @@ namespace Valve
 			int		dataLength;	// Data size of MDL file in bytes.
 
 			// A vector is 12 bytes, three 4-byte float-values in a row.
-			FVector		eyeposition;	// Position of player viewpoint relative to model origin
-			FVector		illumposition;	// ?? Presumably the point used for lighting when per-vertex lighting is not enabled.
-			FVector		hull_min;	// Corner of model hull box with the least X/Y/Z values
-			FVector		hull_max;	// Opposite corner of model hull box
-			FVector	  	view_bbmin;
-			FVector	 	view_bbmax;
+			FVector3f		eyeposition;	// Position of player viewpoint relative to model origin
+			FVector3f		illumposition;	// ?? Presumably the point used for lighting when per-vertex lighting is not enabled.
+			FVector3f		hull_min;	// Corner of model hull box with the least X/Y/Z values
+			FVector3f		hull_max;	// Opposite corner of model hull box
+			FVector3f	  	view_bbmin;
+			FVector3f	 	view_bbmax;
 
 			int		flags;		// Binary flags in little-endian order. 
 							// ex (00000001,00000000,00000000,11000000) means flags for position 0, 30, and 31 are set. 

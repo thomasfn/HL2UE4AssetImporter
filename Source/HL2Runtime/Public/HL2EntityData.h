@@ -57,7 +57,7 @@ public:
 	FString Targetname = TEXT("");
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
-	FVector Origin = FVector::ZeroVector;
+	FVector3f Origin = FVector3f::ZeroVector;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
 	int SpawnFlags = 0;
@@ -80,12 +80,12 @@ public:
 
 	bool TryGetFloat(FName key, float& out) const;
 
-	FVector GetVector(FName key) const;
+	FVector3f GetVector(FName key) const;
 
-	bool TryGetVector(FName key, FVector& out) const;
+	bool TryGetVector(FName key, FVector3f& out) const;
 
-	FVector4 GetVector4(FName key) const;
+	FVector4f GetVector4(FName key) const;
 
-	bool TryGetVector4(FName key, FVector4& out) const;
+	bool TryGetVector4(FName key, FVector4f& out) const;
 
 };

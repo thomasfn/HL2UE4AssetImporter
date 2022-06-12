@@ -115,10 +115,10 @@ namespace VTFLib
 	extern Diagnostics::CError LastError;
 
 	extern CVTFFile *Image;
-	extern CImageArray *ImageFVector;
+	extern CImageArray *ImageFVector3f;
 
 	extern CVMTFile *Material;
-	extern CMaterialArray *MaterialFVector;
+	extern CMaterialArray *MaterialFVector3f;
 
 	extern unsigned int uiDXTQuality;
 

@@ -241,7 +241,7 @@ void FMaterialUtils::ProcessVMTNode(
 		// Matrix
 		else if (GetMaterialParameterByKey(vectorParams, GetVMTKeyAsParameterName(kv.Key, "_v0"), info))
 		{
-			FMatrix tmp;
+			FMatrix44f tmp;
 			if (ParseTransform(value, tmp))
 			{
 				mtl->SetVectorParameterValueEditorOnly(info, tmp.GetScaledAxis(EAxis::X));
@@ -319,7 +319,7 @@ bool FMaterialUtils::GetMaterialParameterByKey(const TArray<FMaterialParameterIn
 	return false;
 }
 
-bool FMaterialUtils::ParseFloatVec3(const FString& value, FVector& out)
+bool FMaterialUtils::ParseFloatVec3(const FString& value, FVector3f& out)
 {
 	const static FRegexPattern patternFloatVector(TEXT("^\\s*\\[?\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)\\s*\\]?\\s*$"));
 	FRegexMatcher matchFloatVector(patternFloatVector, value);
@@ -338,7 +338,7 @@ bool FMaterialUtils::ParseFloatVec3(const FString& value, FVector& out)
 
 bool FMaterialUtils::ParseFloatVec3(const FString& value, FLinearColor& out)
 {
-	FVector tmp;
+	FVector3f tmp;
 	if (!ParseFloatVec3(value, tmp)) { return false; }
 	out.R = tmp.X;
 	out.G = tmp.Y;
@@ -364,7 +364,7 @@ bool FMaterialUtils::ParseIntVec3(const FString& value, FIntVector& out)
 	}
 }
 
-bool FMaterialUtils::ParseIntVec3(const FString& value, FVector& out)
+bool FMaterialUtils::ParseIntVec3(const FString& value, FVector3f& out)
 {
 	FIntVector tmp;
 	if (!ParseIntVec3(value, tmp)) { return false; }
@@ -385,7 +385,7 @@ bool FMaterialUtils::ParseIntVec3(const FString& value, FLinearColor& out)
 	return true;
 }
 
-bool FMaterialUtils::ParseTransform(const FString& value, FMatrix& out)
+bool FMaterialUtils::ParseTransform(const FString& value, FMatrix44f& out)
 {
 	const static FRegexPattern patternCenter(TEXT("center\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)"));
 	const static FRegexPattern patternScale(TEXT("scale\\s*((?:\\d*\\.)?\\d+)\\s+((?:\\d*\\.)?\\d+)"));
@@ -426,14 +426,14 @@ bool FMaterialUtils::ParseTransform(const FString& value, FMatrix& out)
 	}
 	if (!(cF && sF && rF && tF)) { return false; }
 	const float rD = FMath::DegreesToRadians(r);
-	FTransform transform = FTransform::Identity;
-	FVector translation = FVector::ZeroVector;
+	FTransform3f transform = FTransform3f::Identity;
+	FVector3f translation = FVector3f::ZeroVector;
 	translation.X = (cX - 0.5f) + cX * FMath::Cos(rD) * 2.0f;
 	translation.Y = (cY - 0.5f) + cY * FMath::Sin(rD) * 2.0f;
 	transform.SetTranslation(translation);
-	FQuat quat(FVector::UpVector, rD);
+	FQuat4f quat(FVector3f::UpVector, rD);
 	transform.SetRotation(quat);
-	FVector scale;
+	FVector3f scale;
 	scale.X = sX;
 	scale.Y = sY;
 	scale.Z = 1.0f;

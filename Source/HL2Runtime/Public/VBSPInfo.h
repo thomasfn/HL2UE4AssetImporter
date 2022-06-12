@@ -24,7 +24,7 @@ public:
 	int Right;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FPlane Plane;
+	FPlane4f Plane;
 
 };
 
@@ -93,11 +93,11 @@ public:
 
 	/** Gets the leaf that contains the position, or -1 if the position is outside the BSP tree. */
 	UFUNCTION(BlueprintCallable, Category = "HL2")
-	int FindLeaf(const FVector& pos) const;
+	int FindLeaf(const FVector3f& pos) const;
 
 	/** Gets the cluster that contains the position, or -1 if the position is not inside a cluster. */
 	UFUNCTION(BlueprintCallable, Category = "HL2")
-	int FindCluster(const FVector& pos) const;
+	int FindCluster(const FVector3f& pos) const;
 
 	/** Finds all clusters that are reachable from the specified one. */
 	UFUNCTION(BlueprintCallable, Category = "HL2")

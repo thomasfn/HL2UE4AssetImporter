@@ -15,6 +15,7 @@
 
 #include <array>
 #include <string>
+#include <algorithm>
 
 template < typename T, size_t T_Rows, size_t T_Cols >
 class Matrix
@@ -75,7 +76,7 @@ public:
 
     bool empty( void ) const
     {
-        return all_of( m_cValues.begin(), m_cValues.end(), []( T i )
+        return std::all_of( m_cValues.begin(), m_cValues.end(), []( T i )
         {
             return i == static_cast< T >( 0 );
         } );

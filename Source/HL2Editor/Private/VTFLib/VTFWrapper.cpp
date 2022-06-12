@@ -43,16 +43,16 @@ bool vlBindImage(unsigned int uiImage)
 		return false;
 	}
 
-	if(uiImage >= (unsigned int)ImageFVector->Num() || (*ImageFVector)[uiImage] == 0)
+	if(uiImage >= (unsigned int)ImageFVector3f->Num() || (*ImageFVector3f)[uiImage] == 0)
 	{
 		LastError.Set("Invalid image.");
 		return false;
 	}
 
-	if(Image == (*ImageFVector)[uiImage])	// If it is already bound do nothing.
+	if(Image == (*ImageFVector3f)[uiImage])	// If it is already bound do nothing.
 		return true;
 
-	Image = (*ImageFVector)[uiImage];
+	Image = (*ImageFVector3f)[uiImage];
 
 	return true;
 }
@@ -69,8 +69,8 @@ bool vlCreateImage(unsigned int *uiImage)
 		return false;
 	}
 
-	ImageFVector->Add(new CVTFFile());
-	*uiImage = (unsigned int)ImageFVector->Num() - 1;
+	ImageFVector3f->Add(new CVTFFile());
+	*uiImage = (unsigned int)ImageFVector3f->Num() - 1;
 
 	return true;
 }
@@ -84,19 +84,19 @@ void vlDeleteImage(unsigned int uiImage)
 	if(!bInitialized)
 		return;
 
-	if(uiImage >= (unsigned int)ImageFVector->Num())
+	if(uiImage >= (unsigned int)ImageFVector3f->Num())
 		return;
 
-	if((*ImageFVector)[uiImage] == 0)
+	if((*ImageFVector3f)[uiImage] == 0)
 		return;
 
-	if((*ImageFVector)[uiImage] == Image)
+	if((*ImageFVector3f)[uiImage] == Image)
 	{
 		Image = 0;
 	}
 
-	delete (*ImageFVector)[uiImage];
-	(*ImageFVector)[uiImage] = 0;
+	delete (*ImageFVector3f)[uiImage];
+	(*ImageFVector3f)[uiImage] = 0;
 }
 
 void vlImageCreateDefaultCreateStructure(SVTFCreateOptions *VTFCreateOptions)

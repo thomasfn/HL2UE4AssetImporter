@@ -258,7 +258,7 @@ void HL2EditorImpl::ConvertSkyboxes()
 		}
 		else
 		{
-			UPackage* package = CreatePackage(nullptr, *packageName);
+			UPackage* package = CreatePackage(*packageName);
 			UTextureCube* cubeMap = NewObject<UTextureCube>(package, FName(*skyboxName), EObjectFlags::RF_Public | EObjectFlags::RF_Standalone);
 			FSkyboxConverter::ConvertSkybox(cubeMap, skyboxName);
 			cubeMap->PostEditChange();

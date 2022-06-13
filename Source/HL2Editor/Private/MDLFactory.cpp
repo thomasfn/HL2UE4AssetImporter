@@ -24,6 +24,8 @@
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
+#define LOCTEXT_NAMESPACE "HL2Importer"
+
 UMDLFactory::UMDLFactory()
 {
 	// We only want to create assets by importing files.
@@ -1802,9 +1804,9 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 		UPackage* package = CreatePackage(*(basePath + name));
 		UAnimSequence* sequence = CreateAnimSequence(package, FName(*FPaths::GetBaseFilename(basePath + name)), RF_Public | RF_Standalone);
 		sequence->SetSkeleton(skeletalMesh->GetSkeleton());
-		sequence->GetController().SetFrameRate(FFrameRate(animDesc->fps, 1));
-		sequence->GetController().SetPlayLength(animDesc->numframes / (float)animDesc->fps);
-		sequence->AdditiveAnimType = EAdditiveAnimationType::AAT_None;
+		IAnimationDataController& controller = sequence->GetController();
+		controller.OpenBracket(LOCTEXT("ImportFromMDL_Bracket", "Importing animation from MDL"));
+		controller.ResetModel();
 
 		if (!animDesc->HasFlag(Valve::MDL::mstudioanimdesc_flag::ALLZEROS))
 		{
@@ -2072,33 +2074,45 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 			// Ensure all tracks have the correct number of keys
 			for (TPair<uint8, FRawAnimSequenceTrack>& pair : transformedBoneTrackMap)
 			{
-				const FVector3f lastPos = pair.Value.PosKeys.Num() > 0 ? pair.Value.PosKeys.Last() : FVector3f::ZeroVector;
-				while (pair.Value.PosKeys.Num() > 1 && pair.Value.PosKeys.Num() < animDesc->numframes)
+				FRawAnimSequenceTrack& track = pair.Value;
+				if (track.PosKeys.IsEmpty()) { track.PosKeys.Add(FVector3f::ZeroVector); }
+				const FVector3f lastPos = track.PosKeys.Last();
+				while (track.PosKeys.Num() < animDesc->numframes)
 				{
-					pair.Value.PosKeys.Add(lastPos);
+					track.PosKeys.Add(lastPos);
 				}
-				const FQuat4f lastRot = pair.Value.RotKeys.Num() > 0 ? pair.Value.RotKeys.Last() : FQuat4f::Identity;
-				while (pair.Value.RotKeys.Num() > 1 && pair.Value.RotKeys.Num() < animDesc->numframes)
+				if (track.RotKeys.IsEmpty()) { track.RotKeys.Add(FQuat4f::Identity); }
+				const FQuat4f lastRot = track.RotKeys.Last();
+				while (track.RotKeys.Num() < animDesc->numframes)
 				{
-					pair.Value.RotKeys.Add(lastRot);
+					track.RotKeys.Add(lastRot);
 				}
-				const FVector3f lastScale = pair.Value.ScaleKeys.Num() > 0 ? pair.Value.ScaleKeys.Last() : FVector3f::OneVector;
-				while (pair.Value.ScaleKeys.Num() > 1 && pair.Value.ScaleKeys.Num() < animDesc->numframes)
+				if (track.ScaleKeys.IsEmpty()) { track.ScaleKeys.Add(FVector3f::OneVector); }
+				const FVector3f lastScale = track.ScaleKeys.Last();
+				while (track.ScaleKeys.Num() < animDesc->numframes)
 				{
-					pair.Value.ScaleKeys.Add(lastScale);
+					track.ScaleKeys.Add(lastScale);
 				}
 			}
 
 			// Add the tracks to the sequence
-			sequence->GetController().RemoveAllBoneTracks();
 			for (auto& pair : transformedBoneTrackMap)
 			{
-				sequence->AddNewRawTrack(skeletalMesh->GetRefSkeleton().GetBoneName(pair.Key), &pair.Value);
-				//sequence->GetController().AddBoneTrack(skeletalMesh->GetRefSkeleton().GetBoneName(pair.Key));
-				//sequence->GetController().SetBoneTrackKeys(skeletalMesh->GetRefSkeleton().GetBoneName(pair.Key), pair.Value.PosKeys, );
+				const FRawAnimSequenceTrack& track = pair.Value;
+				if (track.PosKeys.IsEmpty() && track.RotKeys.IsEmpty() && track.ScaleKeys.IsEmpty()) { continue; }
+				const FName boneName = skeletalMesh->GetRefSkeleton().GetBoneName(pair.Key);
+				controller.AddBoneTrack(boneName);
+				controller.SetBoneTrackKeys(boneName, pair.Value.PosKeys, pair.Value.RotKeys, pair.Value.ScaleKeys);
 			}
 		}
-
+		sequence->ImportFileFramerate = animDesc->fps;
+		sequence->ImportResampleFramerate = animDesc->fps;
+		controller.SetPlayLength((animDesc->numframes - 1) / animDesc->fps);
+		controller.SetFrameRate(FFrameRate(animDesc->fps, 1));
+		controller.NotifyPopulated();
+		controller.CloseBracket();
+		
+		sequence->AdditiveAnimType = EAdditiveAnimationType::AAT_None;
 		outSequences.Add(sequence);
 	}
 
@@ -2272,12 +2286,7 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 
 	// Read all vertices
 	check(basePtr == vertPtr);
-	TArray<FVector4f> rawVerts;
-	rawVerts.Reserve(numVerts);
-	for (int i = 0; i < numVerts; ++i)
-	{
-		rawVerts.Add(((FVector4f*)basePtr)[i]);
-	}
+	const FVector4f* vertDataPtr = reinterpret_cast<FVector4f*>(vertPtr);
 	basePtr += sizeof(FVector4f) * numVerts;
 
 	// Fixup sections
@@ -2288,7 +2297,8 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 		{
 			// Lookup face index and vertex
 			const int idx = section.FaceIndices[i];
-			const FVector4f rawVert = rawVerts[idx];
+			check(idx >= 0 && idx < numVerts);
+			const FVector4f& rawVert = vertDataPtr[idx];
 
 			// Convert to UE4 vertex
 			FVector3f fixedVert;

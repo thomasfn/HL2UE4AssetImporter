@@ -37,7 +37,7 @@ The HL2 Asset Importer plugin is still very much a work-in-progress and there is
 		- :heavy_check_mark: LODs
 		- :heavy_check_mark: Collision
 		- :heavy_check_mark: Materials
-		- :heavy_exclamation_mark: Lightmap UVs
+		- ~~:heavy_exclamation_mark: Lightmap UVs~~ no longer needed due to Lumen
 		- :heavy_check_mark: Skins
 		- :heavy_check_mark: Model Groups
 		- :x: Surface Prop (and other metadata)
@@ -50,8 +50,8 @@ The HL2 Asset Importer plugin is still very much a work-in-progress and there is
 		- :heavy_check_mark: Model Groups
 		- :heavy_check_mark: Skeleton and Rigging
 		- :x: Morph Targets
-		- :heavy_exclamation_mark: Sequences
-		- :x: Automatic Blend Space Generation
+		- :heavy_check_mark: Sequences
+		- :x: Automatic Blend Space / Anim BP Generation
 		- :x: IK
 		- :x: Surface Prop (and other metadata)
 	- :heavy_check_mark: Bulk Import
@@ -61,11 +61,11 @@ The HL2 Asset Importer plugin is still very much a work-in-progress and there is
 	- :x: Smoothing Groups
 	- :heavy_exclamation_mark: Collision (see below)
 	- :heavy_check_mark: Materials
-	- :heavy_check_mark: Lightmap UVs
+	- ~~:heavy_check_mark: Lightmap UVs~~ no longer needed due to Lumen
 	- :heavy_exclamation_mark: Entities (see below)
 	- :heavy_check_mark: Brush Entities
 	- :heavy_exclamation_mark: 2D Skybox (functional, texture needs to be flipped on Y axis)
-	- :heavy_exclamation_mark: 3D Skybox (functional, low quality?)
+	- :heavy_exclamation_mark: 3D Skybox (functional, low quality, need better solution)
 	- :heavy_check_mark: Displacements
 	- :x: Visibility
 	- :x: Bulk Import
@@ -130,12 +130,13 @@ The HL2 Asset Importer plugin is still very much a work-in-progress and there is
 ### Other
 
 - :heavy_check_mark::heavy_exclamation_mark: Lighting
-	- :heavy_exclamation_mark: Cubemaps - functional, but far too densely placed, need some way to remove unnecessary ones?
+	- ~~:heavy_exclamation_mark: Cubemaps~~ - no longer needed due to Lumen
 	- :heavy_exclamation_mark: Sun Light (light_environment - needs I/O support)
 	- :heavy_check_mark: Ambient Light (light_environment ignored, uses skybox to emit light instead)
 	- :heavy_exclamation_mark: Static Lights (light, light_spot - needs I/O support)
-	- :x: Resolving Stationary Light Overlap (detect overlap and shrink attenuation radius until no longer overlapping?)
+	- :x: Resolving Stationary Light Overlap (detect overlap and shrink attenuation radius until no longer overlapping, merge lights where possible (e.g. the spot+point trick for extra indirection may not be needed, so merge into one light))
 	- :x: Resolve Lighting Leaks (create extruded back-face geometry for whole map to block light?)
+	- :x: Lumen Tweaks (adjust attenuation, max cards for static meshes and indirect light intensity to try and match original game's lighting overall saturation and brightness)
 
 - :heavy_check_mark::heavy_exclamation_mark: Physics
 	- :heavy_exclamation_mark: Map Collision (uses rendering geometry for collision testing, nodraw/playerclip/invisible aren't yet considered!)

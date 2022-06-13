@@ -20,6 +20,7 @@
 #include "SkeletonUtils.h"
 #include "IMeshBuilderModule.h"
 #include "Engine/SkeletalMeshSocket.h"
+#include "IHL2Editor.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
 
@@ -770,10 +771,18 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	staticMesh->SetLightMapResolution(64);
 
 	// Create model data
-	UHL2ModelData* modelData = NewObject<UHL2ModelData>(staticMesh);
-	modelData->Bodygroups = bodygroups;
-	staticMesh->AddAssetUserData(modelData);
-
+	UHL2ModelData* modelData;
+	if (!IHL2Editor::Get().GetConfig().Model.Portable)
+	{
+		modelData = NewObject<UHL2ModelData>(staticMesh);
+		modelData->Bodygroups = bodygroups;
+		staticMesh->AddAssetUserData(modelData);
+	}
+	else
+	{
+		modelData = nullptr;
+	}
+	
 	constexpr bool debugPhysics = false; // if true, the physics mesh is rendered instead
 
 	// Write all lods to the static mesh
@@ -937,6 +946,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	staticMesh->Build();
 
 	// Resolve skins
+	if (modelData != nullptr)
 	{
 		TArray<TArray<int>> rawSkinFamilies;
 		ReadSkins(header, rawSkinFamilies);
@@ -965,8 +975,11 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			modelData->Skins.Add(skinMapping);
 		}
 	}
-	modelData->PostEditChange();
-	modelData->MarkPackageDirty();
+	if (modelData != nullptr)
+	{
+		modelData->PostEditChange();
+		modelData->MarkPackageDirty();
+	}
 
 	return staticMesh;
 }
@@ -1017,8 +1030,16 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	skeletalMesh->SetSkeleton(skeleton);
 
 	// Create model data
-	UHL2ModelData* modelData = NewObject<UHL2ModelData>(skeletalMesh);
-	skeletalMesh->AddAssetUserData(modelData);
+	UHL2ModelData* modelData;
+	if (!IHL2Editor::Get().GetConfig().Model.Portable)
+	{
+		modelData = NewObject<UHL2ModelData>(skeletalMesh);
+		skeletalMesh->AddAssetUserData(modelData);
+	}
+	else
+	{
+		modelData = nullptr;
+	}
 
 	// Load bones into skeleton
 	FReferenceSkeleton refSkelSource;
@@ -1029,8 +1050,25 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		{
 			FMeshBoneInfo meshBoneInfo;
 			meshBoneInfo.ParentIndex = -1;
-			meshBoneInfo.ExportName = TEXT("GENERATED_ROOT");
-			meshBoneInfo.Name = FName(TEXT("root"));
+			meshBoneInfo.ExportName = TEXT("root");
+			bool isDuplicateName;
+			do
+			{
+				isDuplicateName = false;
+				for (const Valve::MDL::mstudiobone_t* bone : bones)
+				{
+					if (bone->GetName().Equals(meshBoneInfo.ExportName, ESearchCase::IgnoreCase))
+					{
+						isDuplicateName = true;
+						break;
+					}
+				}
+				if (isDuplicateName)
+				{
+					meshBoneInfo.ExportName = TEXT("actual_") + meshBoneInfo.ExportName;
+				}
+			} while (isDuplicateName);
+			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
 			refSkelSourceMod.Add(meshBoneInfo, FTransform::Identity);
 		}
 		for (int i = 0; i < bones.Num(); ++i)
@@ -1293,7 +1331,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			accumIndex += model.numvertices;
 		}
 
-		modelData->Bodygroups.Add(FName(*bodyPart.GetName()), bodygroup);
+		if (modelData != nullptr) { modelData->Bodygroups.Add(FName(*bodyPart.GetName()), bodygroup); }
 	}
 
 	// Build geometry
@@ -1394,6 +1432,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	}
 
 	// Resolve skins
+	if (modelData != nullptr)
 	{
 		TArray<TArray<int>> rawSkinFamilies;
 		ReadSkins(header, rawSkinFamilies);
@@ -1457,8 +1496,11 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			sockets.Add(socket);
 		}
 	}
-	modelData->PostEditChange();
-	modelData->MarkPackageDirty();
+	if (modelData != nullptr)
+	{
+		modelData->PostEditChange();
+		modelData->MarkPackageDirty();
+	}
 
 	// Done
 	return skeletalMesh;
@@ -1787,10 +1829,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 				else
 				{
 					check(aniHeader != nullptr);
-					const Valve::MDL::mstudioanimblock_t* block = animBlocks[animDesc->animblock];
-					// TODO: Load from ani
-					// Can we ever get here?
-					check(false);
+					for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
+					{
+						const Valve::MDL::mstudioanimsections_t* section = sections[sectionIndex];
+						const Valve::MDL::mstudioanimblock_t* block = animBlocks[section->animblock];
+						TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims = allSectionAnims[sectionIndex];
+						uint8* basePtr = ((uint8*)aniHeader) + block->datastart + section->animindex;
+						ReadAnimData(basePtr, skeletalMesh, sectionAnims);
+					}
 				}
 			}
 			else

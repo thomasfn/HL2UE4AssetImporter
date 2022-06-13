@@ -65,12 +65,14 @@ private:
 	
 	void RenderTreeToVBSPInfo(uint32 nodeIndex);
 
-	float FindFaceArea(const Valve::BSP::dface_t& bspFace);
+	float FindFaceArea(const Valve::BSP::dface_t& bspFace, bool unrealCoordSpace = true);
+
+	static FBox3f GetModelBounds(const Valve::BSP::dmodel_t& model, bool unrealCoordSpace = true);
+
+	static FBox3f GetNodeBounds(const Valve::BSP::snode_t& node, bool unrealCoordSpace = true);
 
 	static FString ParseMaterialName(const char* bspMaterialName);
 	
 	static bool SharesSmoothingGroup(uint16 groupA, uint16 groupB);
-	
-	ABaseEntity* ImportEntityToWorld(const FHL2EntityData& entityData);
 
 };

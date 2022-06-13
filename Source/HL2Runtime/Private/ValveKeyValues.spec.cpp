@@ -399,7 +399,7 @@ void ValveKeyValuesSpec::Define()
 						{
 							if (Document != nullptr)
 							{
-								Document->MarkPendingKill();
+								Document->MarkAsGarbage();
 								Document = nullptr;
 							}
 						});

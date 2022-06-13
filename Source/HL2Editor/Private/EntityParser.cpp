@@ -83,6 +83,5 @@ inline void FEntityParser::ParseCommonKeys(FHL2EntityData& entity)
 	if (entity.TryGetString(kClassname, classname)) { entity.Classname = FName(*classname); }
 	entity.TryGetString(kTargetname, entity.Targetname);
 	entity.TryGetVector(kOrigin, entity.Origin);
-	entity.Origin.Y *= -1.0f;
 	entity.TryGetInt(kSpawnflags, entity.SpawnFlags);
 }

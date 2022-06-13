@@ -1,8 +1,10 @@
 #include "BSPBrushUtils.h"
+
 #include "MeshAttributes.h"
 #include "StaticMeshAttributes.h"
 #include "Engine/Polys.h"
 #include "IHL2Runtime.h"
+#include "SourceCoord.h"
 
 constexpr float snapThreshold = 1.0f / 4.0f;
 
@@ -104,7 +106,7 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 				if (!found)
 				{
 					vertID = meshDesc.CreateVertex();
-					vertexPosAttr[vertID] = pos;
+					vertexPosAttr[vertID] = SourceToUnreal.Position(pos);
 				}
 			}
 			if (visited.Contains(vertID)) { continue; }
@@ -115,15 +117,23 @@ void FBSPBrushUtils::BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription
 			polyContour.Add(vertInstID);
 
 			// Calculate UV
-			FVector3f vertPos = vertexPosAttr[vertID];
+			const FVector3f vertPos = UnrealToSource.Position(vertexPosAttr[vertID]);
 			vertexInstUVAttr.Set(vertInstID, 0, FVector2f(
-				(FVector3f::DotProduct((FVector3f)(FVector3d)side.TextureU, vertPos) + side.TextureU.W) / side.TextureW,
-				(FVector3f::DotProduct((FVector3f)(FVector3d)side.TextureV, vertPos) + side.TextureV.W) / side.TextureH
+				(FVector3f::DotProduct(side.TextureU, vertPos) + side.TextureU.W) / side.TextureW,
+				(FVector3f::DotProduct(side.TextureV, vertPos) + side.TextureV.W) / side.TextureH
 			));
 			
 		}
 
 		// Create poly
+		if (SourceToUnreal.ShouldReverseWinding())
+		{
+			TArray< FVertexInstanceID> tmp = polyContour;
+			for (int j = 0; j < tmp.Num(); ++j)
+			{
+				polyContour[tmp.Num() - (j + 1)] = tmp[j];
+			}
+		}
 		polyToSideMap.Add(meshDesc.CreatePolygon(polyGroupID, polyContour), i);
 	}
 

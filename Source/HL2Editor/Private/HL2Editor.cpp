@@ -10,6 +10,7 @@
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
 #include "AssetToolsModule.h"
+#include "PackageHelperFunctions.h"
 #include "HAL/PlatformFilemanager.h"
 #include "VMTMaterial.h"
 #include "MaterialUtils.h"
@@ -154,6 +155,7 @@ void HL2EditorImpl::BulkImportTexturesClicked()
 		{
 			loopProgress.EnterProgressFrame();
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2TextureBasePath() / dir);
+			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}
@@ -186,6 +188,7 @@ void HL2EditorImpl::BulkImportMaterialsClicked()
 		{
 			loopProgress.EnterProgressFrame();
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2MaterialBasePath() / dir);
+			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}
@@ -226,6 +229,7 @@ void HL2EditorImpl::BulkImportModelsClicked()
 		{
 			loopProgress.EnterProgressFrame();
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2ModelBasePath() / dir);
+			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}
@@ -324,6 +328,17 @@ void HL2EditorImpl::TraceTerrainClicked()
 	{
 		FTerrainTracer tracer(landscape);
 		tracer.Trace();
+	}
+}
+
+void HL2EditorImpl::SaveImportedAssets(TArrayView<UObject*> importedObjects)
+{
+	for (UObject* obj : importedObjects)
+	{
+		UPackage* package = CastChecked<UPackage>(obj->GetOuter());
+		FString filename;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(package->GetName(), filename, FPackageName::GetAssetPackageExtension())) { continue; }
+		SavePackageHelper(package, filename);
 	}
 }
 

@@ -49,6 +49,8 @@ private:
 	void ImportBSPClicked();
 	void TraceTerrainClicked();
 
+	void SaveImportedAssets(TArrayView<UObject*> importedObjects);
+
 	static void GroupFileListByDirectory(const TArray<FString>& files, TMap<FString, TArray<FString>>& outMap);
 
 };

@@ -18,5 +18,12 @@
       "Name": "HL2Editor",
       "Type": "Editor"
     }
+  ],
+
+  "Plugins": [
+    {
+      "Name": "EditorScriptingUtilities",
+      "Enabled": true
+    }
   ]
 }

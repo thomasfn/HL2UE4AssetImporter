@@ -36,10 +36,10 @@ public:
 	// End UFactory Interface
 
 	/** Create a material given the appropriate input parameters	*/
-	virtual UVMTMaterial* CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags);
+	virtual UMaterialInterface* CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags);
 
 private:
 
-	UVMTMaterial* ImportMaterial(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const TCHAR* Type, const TCHAR*& Buffer, const TCHAR* BufferEnd, FFeedbackContext* Warn);
+	UMaterialInterface* ImportMaterial(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const TCHAR* Type, const TCHAR*& Buffer, const TCHAR* BufferEnd, FFeedbackContext* Warn);
 
 };

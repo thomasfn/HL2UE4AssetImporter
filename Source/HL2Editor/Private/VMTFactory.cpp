@@ -1,7 +1,9 @@
 #include "VMTFactory.h"
 #include "MaterialUtils.h"
+#include "Materials/MaterialInterface.h"
 #include "Runtime/Core/Public/Misc/FeedbackContext.h"
 #include "ValveKeyValues.h"
+#include "IHL2Editor.h"
 
 UVMTFactory::UVMTFactory()
 {
@@ -44,7 +46,7 @@ UObject* UVMTFactory::FactoryCreateText(
 {
 	GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPreImport(this, InClass, InParent, InName, Type);
 
-	UVMTMaterial* material = ImportMaterial(InClass, InParent, InName, Flags, Type, Buffer, BufferEnd, Warn);
+	UMaterialInterface* material = ImportMaterial(InClass, InParent, InName, Flags, Type, Buffer, BufferEnd, Warn);
 
 	if (!material)
 	{
@@ -53,6 +55,10 @@ UObject* UVMTFactory::FactoryCreateText(
 		return nullptr;
 	}
 
+	if (material->AssetImportData == nullptr)
+	{
+		material->AssetImportData = NewObject<UAssetImportData>(material);
+	}
 	material->AssetImportData->Update(CurrentFilename, FileHash.IsValid() ? &FileHash : nullptr);
 
 	GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, material);
@@ -77,25 +83,26 @@ bool UVMTFactory::FactoryCanImport(const FString& Filename)
 
 // End UFactory Interface
 
-UVMTMaterial* UVMTFactory::CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags)
+UMaterialInterface* UVMTFactory::CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags)
 {
-	UObject* newObject = CreateOrOverwriteAsset(UVMTMaterial::StaticClass(), InParent, Name, Flags);
-	UVMTMaterial* newMaterial = nullptr;
+	UClass* materialClass = IHL2Editor::Get().GetConfig().Material.Portable ? UMaterialInstanceConstant::StaticClass() : UVMTMaterial::StaticClass();
+	UObject* newObject = CreateOrOverwriteAsset(materialClass, InParent, Name, Flags);
+	UMaterialInterface* newMaterial = nullptr;
 	if (newObject)
 	{
-		newMaterial = CastChecked<UVMTMaterial>(newObject);
+		newMaterial = CastChecked<UMaterialInterface>(newObject);
 	}
 
 	return newMaterial;
 }
 
-UVMTMaterial* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FName Name, EObjectFlags Flags, const TCHAR* Type, const TCHAR*& Buffer, const TCHAR* BufferEnd, FFeedbackContext* Warn)
+UMaterialInterface* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FName Name, EObjectFlags Flags, const TCHAR* Type, const TCHAR*& Buffer, const TCHAR* BufferEnd, FFeedbackContext* Warn)
 {
 	// Convert to string
 	const FString text(BufferEnd - Buffer, Buffer);
 
 	// Parse to a document
-	UValveDocument* document = UValveDocument::Parse(text);
+	UValveDocument* document = UValveDocument::Parse(text, this);
 	if (document == nullptr)
 	{
 		Warn->Logf(ELogVerbosity::Error, TEXT("Failed to parse VMT"));
@@ -103,17 +110,17 @@ UVMTMaterial* UVMTFactory::ImportMaterial(UClass* Class, UObject* InParent, FNam
 	}
 
 	// Create a new material
-	UVMTMaterial* material = CreateMaterial(InParent, Name, Flags);
+	UMaterialInterface* material = CreateMaterial(InParent, Name, Flags);
 
 	// Attempt to import it
-	if (!FMaterialUtils::SetFromVMT(material, document))
+	if (!FMaterialUtils::SetFromVMT(CastChecked<UMaterialInstanceConstant>(material), document))
 	{
 		//Warn->Logf(ELogVerbosity::Error, TEXT("Failed to import VMT"));
 		//return nullptr;
 	}
 
 	// Clean up
-	document->MarkPendingKill();
+	document->MarkAsGarbage();
 
 	return material;
 }

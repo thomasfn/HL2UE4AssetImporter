@@ -6,7 +6,7 @@ Vector32::Vector32(void)
 
 Vector32::Vector32(float X, float Y, float Z)
 {
-	operator=(FVector(X, Y, Z));
+	operator=(FVector3f(X, Y, Z));
 }
 
 Normal32::Normal32(void)
@@ -15,7 +15,7 @@ Normal32::Normal32(void)
 
 Normal32::Normal32(float X, float Y, float Z)
 {
-	operator=(FVector(X, Y, Z));
+	operator=(FVector3f(X, Y, Z));
 }
 
 Quaternion64::Quaternion64(void)
@@ -24,7 +24,7 @@ Quaternion64::Quaternion64(void)
 
 Quaternion64::Quaternion64(float X, float Y, float Z, float W)
 {
-	operator=(FQuat(X, Y, Z, W));
+	operator=(FQuat4f(X, Y, Z, W));
 }
 
 Quaternion48::Quaternion48(void)
@@ -33,7 +33,7 @@ Quaternion48::Quaternion48(void)
 
 Quaternion48::Quaternion48(float X, float Y, float Z, float W)
 {
-	operator=(FQuat(X, Y, Z, W));
+	operator=(FQuat4f(X, Y, Z, W));
 }
 
 Quaternion32::Quaternion32(void)
@@ -42,5 +42,5 @@ Quaternion32::Quaternion32(void)
 
 Quaternion32::Quaternion32(float X, float Y, float Z, float W)
 {
-	operator=(FQuat(X, Y, Z, W));
+	operator=(FQuat4f(X, Y, Z, W));
 }

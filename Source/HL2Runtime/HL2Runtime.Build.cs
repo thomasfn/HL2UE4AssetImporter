@@ -10,7 +10,7 @@ public class HL2Runtime : ModuleRules
         PrivateIncludePaths.AddRange(new string[] { Path.Combine(ModuleDirectory, "Private") });
         PublicIncludePaths.AddRange(new string[] { Path.Combine(ModuleDirectory, "Public") });
 
-        PrivateDependencyModuleNames.AddRange(new string[] { "RHI", "RenderCore" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "RHI", "RenderCore", "PhysicsCore" });
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
     }
 }

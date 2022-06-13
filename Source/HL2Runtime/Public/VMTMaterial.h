@@ -13,7 +13,6 @@ class HL2RUNTIME_API UVMTMaterial : public UMaterialInstanceConstant
 public:
 	
 	bool DoesReferenceTexture(FName assetPath) const;
-	void TryResolveTextures();
 
 	virtual void PostInitProperties() override;
 

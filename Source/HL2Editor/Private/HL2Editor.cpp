@@ -10,10 +10,13 @@
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
 #include "AssetToolsModule.h"
+#include "PackageHelperFunctions.h"
 #include "HAL/PlatformFilemanager.h"
 #include "VMTMaterial.h"
 #include "MaterialUtils.h"
 #include "SkyboxConverter.h"
+#include "TerrainTracer.h"
+#include "Engine/Selection.h"
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
 
@@ -21,6 +24,9 @@ DEFINE_LOG_CATEGORY(LogHL2Editor);
 
 void HL2EditorImpl::StartupModule()
 {
+	vtfLibDllHandle = FPlatformProcess::GetDllHandle(*GetVTFLibDllPath());
+	check(vtfLibDllHandle);
+
 	FUtilMenuStyle::Initialize();
 
 	FUtilMenuCommands::Register();
@@ -51,6 +57,11 @@ void HL2EditorImpl::StartupModule()
 		FExecuteAction::CreateRaw(this, &HL2EditorImpl::ImportBSPClicked),
 		FCanExecuteAction()
 	);
+	utilMenuCommandList->MapAction(
+		FUtilMenuCommands::Get().TraceTerrain,
+		FExecuteAction::CreateRaw(this, &HL2EditorImpl::TraceTerrainClicked),
+		FCanExecuteAction()
+	);
 
 	myExtender = MakeShareable(new FExtender);
 	myExtender->AddToolBarExtension("Content", EExtensionHook::After, NULL, FToolBarExtensionDelegate::CreateRaw(this, &HL2EditorImpl::AddToolbarExtension));
@@ -67,6 +78,13 @@ void HL2EditorImpl::ShutdownModule()
 	FUtilMenuCommands::Unregister();
 
 	FUtilMenuStyle::Shutdown();
+
+	FPlatformProcess::FreeDllHandle(vtfLibDllHandle);
+}
+
+const FHL2EditorConfig& HL2EditorImpl::GetConfig() const
+{
+	return editorConfig;
 }
 
 void HL2EditorImpl::AddToolbarExtension(FToolBarBuilder& builder)
@@ -101,6 +119,12 @@ TSharedRef<SWidget> HL2EditorImpl::GenerateUtilityMenu(TSharedRef<FUICommandList
 	}
 	menuBuilder.EndSection();
 
+	menuBuilder.BeginSection("Tools");
+	{
+		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().TraceTerrain);
+	}
+	menuBuilder.EndSection();
+
 	return menuBuilder.MakeWidget();
 }
 
@@ -131,6 +155,7 @@ void HL2EditorImpl::BulkImportTexturesClicked()
 		{
 			loopProgress.EnterProgressFrame();
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2TextureBasePath() / dir);
+			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}
@@ -163,6 +188,7 @@ void HL2EditorImpl::BulkImportMaterialsClicked()
 		{
 			loopProgress.EnterProgressFrame();
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2MaterialBasePath() / dir);
+			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}
@@ -181,6 +207,14 @@ void HL2EditorImpl::BulkImportModelsClicked()
 	TArray<FString> filesToImport;
 	platformFile.FindFilesRecursively(filesToImport, *rootPath, TEXT(".mdl"));
 	UE_LOG(LogHL2Editor, Log, TEXT("Importing %d files from '%s'..."), filesToImport.Num(), *rootPath);
+	filesToImport = filesToImport.FilterByPredicate([](const FString& file)
+		{
+			if (file.Contains(TEXT("_animations"), ESearchCase::IgnoreCase)) { return false; }
+			if (file.Contains(TEXT("_anims"), ESearchCase::IgnoreCase)) { return false; }
+			if (file.Contains(TEXT("_gestures"), ESearchCase::IgnoreCase)) { return false; }
+			if (file.Contains(TEXT("_postures"), ESearchCase::IgnoreCase)) { return false; }
+			return true;
+		});
 
 	// Import all
 	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
@@ -195,6 +229,7 @@ void HL2EditorImpl::BulkImportModelsClicked()
 		{
 			loopProgress.EnterProgressFrame();
 			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2ModelBasePath() / dir);
+			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
 	}
@@ -241,7 +276,6 @@ void HL2EditorImpl::ConvertSkyboxes()
 		}
 	}
 	
-
 	FScopedSlowTask loopProgress(skyboxNames.Num(), LOCTEXT("SkyboxesConverting", "Converting skyboxes to cubemaps..."));
 	loopProgress.MakeDialog();
 	for (const FString& skyboxName : skyboxNames)
@@ -258,7 +292,7 @@ void HL2EditorImpl::ConvertSkyboxes()
 		}
 		else
 		{
-			UPackage* package = CreatePackage(nullptr, *packageName);
+			UPackage* package = CreatePackage(*packageName);
 			UTextureCube* cubeMap = NewObject<UTextureCube>(package, FName(*skyboxName), EObjectFlags::RF_Public | EObjectFlags::RF_Standalone);
 			FSkyboxConverter::ConvertSkybox(cubeMap, skyboxName);
 			cubeMap->PostEditChange();
@@ -282,6 +316,29 @@ void HL2EditorImpl::ImportBSPClicked()
 	if (importer.Load())
 	{
 		importer.ImportToCurrentLevel();
+	}
+}
+
+void HL2EditorImpl::TraceTerrainClicked()
+{
+	USelection* selection = GEditor->GetSelectedActors();
+	TArray<ALandscape*> selectedLandscapes;
+	selection->GetSelectedObjects(selectedLandscapes);
+	for (ALandscape* landscape : selectedLandscapes)
+	{
+		FTerrainTracer tracer(landscape);
+		tracer.Trace();
+	}
+}
+
+void HL2EditorImpl::SaveImportedAssets(TArrayView<UObject*> importedObjects)
+{
+	for (UObject* obj : importedObjects)
+	{
+		UPackage* package = CastChecked<UPackage>(obj->GetOuter());
+		FString filename;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(package->GetName(), filename, FPackageName::GetAssetPackageExtension())) { continue; }
+		SavePackageHelper(package, filename);
 	}
 }
 

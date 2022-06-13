@@ -1,4 +1,4 @@
-#pragma once;
+#pragma once
 
 #include "CoreMinimal.h"
 #include "utils.h"
@@ -24,7 +24,7 @@ namespace Valve
 			int16	version;
 			int16	modelType;
 			int	surfaceSize;
-			FVector	dragAxisAreas;
+			FVector3f	dragAxisAreas;
 			int	axisMapSize;
 			int dummy[12]; // dummy[11] is "IVPS"
 		};

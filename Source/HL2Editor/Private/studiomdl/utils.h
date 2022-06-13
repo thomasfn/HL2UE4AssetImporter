@@ -1,4 +1,4 @@
-#pragma once;
+#pragma once
 
 #include "CoreMinimal.h"
 
@@ -7,7 +7,7 @@ namespace Valve
 	inline FString ReadString(const void* headerPtr, int offset)
 	{
 		const char* ptr = ((char*)headerPtr) + offset;
-		const auto itemRaw = StringCast<TCHAR, ANSICHAR>(ptr, strlen(ptr) + 1);
+		const auto itemRaw = StringCast<TCHAR>(ptr, strlen(ptr) + 1);
 		return FString(itemRaw.Get());
 	}
 

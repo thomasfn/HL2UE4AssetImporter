@@ -49,7 +49,7 @@ private:
 	
 	void GatherDisplacements(const TArray<uint16>& faceIndices, TArray<uint16>& out);
 	
-	FPlane ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
+	FPlane4f ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
 	
 	void RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 modelIndex);
 	
@@ -65,12 +65,14 @@ private:
 	
 	void RenderTreeToVBSPInfo(uint32 nodeIndex);
 
-	float FindFaceArea(const Valve::BSP::dface_t& bspFace);
+	float FindFaceArea(const Valve::BSP::dface_t& bspFace, bool unrealCoordSpace = true);
+
+	static FBox3f GetModelBounds(const Valve::BSP::dmodel_t& model, bool unrealCoordSpace = true);
+
+	static FBox3f GetNodeBounds(const Valve::BSP::snode_t& node, bool unrealCoordSpace = true);
 
 	static FString ParseMaterialName(const char* bspMaterialName);
 	
 	static bool SharesSmoothingGroup(uint16 groupA, uint16 groupB);
-	
-	ABaseEntity* ImportEntityToWorld(const FHL2EntityData& entityData);
 
 };

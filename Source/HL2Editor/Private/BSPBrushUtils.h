@@ -6,8 +6,8 @@
 
 struct FBSPBrushSide
 {
-	FPlane Plane;
-	FVector4 TextureU, TextureV;
+	FPlane4f Plane;
+	FVector4f TextureU, TextureV;
 	uint16 TextureW, TextureH;
 	FName Material;
 	uint32 SmoothingGroups;
@@ -32,7 +32,7 @@ public:
 
 private:
 
-	static inline void SnapVertex(FVector& vertex);
+	static inline void SnapVertex(FVector3f& vertex);
 
 };
 

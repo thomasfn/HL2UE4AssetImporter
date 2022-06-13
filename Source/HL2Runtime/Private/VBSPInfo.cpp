@@ -6,11 +6,11 @@
 #include "EngineUtils.h"
 
 /** Gets the leaf that contains the position, or -1 if the position is outside the BSP tree. */
-int AVBSPInfo::FindLeaf(const FVector& pos) const
+int AVBSPInfo::FindLeaf(const FVector3f& pos) const
 {
 	if (Nodes.Num() == 0) { return -1; }
 	int curNodeID = 0;
-	FVector flippedPos = pos * FVector(1.0f, -1.0f, 1.0f);
+	FVector3f flippedPos = pos * FVector3f(1.0f, -1.0f, 1.0f);
 	while (curNodeID >= 0)
 	{
 		check(curNodeID < Nodes.Num());
@@ -22,7 +22,7 @@ int AVBSPInfo::FindLeaf(const FVector& pos) const
 }
 
 /** Gets the cluster that contains the position, or -1 if the position is not inside a cluster. */
-int AVBSPInfo::FindCluster(const FVector& pos) const
+int AVBSPInfo::FindCluster(const FVector3f& pos) const
 {
 	const int leafID = FindLeaf(pos);
 	if (leafID < 0) { return -1; }
@@ -62,7 +62,7 @@ void AVBSPInfo::FindEntitiesInCluster(const int clusterIndex, TSet<ABaseEntity*>
 	for (TActorIterator<ABaseEntity> it(GetWorld()); it; ++it)
 	{
 		ABaseEntity* entity = *it;
-		if (FindCluster(entity->GetRootComponent()->GetComponentLocation()) == clusterIndex)
+		if (FindCluster(FVector3f(entity->GetRootComponent()->GetComponentLocation())) == clusterIndex)
 		{
 			out.Add(entity);
 		}
@@ -76,7 +76,7 @@ void AVBSPInfo::FindEntitiesInClusters(const TSet<int>& clusterIndices, TSet<ABa
 	for (TActorIterator<ABaseEntity> it(GetWorld()); it; ++it)
 	{
 		ABaseEntity* entity = *it;
-		if (clusterIndices.Contains(FindCluster(entity->GetRootComponent()->GetComponentLocation())))
+		if (clusterIndices.Contains(FindCluster(FVector3f(entity->GetRootComponent()->GetComponentLocation()))))
 		{
 			out.Add(entity);
 		}

@@ -22,8 +22,8 @@ public:
 	Vector32(float X, float Y, float Z);
 
 	// assignment
-	Vector32& operator=(const FVector& vOther);
-	operator FVector () const;
+	Vector32& operator=(const FVector3f& vOther);
+	operator FVector3f () const;
 
 private:
 	unsigned short x : 10;
@@ -32,7 +32,7 @@ private:
 	unsigned short exp : 2;
 };
 
-inline Vector32& Vector32::operator=(const FVector& vOther)
+inline Vector32& Vector32::operator=(const FVector3f& vOther)
 {
 	static float expScale[4] = { 4.0f, 16.0f, 32.f, 64.f };
 
@@ -54,9 +54,9 @@ inline Vector32& Vector32::operator=(const FVector& vOther)
 }
 
 
-inline Vector32::operator FVector () const
+inline Vector32::operator FVector3f () const
 {
-	FVector tmp;
+	FVector3f tmp;
 
 	static float expScale[4] = { 4.0f, 16.0f, 32.f, 64.f };
 
@@ -81,8 +81,8 @@ public:
 	Normal32(float X, float Y, float Z);
 
 	// assignment
-	Normal32& operator=(const FVector& vOther);
-	operator FVector () const;
+	Normal32& operator=(const FVector3f& vOther);
+	operator FVector3f () const;
 
 private:
 	unsigned short x : 15;
@@ -91,7 +91,7 @@ private:
 };
 
 
-inline Normal32& Normal32::operator=(const FVector& vOther)
+inline Normal32& Normal32::operator=(const FVector3f& vOther)
 {
 	x = FMath::Clamp((int)(vOther.X * 16384) + 16384, 0, 32767);
 	y = FMath::Clamp((int)(vOther.Y * 16384) + 16384, 0, 32767);
@@ -103,9 +103,9 @@ inline Normal32& Normal32::operator=(const FVector& vOther)
 }
 
 
-inline Normal32::operator FVector () const
+inline Normal32::operator FVector3f () const
 {
-	FVector tmp;
+	FVector3f tmp;
 
 	tmp.X = ((int)x - 16384) * (1 / 16384.0);
 	tmp.Y = ((int)y - 16384) * (1 / 16384.0);
@@ -130,8 +130,8 @@ public:
 
 	// assignment
 	// Quaternion& operator=(const Quaternion64 &vOther);
-	Quaternion64& operator=(const FQuat& vOther);
-	operator FQuat () const;
+	Quaternion64& operator=(const FQuat4f& vOther);
+	operator FQuat4f () const;
 private:
 	uint64 x : 21;
 	uint64 y : 21;
@@ -140,9 +140,9 @@ private:
 };
 
 
-inline Quaternion64::operator FQuat () const
+inline Quaternion64::operator FQuat4f () const
 {
-	FQuat tmp;
+	FQuat4f tmp;
 
 	// shift to -1048576, + 1048575, then round down slightly to -1.0 < x < 1.0
 	tmp.X = ((int)x - 1048576) * (1 / 1048576.5f);
@@ -155,7 +155,7 @@ inline Quaternion64::operator FQuat () const
 	return tmp;
 }
 
-inline Quaternion64& Quaternion64::operator=(const FQuat& vOther)
+inline Quaternion64& Quaternion64::operator=(const FQuat4f& vOther)
 {
 	x = FMath::Clamp((int)(vOther.X * 1048576) + 1048576, 0, 2097151);
 	y = FMath::Clamp((int)(vOther.Y * 1048576) + 1048576, 0, 2097151);
@@ -177,8 +177,8 @@ public:
 
 	// assignment
 	// Quaternion& operator=(const Quaternion48 &vOther);
-	Quaternion48& operator=(const FQuat& vOther);
-	operator FQuat () const;
+	Quaternion48& operator=(const FQuat4f& vOther);
+	operator FQuat4f () const;
 private:
 	unsigned short x : 16;
 	unsigned short y : 16;
@@ -187,9 +187,9 @@ private:
 };
 
 
-inline Quaternion48::operator FQuat () const
+inline Quaternion48::operator FQuat4f () const
 {
-	FQuat tmp;
+	FQuat4f tmp;
 
 	tmp.X = ((int)x - 32768) * (1 / 32768.0);
 	tmp.Y = ((int)y - 32768) * (1 / 32768.0);
@@ -201,7 +201,7 @@ inline Quaternion48::operator FQuat () const
 	return tmp;
 }
 
-inline Quaternion48& Quaternion48::operator=(const FQuat& vOther)
+inline Quaternion48& Quaternion48::operator=(const FQuat4f& vOther)
 {
 	x = FMath::Clamp((int)(vOther.X * 32768) + 32768, 0, 65535);
 	y = FMath::Clamp((int)(vOther.Y * 32768) + 32768, 0, 65535);
@@ -223,8 +223,8 @@ public:
 
 	// assignment
 	// Quaternion& operator=(const Quaternion48 &vOther);
-	Quaternion32& operator=(const FQuat& vOther);
-	operator FQuat () const;
+	Quaternion32& operator=(const FQuat4f& vOther);
+	operator FQuat4f () const;
 private:
 	unsigned int x : 11;
 	unsigned int y : 10;
@@ -233,9 +233,9 @@ private:
 };
 
 
-inline Quaternion32::operator FQuat () const
+inline Quaternion32::operator FQuat4f () const
 {
-	FQuat tmp;
+	FQuat4f tmp;
 
 	tmp.X = ((int)x - 1024) * (1 / 1024.0);
 	tmp.Y = ((int)y - 512) * (1 / 512.0);
@@ -247,7 +247,7 @@ inline Quaternion32::operator FQuat () const
 	return tmp;
 }
 
-inline Quaternion32& Quaternion32::operator=(const FQuat& vOther)
+inline Quaternion32& Quaternion32::operator=(const FQuat4f& vOther)
 {
 	x = FMath::Clamp((int)(vOther.X * 1024) + 1024, 0, 2047);
 	y = FMath::Clamp((int)(vOther.Y * 512) + 512, 0, 1023);
@@ -495,8 +495,8 @@ public:
 	Vector48(float X, float Y, float Z) { x.SetFloat(X); y.SetFloat(Y); z.SetFloat(Z); }
 
 	// assignment
-	Vector48& operator=(const FVector& vOther);
-	operator FVector () const;
+	Vector48& operator=(const FVector3f& vOther);
+	operator FVector3f () const;
 
 	const float operator[](int i) const { return (((float16*)this)[i]).GetFloat(); }
 
@@ -505,7 +505,7 @@ public:
 	float16 z;
 };
 
-inline Vector48& Vector48::operator=(const FVector& vOther)
+inline Vector48& Vector48::operator=(const FVector3f& vOther)
 {
 	x.SetFloat(vOther.X);
 	y.SetFloat(vOther.Y);
@@ -514,9 +514,9 @@ inline Vector48& Vector48::operator=(const FVector& vOther)
 }
 
 
-inline Vector48::operator FVector () const
+inline Vector48::operator FVector3f () const
 {
-	FVector tmp;
+	FVector3f tmp;
 
 	tmp.X = x.GetFloat();
 	tmp.Y = y.GetFloat();
@@ -537,10 +537,10 @@ public:
 	Vector2d32(float X, float Y) { x.SetFloat(X); y.SetFloat(Y); }
 
 	// assignment
-	Vector2d32& operator=(const FVector& vOther);
-	Vector2d32& operator=(const FVector2D& vOther);
+	Vector2d32& operator=(const FVector3f& vOther);
+	Vector2d32& operator=(const FVector2f& vOther);
 
-	operator FVector2D ();
+	operator FVector2f ();
 
 	void Init(float ix = 0.f, float iy = 0.f);
 
@@ -548,16 +548,16 @@ public:
 	float16_with_assign y;
 };
 
-inline Vector2d32& Vector2d32::operator=(const FVector2D& vOther)
+inline Vector2d32& Vector2d32::operator=(const FVector2f& vOther)
 {
 	x.SetFloat(vOther.X);
 	y.SetFloat(vOther.Y);
 	return *this;
 }
 
-inline Vector2d32::operator FVector2D ()
+inline Vector2d32::operator FVector2f ()
 {
-	FVector2D tmp;
+	FVector2f tmp;
 
 	tmp.X = x.GetFloat();
 	tmp.Y = y.GetFloat();

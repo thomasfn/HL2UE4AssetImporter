@@ -1,9 +1,9 @@
 #include "SkeletonUtils.h"
 
 // Get transform of bone relative to the skeleton (e.g. component space), rather than relative to the parent bone
-FTransform FSkeletonUtils::GetBoneComponentTransform(const FReferenceSkeleton& skeleton, int boneIndex)
+FTransform3f FSkeletonUtils::GetBoneComponentTransform(const FReferenceSkeleton& skeleton, int boneIndex)
 {
-	const FTransform& boneRelTransform = skeleton.GetRefBonePose()[boneIndex];
+	const FTransform3f boneRelTransform(skeleton.GetRefBonePose()[boneIndex]);
 	const int parentBoneIndex = skeleton.GetParentIndex(boneIndex);
 	if (!skeleton.IsValidIndex(parentBoneIndex))
 	{
@@ -15,65 +15,65 @@ FTransform FSkeletonUtils::GetBoneComponentTransform(const FReferenceSkeleton& s
 	}
 }
 
-TArray<FTransform> FSkeletonUtils::GetSkeletonComponentTransforms(const FReferenceSkeleton& skeleton)
+TArray<FTransform3f> FSkeletonUtils::GetSkeletonComponentTransforms(const FReferenceSkeleton& skeleton)
 {
-	TArray<FTransform> result;
+	TArray<FTransform3f> result;
 	result.AddUninitialized(skeleton.GetRawBoneNum());
 	for (int i = 0; i < skeleton.GetRawBoneNum(); ++i)
 	{
 		const int parentBoneIndex = skeleton.GetParentIndex(i);
 		check(parentBoneIndex < i);
-		const FTransform& parentComponentTransform = skeleton.IsValidIndex(parentBoneIndex) ? result[parentBoneIndex] : FTransform::Identity;
-		const FTransform& childLocalTransform = skeleton.GetRefBonePose()[i];
+		const FTransform3f& parentComponentTransform = skeleton.IsValidIndex(parentBoneIndex) ? result[parentBoneIndex] : FTransform3f::Identity;
+		const FTransform3f childLocalTransform(skeleton.GetRefBonePose()[i]);
 		result[i] = childLocalTransform * parentComponentTransform;
 	}
 	return result;
 }
 
 // Set transform of bone relative to the skeleton (e.g. component space), rather than relative to the parent bone
-void FSkeletonUtils::SetBoneComponentTransform(FReferenceSkeletonModifier& skeletonModifier, int boneIndex, const FTransform& transform)
+void FSkeletonUtils::SetBoneComponentTransform(FReferenceSkeletonModifier& skeletonModifier, int boneIndex, const FTransform3f& transform)
 {
 	const FReferenceSkeleton& skeleton = skeletonModifier.GetReferenceSkeleton();
 	const int parentBoneIndex = skeleton.GetParentIndex(boneIndex);
 	if (!skeleton.IsValidIndex(parentBoneIndex))
 	{
-		skeletonModifier.UpdateRefPoseTransform(boneIndex, transform);
+		skeletonModifier.UpdateRefPoseTransform(boneIndex, FTransform(transform));
 	}
 	else
 	{
-		const FTransform& parentBoneComponentTransform = GetBoneComponentTransform(skeleton, parentBoneIndex);
-		return skeletonModifier.UpdateRefPoseTransform(boneIndex, transform.GetRelativeTransform(parentBoneComponentTransform));
+		const FTransform3f& parentBoneComponentTransform = GetBoneComponentTransform(skeleton, parentBoneIndex);
+		return skeletonModifier.UpdateRefPoseTransform(boneIndex, FTransform(transform.GetRelativeTransform(parentBoneComponentTransform)));
 	}
 }
 
-void FSkeletonUtils::SetBoneComponentTransform(FReferenceSkeleton& skeleton, int boneIndex, const FTransform& transform)
+void FSkeletonUtils::SetBoneComponentTransform(FReferenceSkeleton& skeleton, int boneIndex, const FTransform3f& transform)
 {
 	FReferenceSkeletonModifier modifier(skeleton, nullptr);
 	SetBoneComponentTransform(modifier, boneIndex, transform);
 }
 
-void FSkeletonUtils::SetBoneComponentTransforms(FReferenceSkeletonModifier& skeletonModifier, const TArray<FTransform>& transforms)
+void FSkeletonUtils::SetBoneComponentTransforms(FReferenceSkeletonModifier& skeletonModifier, const TArray<FTransform3f>& transforms)
 {
 	const FReferenceSkeleton& skeleton = skeletonModifier.GetReferenceSkeleton();
 	for (int i = 0; i < transforms.Num(); ++i)
 	{
 		const int parentBoneIndex = skeleton.GetParentIndex(i);
 		check(parentBoneIndex < i);
-		const FTransform& parentComponentTransform = skeleton.IsValidIndex(parentBoneIndex) ? transforms[parentBoneIndex] : FTransform::Identity;
-		const FTransform& childLocalTransform = transforms[i].GetRelativeTransform(parentComponentTransform);
-		skeletonModifier.UpdateRefPoseTransform(i, childLocalTransform);
+		const FTransform3f& parentComponentTransform = skeleton.IsValidIndex(parentBoneIndex) ? transforms[parentBoneIndex] : FTransform3f::Identity;
+		const FTransform3f& childLocalTransform = transforms[i].GetRelativeTransform(parentComponentTransform);
+		skeletonModifier.UpdateRefPoseTransform(i, FTransform(childLocalTransform));
 	}
 }
 
-void FSkeletonUtils::SetBoneComponentTransforms(FReferenceSkeleton& skeleton, const TArray<FTransform>& transforms)
+void FSkeletonUtils::SetBoneComponentTransforms(FReferenceSkeleton& skeleton, const TArray<FTransform3f>& transforms)
 {
 	FReferenceSkeletonModifier modifier(skeleton, nullptr);
 	SetBoneComponentTransforms(modifier, transforms);
 }
 
-FTransform FSkeletonUtils::GetTrackBoneLocalTransform(const FRawAnimSequenceTrack& track, int frameIndex)
+FTransform3f FSkeletonUtils::GetTrackBoneLocalTransform(const FRawAnimSequenceTrack& track, int frameIndex)
 {
-	FTransform localBonePose = FTransform::Identity;
+	FTransform3f localBonePose = FTransform3f::Identity;
 	if (track.PosKeys.Num() > 0)
 	{
 		localBonePose.SetTranslation(track.PosKeys[frameIndex >= track.PosKeys.Num() ? track.PosKeys.Num() - 1 : frameIndex]);
@@ -89,65 +89,65 @@ FTransform FSkeletonUtils::GetTrackBoneLocalTransform(const FRawAnimSequenceTrac
 	return localBonePose;
 }
 
-void FSkeletonUtils::SetTrackBoneLocalTransform(FRawAnimSequenceTrack& track, int frameIndex, const FTransform& transform)
+void FSkeletonUtils::SetTrackBoneLocalTransform(FRawAnimSequenceTrack& track, int frameIndex, const FTransform3f& transform)
 {
-	const FTransform old = GetTrackBoneLocalTransform(track, frameIndex);
-	const FVector oldPos = old.GetLocation();
-	const FQuat oldRot = old.GetRotation();
-	const FVector oldScale = old.GetScale3D();
-	const FVector newPos = transform.GetLocation();
-	const FQuat newRot = transform.GetRotation();
-	const FVector newScale = transform.GetScale3D();
+	const FTransform3f old = GetTrackBoneLocalTransform(track, frameIndex);
+	const FVector3f oldPos = old.GetLocation();
+	const FQuat4f oldRot = old.GetRotation();
+	const FVector3f oldScale = old.GetScale3D();
+	const FVector3f newPos = transform.GetLocation();
+	const FQuat4f newRot = transform.GetRotation();
+	const FVector3f newScale = transform.GetScale3D();
 	if (!oldPos.Equals(newPos) || track.PosKeys.Num() == 0)
 	{
-		if (track.PosKeys.Num() == 0) { track.PosKeys.Add(FVector::ZeroVector); }
+		if (track.PosKeys.Num() == 0) { track.PosKeys.Add(FVector3f::ZeroVector); }
 		while (track.PosKeys.Num() <= frameIndex)
 		{
-			const FVector last = track.PosKeys.Last();
+			const FVector3f last = track.PosKeys.Last();
 			track.PosKeys.Add(last);
 		}
 		track.PosKeys[frameIndex] = newPos;
 	}
 	if (!oldRot.Equals(newRot) || track.RotKeys.Num() == 0)
 	{
-		if (track.RotKeys.Num() == 0) { track.RotKeys.Add(FQuat::Identity); }
+		if (track.RotKeys.Num() == 0) { track.RotKeys.Add(FQuat4f::Identity); }
 		while (track.RotKeys.Num() <= frameIndex)
 		{
-			const FQuat last = track.RotKeys.Last();
+			const FQuat4f last = track.RotKeys.Last();
 			track.RotKeys.Add(last);
 		}
 		track.RotKeys[frameIndex] = newRot;
 	}
 	if (!oldScale.Equals(newScale))
 	{
-		if (track.ScaleKeys.Num() == 0) { track.ScaleKeys.Add(FVector::OneVector); }
+		if (track.ScaleKeys.Num() == 0) { track.ScaleKeys.Add(FVector3f::OneVector); }
 		while (track.ScaleKeys.Num() <= frameIndex)
 		{
-			const FVector last = track.ScaleKeys.Last();
+			const FVector3f last = track.ScaleKeys.Last();
 			track.ScaleKeys.Add(last);
 		}
 		track.ScaleKeys[frameIndex] = newScale;
 	}
 }
 
-FTransform FSkeletonUtils::GetBoneComponentTransform(const FReferenceSkeleton& skeleton, int boneIndex, const TMap<uint8, FRawAnimSequenceTrack>& trackMap, int frameIndex)
+FTransform3f FSkeletonUtils::GetBoneComponentTransform(const FReferenceSkeleton& skeleton, int boneIndex, const TMap<uint8, FRawAnimSequenceTrack>& trackMap, int frameIndex)
 {
 	const int parentBoneIndex = skeleton.GetParentIndex(boneIndex);
-	const FTransform& parentBoneComponentTransform = skeleton.IsValidIndex(parentBoneIndex) ? GetBoneComponentTransform(skeleton, parentBoneIndex, trackMap, frameIndex) : FTransform::Identity;
+	const FTransform3f& parentBoneComponentTransform = skeleton.IsValidIndex(parentBoneIndex) ? GetBoneComponentTransform(skeleton, parentBoneIndex, trackMap, frameIndex) : FTransform3f::Identity;
 	const FRawAnimSequenceTrack* trackPtr = trackMap.Find((uint8)boneIndex);
-	const FTransform boneLocalTransform = trackPtr != nullptr ? GetTrackBoneLocalTransform(*trackPtr, frameIndex) : skeleton.GetRefBonePose()[boneIndex];
+	const FTransform3f boneLocalTransform = trackPtr != nullptr ? GetTrackBoneLocalTransform(*trackPtr, frameIndex) : FTransform3f(skeleton.GetRefBonePose()[boneIndex]);
 	return boneLocalTransform * parentBoneComponentTransform;
 }
 
-FTransform FSkeletonUtils::TransformBoneComponentTransform(const FTransform& boneComponentTransform, const FSourceCoord& transform)
+FTransform3f FSkeletonUtils::TransformBoneComponentTransform(const FTransform3f& boneComponentTransform, const FSourceCoord& transform)
 {
 	return transform.Transform(boneComponentTransform);
 }
 
 FReferenceSkeleton FSkeletonUtils::TransformSkeleton(const FReferenceSkeleton& skeleton, const FSourceCoord& transform)
 {
-	TArray<FTransform> componentTransforms = GetSkeletonComponentTransforms(skeleton);
-	TArray<FTransform> transformedComponentTransforms;
+	TArray<FTransform3f> componentTransforms = GetSkeletonComponentTransforms(skeleton);
+	TArray<FTransform3f> transformedComponentTransforms;
 	transformedComponentTransforms.AddUninitialized(componentTransforms.Num());
 	for (int i = 0; i < skeleton.GetRawBoneNum(); ++i)
 	{
@@ -163,7 +163,7 @@ void FSkeletonUtils::MergeAnimTracks(FReferenceSkeleton& skeleton, const TMap<ui
 	FReferenceSkeletonModifier modifier(skeleton, nullptr);
 	for (const TPair<uint8, FRawAnimSequenceTrack>& pair : trackMap)
 	{
-		modifier.UpdateRefPoseTransform(pair.Key, GetTrackBoneLocalTransform(pair.Value, frameIndex));
+		modifier.UpdateRefPoseTransform(pair.Key, FTransform(GetTrackBoneLocalTransform(pair.Value, frameIndex)));
 	}
 }
 
@@ -171,6 +171,6 @@ void FSkeletonUtils::ExtractAnimTracks(const FReferenceSkeleton& skeleton, TMap<
 {
 	for (TPair<uint8, FRawAnimSequenceTrack>& pair : trackMap)
 	{
-		SetTrackBoneLocalTransform(pair.Value, frameIndex, skeleton.GetRefBonePose()[pair.Key]);
+		SetTrackBoneLocalTransform(pair.Value, frameIndex, FTransform3f(skeleton.GetRefBonePose()[pair.Key]));
 	}
 }

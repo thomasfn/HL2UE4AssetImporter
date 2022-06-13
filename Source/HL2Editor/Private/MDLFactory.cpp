@@ -20,8 +20,11 @@
 #include "SkeletonUtils.h"
 #include "IMeshBuilderModule.h"
 #include "Engine/SkeletalMeshSocket.h"
+#include "IHL2Editor.h"
 
 DEFINE_LOG_CATEGORY(LogMDLFactory);
+
+#define LOCTEXT_NAMESPACE "HL2Importer"
 
 UMDLFactory::UMDLFactory()
 {
@@ -101,13 +104,13 @@ UObject* UMDLFactory::FactoryCreateFile(
 
 	if (result.StaticMesh != nullptr)
 	{
-		result.StaticMesh->AssetImportData->Update(CurrentFilename, FileHash.IsValid() ? &FileHash : nullptr);
+		result.StaticMesh->GetAssetImportData()->Update(CurrentFilename, FileHash.IsValid() ? &FileHash : nullptr);
 		GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, result.StaticMesh);
 		result.StaticMesh->PostEditChange();
 	}
 	if (result.SkeletalMesh != nullptr)
 	{
-		result.SkeletalMesh->AssetImportData->Update(CurrentFilename, FileHash.IsValid() ? &FileHash : nullptr);
+		result.SkeletalMesh->GetAssetImportData()->Update(CurrentFilename, FileHash.IsValid() ? &FileHash : nullptr);
 		GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, result.SkeletalMesh);
 		result.SkeletalMesh->PostEditChange();
 	}
@@ -201,7 +204,7 @@ UAnimSequence* UMDLFactory::CreateAnimSequence(UObject* InParent, FName Name, EO
 	{
 		newAnimSequence = CastChecked<UAnimSequence>(newObject);
 	}
-	newAnimSequence->CleanAnimSequenceForImport();
+	newAnimSequence->GetController().ResetModel();
 	return newAnimSequence;
 }
 
@@ -323,27 +326,27 @@ FImportedMDL UMDLFactory::ImportStudioModel(UClass* inClass, UObject* inParent, 
 	FString skeletonPackagePath = inParent->GetPathName();
 	skeletonPackagePath.Append(TEXT("_skeleton"));
 	const FName skeletonPackageName(*(FPaths::GetBaseFilename(skeletonPackagePath)));
-	UPackage* skeletonPackage = CreatePackage(nullptr, *skeletonPackagePath);
+	UPackage* skeletonPackage = CreatePackage(*skeletonPackagePath);
 	FString physAssetPackagePath = inParent->GetPathName();
 	physAssetPackagePath.Append(TEXT("_physics"));
 	const FName physAssetPackageName(*(FPaths::GetBaseFilename(physAssetPackagePath)));
-	UPackage* physAssetPackage = phyHeader != nullptr ? CreatePackage(nullptr, *physAssetPackagePath) : nullptr;
+	UPackage* physAssetPackage = phyHeader != nullptr ? CreatePackage(*physAssetPackagePath) : nullptr;
 	result.SkeletalMesh = ImportSkeletalMesh(inParent, inName, skeletonPackage, skeletonPackageName, physAssetPackage, physAssetPackageName, flags, header, vtxHeader, vvdHeader, phyHeader, warn);
 	if (result.SkeletalMesh == nullptr)
 	{
 		warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Failed to import skeletal mesh"));
-		skeletonPackage->MarkPendingKill();
+		skeletonPackage->MarkAsGarbage();
 		return result;
 	}
 	result.SkeletalMesh->InvalidateDeriveDataCacheGUID();
 	result.SkeletalMesh->PostEditChange();
 	FAssetRegistryModule::AssetCreated(result.SkeletalMesh);
 	result.SkeletalMesh->MarkPackageDirty();
-	result.Skeleton = result.SkeletalMesh->Skeleton;
+	result.Skeleton = result.SkeletalMesh->GetSkeleton();
 	result.Skeleton->PostEditChange();
 	FAssetRegistryModule::AssetCreated(result.Skeleton);
 	result.Skeleton->MarkPackageDirty();
-	result.PhysicsAsset = result.SkeletalMesh->PhysicsAsset;
+	result.PhysicsAsset = result.SkeletalMesh->GetPhysicsAsset();
 	if (result.PhysicsAsset != nullptr)
 	{
 		result.PhysicsAsset->PostEditChange();
@@ -482,14 +485,14 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	struct LocalMeshData
 	{
 		FMeshDescription meshDescription;
-		TMap<FVector, FVertexID> vertexMap;
+		TMap<FVector3f, FVertexID> vertexMap;
 		TMap<uint16, FVertexInstanceID> vertexInstanceMap;
 
 		TPolygonGroupAttributesRef<FName> polyGroupMaterial;
-		TVertexAttributesRef<FVector> vertPos;
-		TVertexInstanceAttributesRef<FVector> vertInstNormal;
-		TVertexInstanceAttributesRef<FVector> vertInstTangent;
-		TVertexInstanceAttributesRef<FVector2D> vertInstUV0;
+		TVertexAttributesRef<FVector3f> vertPos;
+		TVertexInstanceAttributesRef<FVector3f> vertInstNormal;
+		TVertexInstanceAttributesRef<FVector3f> vertInstTangent;
+		TVertexInstanceAttributesRef<FVector2f> vertInstUV0;
 
 		LocalMeshData()
 		{
@@ -566,7 +569,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 
 				// Iterate all vertices in the vvd for this lod and insert them
 				TArray<Valve::VVD::mstudiovertex_t> vvdVertices;
-				TArray<FVector4> vvdTangents;
+				TArray<FVector4f> vvdTangents;
 				{
 					const uint16 vertCount = (uint16)vvdHeader.numLODVertexes[0];
 					vvdVertices.Reserve(vertCount);
@@ -575,7 +578,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 					if (vvdHeader.numFixups > 0)
 					{
 						TArray<Valve::VVD::mstudiovertex_t> fixupVertices;
-						TArray<FVector4> fixupTangents;
+						TArray<FVector4f> fixupTangents;
 						TArray<Valve::VVD::vertexFileFixup_t> fixups;
 						vvdHeader.GetFixups(fixups);
 						for (const Valve::VVD::vertexFileFixup_t& fixup : fixups)
@@ -585,7 +588,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 								for (int i = 0; i < fixup.numVertexes; ++i)
 								{
 									Valve::VVD::mstudiovertex_t vertex;
-									FVector4 tangent;
+									FVector4f tangent;
 									vvdHeader.GetVertex(fixup.sourceVertexID + i, vertex, tangent);
 									vvdVertices.Add(vertex);
 									vvdTangents.Add(tangent);
@@ -598,7 +601,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 						for (uint16 i = 0; i < vertCount; ++i)
 						{
 							Valve::VVD::mstudiovertex_t vertex;
-							FVector4 tangent;
+							FVector4f tangent;
 							vvdHeader.GetVertex(i, vertex, tangent);
 							vvdVertices.Add(vertex);
 							vvdTangents.Add(tangent);
@@ -609,7 +612,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 					/*for (uint16 i = 0; i < vertCount; ++i)
 					{
 						const Valve::VVD::mstudiovertex_t& vertex = vertices[i];
-						const FVector4& tangent = tangents[i];
+						const FVector4f& tangent = tangents[i];
 						FVertexID vertID;
 						if (localMeshData.vertexMap.Contains(vertex.m_vecPosition))
 						{
@@ -623,7 +626,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 						}
 						FVertexInstanceID vertInstID = localMeshData.meshDescription.CreateVertexInstance(vertID);
 						localMeshData.vertInstNormal[vertInstID] = vertex.m_vecNormal;
-						localMeshData.vertInstTangent[vertInstID] = FVector(tangent.X, tangent.Y, tangent.Z);
+						localMeshData.vertInstTangent[vertInstID] = FVector3f(tangent.X, tangent.Y, tangent.Z);
 						localMeshData.vertInstUV0[vertInstID] = vertex.m_vecTexCoord;
 						localMeshData.vertexInstanceMap.Add(i, vertInstID);
 					}*/
@@ -726,14 +729,14 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 								for (int j = 0; j < 3; ++j)
 								{
 									const Valve::VVD::mstudiovertex_t& vvdVertex = vvdVertices[baseIdxs[j]];
-									const FVector4& vvdTangent = vvdTangents[baseIdxs[j]];
+									const FVector4f& vvdTangent = vvdTangents[baseIdxs[j]];
 
 									FVertexID vertID = localMeshData.meshDescription.CreateVertex();
 									localMeshData.vertPos[vertID] = StudioMdlToUnreal.Position(vvdVertex.m_vecPosition);
 
 									FVertexInstanceID vertInstID = localMeshData.meshDescription.CreateVertexInstance(vertID);
 									localMeshData.vertInstNormal[vertInstID] = StudioMdlToUnreal.Direction(vvdVertex.m_vecNormal);
-									localMeshData.vertInstTangent[vertInstID] = StudioMdlToUnreal.Direction(FVector(vvdTangent.X, vvdTangent.Y, vvdTangent.Z));
+									localMeshData.vertInstTangent[vertInstID] = StudioMdlToUnreal.Direction(FVector3f(vvdTangent.X, vvdTangent.Y, vvdTangent.Z));
 									localMeshData.vertInstUV0[vertInstID] = vvdVertex.m_vecTexCoord;
 
 									tmpVertInstIDs.Add(vertInstID);
@@ -767,18 +770,27 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 	// Construct static mesh
 	UStaticMesh* staticMesh = CreateStaticMesh(inParent, inName, flags);
 	if (staticMesh == nullptr) { return nullptr; }
-	staticMesh->LightMapResolution = 64;
+	staticMesh->SetLightMapResolution(64);
 
 	// Create model data
-	UHL2ModelData* modelData = NewObject<UHL2ModelData>(staticMesh);
-	modelData->Bodygroups = bodygroups;
-	staticMesh->AddAssetUserData(modelData);
-
+	UHL2ModelData* modelData;
+	if (!IHL2Editor::Get().GetConfig().Model.Portable)
+	{
+		modelData = NewObject<UHL2ModelData>(staticMesh);
+		modelData->Bodygroups = bodygroups;
+		staticMesh->AddAssetUserData(modelData);
+	}
+	else
+	{
+		modelData = nullptr;
+	}
+	
 	constexpr bool debugPhysics = false; // if true, the physics mesh is rendered instead
 
 	// Write all lods to the static mesh
 	if (!debugPhysics || phyHeader == nullptr)
 	{
+		TArray<FStaticMaterial> staticMaterials;
 		for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
 		{
 			const LocalSectionData& localSectionData = localSectionDatas[sectionIdx];
@@ -787,8 +799,9 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			material.ImportedMaterialSlotName = localSectionData.sectionName;
 			material.MaterialSlotName = localSectionData.sectionName;
 			material.MaterialInterface = IHL2Runtime::Get().TryResolveHL2Material(materialName.ToString());
-			staticMesh->StaticMaterials.Add(material);
+			staticMaterials.Add(material);
 		}
+		staticMesh->SetStaticMaterials(staticMaterials);
 		for (int lodIndex = 0; lodIndex < vtxHeader.numLODs; ++lodIndex)
 		{
 			// Setup source model
@@ -810,7 +823,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 
 			// Generate lightmap coords
 			{
-				localMeshDescription.VertexInstanceAttributes().SetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate, 2);
+				localMeshDescription.VertexInstanceAttributes().SetAttributeChannelCount(MeshAttribute::VertexInstance::TextureCoordinate, 2);
 				FOverlappingCorners overlappingCorners;
 				FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, localMeshDescription, 0.00001f);
 				FStaticMeshOperations::CreateLightMapUVLayout(localMeshDescription, settings.SrcLightmapIndex, settings.DstLightmapIndex, settings.MinLightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
@@ -885,11 +898,11 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 							const FVertexID v1 = vertIDs[i1];
 							const FVertexID v2 = vertIDs[i2];
 							const FVertexInstanceID vi0 = debugPhysMeshData.meshDescription.CreateVertexInstance(v0);
-							debugPhysMeshData.vertInstUV0[vi0] = FVector2D();
+							debugPhysMeshData.vertInstUV0[vi0] = FVector2f();
 							const FVertexInstanceID vi1 = debugPhysMeshData.meshDescription.CreateVertexInstance(v1);
-							debugPhysMeshData.vertInstUV0[vi1] = FVector2D();
+							debugPhysMeshData.vertInstUV0[vi1] = FVector2f();
 							const FVertexInstanceID vi2 = debugPhysMeshData.meshDescription.CreateVertexInstance(v2);
-							debugPhysMeshData.vertInstUV0[vi2] = FVector2D();
+							debugPhysMeshData.vertInstUV0[vi2] = FVector2f();
 
 							verts.Empty(3);
 							verts.Add(vi0);
@@ -902,7 +915,7 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 					else
 					{
 						// Create primitive
-						FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, staticMesh->BodySetup);
+						FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, staticMesh->GetBodySetup());
 					}
 				}
 			}
@@ -920,19 +933,22 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			FMeshUtils::Clean(debugPhysMeshData.meshDescription);
 			*meshDescription = debugPhysMeshData.meshDescription;
 			staticMesh->CommitMeshDescription(0);
+			TArray<FStaticMaterial> staticMaterials;
 			for (int i = 0; i < phyHeader->solidCount; ++i)
 			{
 				FName material(*FString::Printf(TEXT("Solid%d"), i));
-				const int32 meshSlot = staticMesh->StaticMaterials.Emplace(nullptr, material, material);
+				const int32 meshSlot = staticMaterials.Emplace(nullptr, material, material);
 				staticMesh->GetSectionInfoMap().Set(0, meshSlot, FMeshSectionInfo(meshSlot));
 			}
+			staticMesh->SetStaticMaterials(staticMaterials);
 		}
 	}
 
-	staticMesh->LightMapCoordinateIndex = 1;
+	staticMesh->SetLightMapCoordinateIndex(1);
 	staticMesh->Build();
 
 	// Resolve skins
+	if (modelData != nullptr)
 	{
 		TArray<TArray<int>> rawSkinFamilies;
 		ReadSkins(header, rawSkinFamilies);
@@ -961,8 +977,11 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			modelData->Skins.Add(skinMapping);
 		}
 	}
-	modelData->PostEditChange();
-	modelData->MarkPackageDirty();
+	if (modelData != nullptr)
+	{
+		modelData->PostEditChange();
+		modelData->MarkPackageDirty();
+	}
 
 	return staticMesh;
 }
@@ -1010,11 +1029,19 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 	// Create skeletal mesh
 	USkeletalMesh* skeletalMesh = CreateSkeletalMesh(inParent, inName, flags);
-	skeletalMesh->Skeleton = skeleton;
+	skeletalMesh->SetSkeleton(skeleton);
 
 	// Create model data
-	UHL2ModelData* modelData = NewObject<UHL2ModelData>(skeletalMesh);
-	skeletalMesh->AddAssetUserData(modelData);
+	UHL2ModelData* modelData;
+	if (!IHL2Editor::Get().GetConfig().Model.Portable)
+	{
+		modelData = NewObject<UHL2ModelData>(skeletalMesh);
+		skeletalMesh->AddAssetUserData(modelData);
+	}
+	else
+	{
+		modelData = nullptr;
+	}
 
 	// Load bones into skeleton
 	FReferenceSkeleton refSkelSource;
@@ -1025,8 +1052,25 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		{
 			FMeshBoneInfo meshBoneInfo;
 			meshBoneInfo.ParentIndex = -1;
-			meshBoneInfo.ExportName = TEXT("GENERATED_ROOT");
-			meshBoneInfo.Name = FName(TEXT("root"));
+			meshBoneInfo.ExportName = TEXT("root");
+			bool isDuplicateName;
+			do
+			{
+				isDuplicateName = false;
+				for (const Valve::MDL::mstudiobone_t* bone : bones)
+				{
+					if (bone->GetName().Equals(meshBoneInfo.ExportName, ESearchCase::IgnoreCase))
+					{
+						isDuplicateName = true;
+						break;
+					}
+				}
+				if (isDuplicateName)
+				{
+					meshBoneInfo.ExportName = TEXT("actual_") + meshBoneInfo.ExportName;
+				}
+			} while (isDuplicateName);
+			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
 			refSkelSourceMod.Add(meshBoneInfo, FTransform::Identity);
 		}
 		for (int i = 0; i < bones.Num(); ++i)
@@ -1044,14 +1088,14 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			meshBoneInfo.ExportName = bone.GetName();
 			meshBoneInfo.Name = FName(*meshBoneInfo.ExportName);
 
-			FTransform bonePose;
-			bonePose.SetLocation(FVector(bone.pos[0], bone.pos[1], bone.pos[2]));
-			bonePose.SetRotation(FQuat(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]).GetNormalized());
-			refSkelSourceMod.Add(meshBoneInfo, bonePose);
+			FTransform3f bonePose;
+			bonePose.SetLocation(FVector3f(bone.pos[0], bone.pos[1], bone.pos[2]));
+			bonePose.SetRotation(FQuat4f(bone.quat[0], bone.quat[1], bone.quat[2], bone.quat[3]).GetNormalized());
+			refSkelSourceMod.Add(meshBoneInfo, FTransform(bonePose));
 		}
 	}
 	const FReferenceSkeleton refSkel = FSkeletonUtils::TransformSkeleton(refSkelSource, StudioMdlToUnreal);
-	skeletalMesh->RefSkeleton = refSkel;
+	skeletalMesh->SetRefSkeleton(refSkel);
 	skeleton->RecreateBoneTree(skeletalMesh);
 
 	// Prepare mesh geometry
@@ -1109,7 +1153,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 				// Iterate all vertices in the vvd for this lod and insert them
 				TArray<Valve::VVD::mstudiovertex_t> vvdVertices;
-				TArray<FVector4> vvdTangents;
+				TArray<FVector4f> vvdTangents;
 				{
 					const uint16 vertCount = (uint16)vvdHeader.numLODVertexes[0];
 					vvdVertices.Reserve(vertCount);
@@ -1118,7 +1162,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 					if (vvdHeader.numFixups > 0)
 					{
 						TArray<Valve::VVD::mstudiovertex_t> fixupVertices;
-						TArray<FVector4> fixupTangents;
+						TArray<FVector4f> fixupTangents;
 						TArray<Valve::VVD::vertexFileFixup_t> fixups;
 						vvdHeader.GetFixups(fixups);
 						for (const Valve::VVD::vertexFileFixup_t& fixup : fixups)
@@ -1128,7 +1172,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 								for (int i = 0; i < fixup.numVertexes; ++i)
 								{
 									Valve::VVD::mstudiovertex_t vertex;
-									FVector4 tangent;
+									FVector4f tangent;
 									vvdHeader.GetVertex(fixup.sourceVertexID + i, vertex, tangent);
 									vvdVertices.Add(vertex);
 									vvdTangents.Add(tangent);
@@ -1141,7 +1185,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 						for (uint16 i = 0; i < vertCount; ++i)
 						{
 							Valve::VVD::mstudiovertex_t vertex;
-							FVector4 tangent;
+							FVector4f tangent;
 							vvdHeader.GetVertex(i, vertex, tangent);
 							vvdVertices.Add(vertex);
 							vvdTangents.Add(tangent);
@@ -1261,7 +1305,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 									face.WedgeIndex[j] = importData.Wedges.Add(wedge);
 									face.TangentZ[j] = StudioMdlToUnreal.Direction(origVert.m_vecNormal.GetSafeNormal());
 									face.TangentY[j] = StudioMdlToUnreal.Direction(vvdTangents[baseIdxs[j]].GetSafeNormal());
-									face.TangentX[j] = FVector::CrossProduct(face.TangentY[j], face.TangentZ[j]);
+									face.TangentX[j] = FVector3f::CrossProduct(face.TangentY[j], face.TangentZ[j]);
 									
 									const int numBones = FMath::Min((int)origVert.m_BoneWeights.numbones, Valve::VVD::MAX_NUM_BONES_PER_VERT);
 									for (int k = 0; k < numBones; ++k)
@@ -1289,11 +1333,11 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			accumIndex += model.numvertices;
 		}
 
-		modelData->Bodygroups.Add(FName(*bodyPart.GetName()), bodygroup);
+		if (modelData != nullptr) { modelData->Bodygroups.Add(FName(*bodyPart.GetName()), bodygroup); }
 	}
 
 	// Build geometry
-	skeletalMesh->bHasVertexColors = false;
+	skeletalMesh->SetHasVertexColors(false);
 	IMeshBuilderModule& meshBuilderModule = IMeshBuilderModule::GetForRunningPlatform();
 	for (int lodIndex = 0; lodIndex < importDatas.Num(); ++lodIndex)
 	{
@@ -1309,7 +1353,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		newLODInfo.LODHysteresis = 0.02f;
 		if (lodIndex == 0)
 		{
-			skeletalMesh->SetImportedBounds(FBoxSphereBounds(&importData.Points[0], (uint32)importData.Points.Num()));
+			skeletalMesh->SetImportedBounds(FBoxSphereBounds(FBoxSphereBounds3f(&importData.Points[0], (uint32)importData.Points.Num())));
 		}
 		LODModel.NumTexCoords = 1;
 		newLODInfo.BuildSettings.bRecomputeNormals = false;
@@ -1318,7 +1362,8 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 
 		// Build
 		skeletalMesh->SaveLODImportedData(lodIndex, importData);
-		const bool buildSuccess = meshBuilderModule.BuildSkeletalMesh(skeletalMesh, lodIndex, false);
+		const FSkeletalMeshBuildParameters buildParams(skeletalMesh, nullptr, lodIndex, false);
+		const bool buildSuccess = meshBuilderModule.BuildSkeletalMesh(buildParams);
 		if (!buildSuccess)
 		{
 			warn->Logf(ELogVerbosity::Error, TEXT("ImportStudioModel: Skeletal mesh build for lod %d failed"), lodIndex);
@@ -1332,6 +1377,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	skeletalMesh->Build();
 
 	// Assign materials
+	TArray<FSkeletalMaterial> skeletalMaterials;
 	for (int sectionIdx = 0; sectionIdx < localSectionDatas.Num(); ++sectionIdx)
 	{
 		const LocalSectionData& localSectionData = localSectionDatas[sectionIdx];
@@ -1340,8 +1386,9 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		material.ImportedMaterialSlotName = localSectionData.sectionName;
 		material.MaterialSlotName = localSectionData.sectionName;
 		material.MaterialInterface = IHL2Runtime::Get().TryResolveHL2Material(materialName.ToString());
-		skeletalMesh->Materials.Add(material);
+		skeletalMaterials.Add(material);
 	}
+	skeletalMesh->SetMaterials(skeletalMaterials);
 
 	// Resolve physics
 	if (phyHeader != nullptr && inPhysAssetParent != nullptr)
@@ -1352,11 +1399,11 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 		{
 			FStaticMeshAttributes attr(debugMeshDesc);
 			attr.Register();
-			attr.RegisterPolygonNormalAndTangentAttributes();
+			attr.RegisterTriangleNormalAndTangentAttributes();
 		}
 		UPhysicsAsset* physicsAsset = ImportPhysicsAsset(inPhysAssetParent, inPhysAssetName, flags, header, phyHeader, refSkel, DEBUG_PHYSICS_MESH ? &debugMeshDesc : nullptr, warn);
-		physicsAsset->PreviewSkeletalMesh = skeletalMesh;
-		skeletalMesh->PhysicsAsset = physicsAsset;
+		physicsAsset->SetPreviewMesh(skeletalMesh);
+		skeletalMesh->SetPhysicsAsset(physicsAsset);
 		if (DEBUG_PHYSICS_MESH)
 		{
 			UStaticMesh* staticMesh = CreateStaticMesh(inParent, FName(inName.ToString() + TEXT("_DebugPhys")), flags);
@@ -1367,7 +1414,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			settings.bGenerateLightmapUVs = false;
 			settings.bRemoveDegenerates = false;
 			FMeshDescription* meshDescription = staticMesh->CreateMeshDescription(0);
-			FStaticMeshOperations::ComputePolygonTangentsAndNormals(debugMeshDesc);
+			FStaticMeshOperations::ComputeTriangleTangentsAndNormals(debugMeshDesc);
 			FStaticMeshOperations::ComputeTangentsAndNormals(debugMeshDesc, EComputeNTBsFlags::Normals | EComputeNTBsFlags::Tangents);
 			FMeshUtils::Clean(debugMeshDesc);
 			*meshDescription = debugMeshDesc;
@@ -1387,6 +1434,7 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 	}
 
 	// Resolve skins
+	if (modelData != nullptr)
 	{
 		TArray<TArray<int>> rawSkinFamilies;
 		ReadSkins(header, rawSkinFamilies);
@@ -1434,24 +1482,27 @@ USkeletalMesh* UMDLFactory::ImportSkeletalMesh
 			{
 				// TODO: Figure out how to make a world-aligned socket (does unreal even support this?)
 			}
-			const FTransform attachmentTransformSource(
-				FVector(attachment->local[0], attachment->local[4], attachment->local[8]),
-				FVector(attachment->local[1], attachment->local[5], attachment->local[9]),
-				FVector(attachment->local[2], attachment->local[6], attachment->local[10]),
-				FVector(attachment->local[3], attachment->local[7], attachment->local[11])
+			const FTransform3f attachmentTransformSource(
+				FVector3f(attachment->local[0], attachment->local[4], attachment->local[8]),
+				FVector3f(attachment->local[1], attachment->local[5], attachment->local[9]),
+				FVector3f(attachment->local[2], attachment->local[6], attachment->local[10]),
+				FVector3f(attachment->local[3], attachment->local[7], attachment->local[11])
 			);
-			const FTransform boneComponentTransformSource = FSkeletonUtils::GetBoneComponentTransform(refSkelSource, boneIndex);
-			const FTransform attachmentComponentTransform = StudioMdlToUnreal.Transform(attachmentTransformSource * boneComponentTransformSource);
-			const FTransform boneComponentTransform = FSkeletonUtils::GetBoneComponentTransform(refSkel, boneIndex);
-			const FTransform attachmentTransform = attachmentComponentTransform.GetRelativeTransform(boneComponentTransform);
-			socket->RelativeLocation = attachmentTransform.GetLocation();
-			socket->RelativeRotation = attachmentTransform.GetRotation().Rotator();
-			socket->RelativeScale = attachmentTransform.GetScale3D();
+			const FTransform3f boneComponentTransformSource = FSkeletonUtils::GetBoneComponentTransform(refSkelSource, boneIndex);
+			const FTransform3f attachmentComponentTransform = StudioMdlToUnreal.Transform(attachmentTransformSource * boneComponentTransformSource);
+			const FTransform3f boneComponentTransform = FSkeletonUtils::GetBoneComponentTransform(refSkel, boneIndex);
+			const FTransform3f attachmentTransform = attachmentComponentTransform.GetRelativeTransform(boneComponentTransform);
+			socket->RelativeLocation = FVector(attachmentTransform.GetLocation());
+			socket->RelativeRotation = FRotator(attachmentTransform.GetRotation().Rotator());
+			socket->RelativeScale = FVector(attachmentTransform.GetScale3D());
 			sockets.Add(socket);
 		}
 	}
-	modelData->PostEditChange();
-	modelData->MarkPackageDirty();
+	if (modelData != nullptr)
+	{
+		modelData->PostEditChange();
+		modelData->MarkPackageDirty();
+	}
 
 	// Done
 	return skeletalMesh;
@@ -1479,7 +1530,7 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 	// Read text section
 	UValveDocument* doc;
 	{
-		const auto rawStr = StringCast<TCHAR, ANSICHAR>((const char*)curPtr);
+		const auto rawStr = StringCast<TCHAR>((const char*)curPtr);
 		const FString textSection(rawStr.Length(), rawStr.Get());
 		doc = UValveDocument::Parse(textSection);
 		if (doc == nullptr)
@@ -1491,9 +1542,9 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 	const UValveGroupValue* root = CastChecked<UValveGroupValue>(doc->Root);
 
 	// Cache bone data
-	TArray<FTransform> boneComponentTransforms = FSkeletonUtils::GetSkeletonComponentTransforms(referenceSkeleton);
+	TArray<FTransform3f> boneComponentTransforms = FSkeletonUtils::GetSkeletonComponentTransforms(referenceSkeleton);
 	const FReferenceSkeleton referenceSkeletonSource = FSkeletonUtils::TransformSkeleton(referenceSkeleton, UnrealToStudioMdl);
-	TArray<FTransform> boneComponentSourceTransforms = FSkeletonUtils::GetSkeletonComponentTransforms(referenceSkeletonSource);
+	TArray<FTransform3f> boneComponentSourceTransforms = FSkeletonUtils::GetSkeletonComponentTransforms(referenceSkeletonSource);
 	const bool multiRoot = SkeletonHasMultipleRoots(header);
 	const int boneIndexOffset = multiRoot ? 1 : 0;
 
@@ -1572,10 +1623,10 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 				}
 
 				// Correct transform of verts (which are in bone-local space)
-				for (FVector& position : section.Vertices)
+				for (FVector3f& position : section.Vertices)
 				{
-					const FVector componentPosSource = boneComponentSourceTransforms[boneIndex].TransformPosition(position);
-					const FVector componentPos = StudioMdlToUnreal.Position(componentPosSource);
+					const FVector3f componentPosSource = boneComponentSourceTransforms[boneIndex].TransformPosition(position);
+					const FVector3f componentPos = StudioMdlToUnreal.Position(componentPosSource);
 					position = boneComponentTransforms[boneIndex].InverseTransformPosition(componentPos);
 				}
 				if (StudioMdlToUnreal.ShouldReverseWinding())
@@ -1598,7 +1649,7 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 					attr.GetPolygonGroupMaterialSlotNames()[polyGroupID] = referenceSkeleton.GetBoneName(boneIndex);
 					TArray<FVertexID> vertexIDs;
 					vertexIDs.Reserve(section.Vertices.Num());
-					for (const FVector& position : section.Vertices)
+					for (const FVector3f& position : section.Vertices)
 					{
 						const FVertexID vertexID = outDebugMesh->CreateVertex();
 						attr.GetVertexPositions()[vertexID] = boneComponentTransforms[boneIndex].TransformPosition(position);
@@ -1678,14 +1729,14 @@ UPhysicsAsset* UMDLFactory::ImportPhysicsAsset
 		UPhysicsConstraintTemplate* constraintTemplate = NewObject<UPhysicsConstraintTemplate>(physicsAsset);
 		FConstraintInstance& constraint = constraintTemplate->DefaultInstance;
 
-		const FTransform& parentComponentTransform = boneComponentTransforms[parentBones[0]];
-		const FTransform& childComponentTransform = boneComponentTransforms[childBones[0]];
+		const FTransform3f& parentComponentTransform = boneComponentTransforms[parentBones[0]];
+		const FTransform3f& childComponentTransform = boneComponentTransforms[childBones[0]];
 
 		constraint.ConstraintBone1 = referenceSkeleton.GetBoneName(parentBones[0]);
-		constraint.SetRefFrame(EConstraintFrame::Frame1, childComponentTransform.GetRelativeTransform(parentComponentTransform));
+		constraint.SetRefFrame(EConstraintFrame::Frame1, FTransform(childComponentTransform.GetRelativeTransform(parentComponentTransform)));
 
 		constraint.ConstraintBone2 = referenceSkeleton.GetBoneName(childBones[0]);
-		//constraint.SetRefFrame(EConstraintFrame::Frame2, FTransform(FQuat(FRotator((xMin + xMax) * 0.5f, (yMin + yMax) * 0.5f, (zMin + zMax) * 0.5f))));
+		//constraint.SetRefFrame(EConstraintFrame::Frame2, FTransform3f(FQuat4f(FRotator((xMin + xMax) * 0.5f, (yMin + yMax) * 0.5f, (zMin + zMax) * 0.5f))));
 
 		constraint.SetAngularTwistLimit(EAngularConstraintMotion::ACM_Limited, xMax - xMin);
 		constraint.SetAngularSwing1Limit(EAngularConstraintMotion::ACM_Limited, zMax - zMin);
@@ -1742,7 +1793,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 	const bool multiRoot = SkeletonHasMultipleRoots(bones);
 	const int boneIndexOffset = multiRoot ? 1 : 0;
 
-	const FReferenceSkeleton& refSkel = skeletalMesh->RefSkeleton;
+	const FReferenceSkeleton& refSkel = skeletalMesh->GetRefSkeleton();
 	const FReferenceSkeleton refSkelSource = FSkeletonUtils::TransformSkeleton(refSkel, UnrealToStudioMdl);
 
 	for (const Valve::MDL::mstudioanimdesc_t* animDesc : localAnims)
@@ -1750,12 +1801,12 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 		FString name = animDesc->GetName();
 		name.RemoveFromStart(TEXT("@"));
 
-		UPackage* package = CreatePackage(nullptr, *(basePath + name));
+		UPackage* package = CreatePackage(*(basePath + name));
 		UAnimSequence* sequence = CreateAnimSequence(package, FName(*FPaths::GetBaseFilename(basePath + name)), RF_Public | RF_Standalone);
-		sequence->SetSkeleton(skeletalMesh->Skeleton);
-		sequence->SetRawNumberOfFrame(animDesc->numframes);
-		sequence->SequenceLength = animDesc->numframes / (float)animDesc->fps;
-		sequence->AdditiveAnimType = EAdditiveAnimationType::AAT_None;
+		sequence->SetSkeleton(skeletalMesh->GetSkeleton());
+		IAnimationDataController& controller = sequence->GetController();
+		controller.OpenBracket(LOCTEXT("ImportFromMDL_Bracket", "Importing animation from MDL"));
+		controller.ResetModel();
 
 		if (!animDesc->HasFlag(Valve::MDL::mstudioanimdesc_flag::ALLZEROS))
 		{
@@ -1780,10 +1831,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 				else
 				{
 					check(aniHeader != nullptr);
-					const Valve::MDL::mstudioanimblock_t* block = animBlocks[animDesc->animblock];
-					// TODO: Load from ani
-					// Can we ever get here?
-					check(false);
+					for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
+					{
+						const Valve::MDL::mstudioanimsections_t* section = sections[sectionIndex];
+						const Valve::MDL::mstudioanimblock_t* block = animBlocks[section->animblock];
+						TArray<const Valve::MDL::mstudioanim_t*>& sectionAnims = allSectionAnims[sectionIndex];
+						uint8* basePtr = ((uint8*)aniHeader) + block->datastart + section->animindex;
+						ReadAnimData(basePtr, skeletalMesh, sectionAnims);
+					}
 				}
 			}
 			else
@@ -1816,7 +1871,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					const int boneIndex = anim->bone + boneIndexOffset;
 					check(bones.IsValidIndex(anim->bone));
 					const Valve::MDL::mstudiobone_t* bone = bones[anim->bone];
-					const FTransform& boneRefPose = refSkelSource.GetRefBonePose()[boneIndex];
+					const FTransform3f boneRefPose(refSkelSource.GetRefBonePose()[boneIndex]);
 					FRawAnimSequenceTrack& track = boneTrackMap.FindOrAdd(boneIndex);
 					if (track.RotKeys.Num() == 0) { track.RotKeys.Init(boneRefPose.GetRotation(), animDesc->numframes); }
 					if (track.PosKeys.Num() == 0) { track.PosKeys.Init(boneRefPose.GetLocation(), animDesc->numframes); }
@@ -1848,15 +1903,15 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						}
 						for (int i = 0; i < sectionFrameCount; ++i)
 						{
-							FQuat& rot = track.RotKeys[sectionFrameIndex + i];
-							FVector angles = FVector::ZeroVector;
+							FQuat4f& rot = track.RotKeys[sectionFrameIndex + i];
+							FVector3f angles = FVector3f::ZeroVector;
 							if (rotValuePtr->offset[0] > 0) { angles.X = (xValues.IsValidIndex(i) ? xValues[i] : xValues.Last()) * bone->rotscale[0]; }
 							if (rotValuePtr->offset[1] > 0) { angles.Y = (yValues.IsValidIndex(i) ? yValues[i] : yValues.Last()) * bone->rotscale[1]; }
 							if (rotValuePtr->offset[2] > 0) { angles.Z = (zValues.IsValidIndex(i) ? zValues[i] : zValues.Last()) * bone->rotscale[2]; }
 							check(!angles.ContainsNaN());
 							if (!anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 							{
-								angles += FVector(bone->rot[0], bone->rot[1], bone->rot[2]);
+								angles += FVector3f(bone->rot[0], bone->rot[1], bone->rot[2]);
 							}
 							if (isRootBone)
 							{
@@ -1868,10 +1923,10 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT))
 					{
 						// Single rotation covering every frame in the section
-						FQuat rot = *anim->GetQuat48();
+						FQuat4f rot = *anim->GetQuat48();
 						if (isRootBone)
 						{
-							FVector angles = QuatToSourceAngles(rot);
+							FVector3f angles = QuatToSourceAngles(rot);
 							angles.Z += FMath::DegreesToRadians(-90.0f);
 							rot = SourceAnglesToQuat(angles);
 						}
@@ -1883,10 +1938,10 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWROT2))
 					{
 						// Single rotation covering every frame in the section
-						FQuat rot = *anim->GetQuat64();
+						FQuat4f rot = *anim->GetQuat64();
 						if (isRootBone)
 						{
-							FVector angles = QuatToSourceAngles(rot);
+							FVector3f angles = QuatToSourceAngles(rot);
 							angles.Z += FMath::DegreesToRadians(-90.0f);
 							rot = SourceAnglesToQuat(angles);
 						}
@@ -1898,14 +1953,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					else
 					{
 						// Match reference pose for every frame in the section
-						FQuat rot;
+						FQuat4f rot;
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							rot = FQuat::Identity;
+							rot = FQuat4f::Identity;
 						}
 						else
 						{
-							rot = FQuat(bone->quat[0], bone->quat[1], bone->quat[2], bone->quat[3]).GetNormalized();
+							rot = FQuat4f(bone->quat[0], bone->quat[1], bone->quat[2], bone->quat[3]).GetNormalized();
 						}
 						for (int i = 0; i < sectionFrameCount; ++i)
 						{
@@ -1939,7 +1994,7 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 						}
 						for (int i = 0; i < sectionFrameCount; ++i)
 						{
-							FVector& pos = track.PosKeys[sectionFrameIndex + i];
+							FVector3f& pos = track.PosKeys[sectionFrameIndex + i];
 							float x = 0.0f, y = 0.0f, z = 0.0f;
 							if (posValuePtr->offset[0] > 0) { x = (xValues.IsValidIndex(i) ? xValues[i] : xValues.Last()) * bone->posscale[0]; }
 							if (posValuePtr->offset[1] > 0) { y = (yValues.IsValidIndex(i) ? yValues[i] : yValues.Last()) * bone->posscale[1]; }
@@ -1955,21 +2010,21 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 							}
 							if (isRootBone)
 							{
-								pos = FVector(y, -x, z);
+								pos = FVector3f(y, -x, z);
 							}
 							else
 							{
-								pos = FVector(x, y, z);
+								pos = FVector3f(x, y, z);
 							}
 						}
 					}
 					else if (anim->HasFlag(Valve::MDL::mstudioanim_flag::RAWPOS))
 					{
 						// Single position covering every frame in the section
-						FVector pos = *anim->GetPos();
+						FVector3f pos = *anim->GetPos();
 						if (isRootBone)
 						{
-							pos = FVector(pos.Y, -pos.X, pos.Z);
+							pos = FVector3f(pos.Y, -pos.X, pos.Z);
 						}
 						for (int i = 0; i < sectionFrameCount; ++i)
 						{
@@ -1979,14 +2034,14 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 					else
 					{
 						// Match reference pose for every frame in the section
-						FVector pos;
+						FVector3f pos;
 						if (anim->HasFlag(Valve::MDL::mstudioanim_flag::ANIMDELTA))
 						{
-							pos = FVector::ZeroVector;
+							pos = FVector3f::ZeroVector;
 						}
 						else
 						{
-							pos = FVector(bone->pos[0], bone->pos[1], bone->pos[2]);
+							pos = FVector3f(bone->pos[0], bone->pos[1], bone->pos[2]);
 						}
 						for (int i = 0; i < sectionFrameCount; ++i)
 						{
@@ -2019,31 +2074,45 @@ void UMDLFactory::ImportSequences(const Valve::MDL::studiohdr_t& header, USkelet
 			// Ensure all tracks have the correct number of keys
 			for (TPair<uint8, FRawAnimSequenceTrack>& pair : transformedBoneTrackMap)
 			{
-				const FVector lastPos = pair.Value.PosKeys.Num() > 0 ? pair.Value.PosKeys.Last() : FVector::ZeroVector;
-				while (pair.Value.PosKeys.Num() > 1 && pair.Value.PosKeys.Num() < animDesc->numframes)
+				FRawAnimSequenceTrack& track = pair.Value;
+				if (track.PosKeys.IsEmpty()) { track.PosKeys.Add(FVector3f::ZeroVector); }
+				const FVector3f lastPos = track.PosKeys.Last();
+				while (track.PosKeys.Num() < animDesc->numframes)
 				{
-					pair.Value.PosKeys.Add(lastPos);
+					track.PosKeys.Add(lastPos);
 				}
-				const FQuat lastRot = pair.Value.RotKeys.Num() > 0 ? pair.Value.RotKeys.Last() : FQuat::Identity;
-				while (pair.Value.RotKeys.Num() > 1 && pair.Value.RotKeys.Num() < animDesc->numframes)
+				if (track.RotKeys.IsEmpty()) { track.RotKeys.Add(FQuat4f::Identity); }
+				const FQuat4f lastRot = track.RotKeys.Last();
+				while (track.RotKeys.Num() < animDesc->numframes)
 				{
-					pair.Value.RotKeys.Add(lastRot);
+					track.RotKeys.Add(lastRot);
 				}
-				const FVector lastScale = pair.Value.ScaleKeys.Num() > 0 ? pair.Value.ScaleKeys.Last() : FVector::OneVector;
-				while (pair.Value.ScaleKeys.Num() > 1 && pair.Value.ScaleKeys.Num() < animDesc->numframes)
+				if (track.ScaleKeys.IsEmpty()) { track.ScaleKeys.Add(FVector3f::OneVector); }
+				const FVector3f lastScale = track.ScaleKeys.Last();
+				while (track.ScaleKeys.Num() < animDesc->numframes)
 				{
-					pair.Value.ScaleKeys.Add(lastScale);
+					track.ScaleKeys.Add(lastScale);
 				}
 			}
 
 			// Add the tracks to the sequence
-			sequence->RemoveAllTracks();
 			for (auto& pair : transformedBoneTrackMap)
 			{
-				sequence->AddNewRawTrack(skeletalMesh->RefSkeleton.GetBoneName(pair.Key), &pair.Value);
+				const FRawAnimSequenceTrack& track = pair.Value;
+				if (track.PosKeys.IsEmpty() && track.RotKeys.IsEmpty() && track.ScaleKeys.IsEmpty()) { continue; }
+				const FName boneName = skeletalMesh->GetRefSkeleton().GetBoneName(pair.Key);
+				controller.AddBoneTrack(boneName);
+				controller.SetBoneTrackKeys(boneName, pair.Value.PosKeys, pair.Value.RotKeys, pair.Value.ScaleKeys);
 			}
 		}
-
+		sequence->ImportFileFramerate = animDesc->fps;
+		sequence->ImportResampleFramerate = animDesc->fps;
+		controller.SetPlayLength((animDesc->numframes - 1) / animDesc->fps);
+		controller.SetFrameRate(FFrameRate(animDesc->fps, 1));
+		controller.NotifyPopulated();
+		controller.CloseBracket();
+		
+		sequence->AdditiveAnimType = EAdditiveAnimationType::AAT_None;
 		outSequences.Add(sequence);
 	}
 
@@ -2093,7 +2162,7 @@ bool UMDLFactory::SkeletonHasMultipleRoots(const TArray<const Valve::MDL::mstudi
 
 void UMDLFactory::ReadAnimData(const uint8* basePtr, USkeletalMesh* skeletalMesh, TArray<const Valve::MDL::mstudioanim_t*>& out)
 {
-	const int numBones = skeletalMesh->RefSkeleton.GetRawBoneNum();
+	const int numBones = skeletalMesh->GetRefSkeleton().GetRawBoneNum();
 	for (int i = 0; i < numBones; ++i)
 	{
 		const Valve::MDL::mstudioanim_t* anim = (const Valve::MDL::mstudioanim_t*)basePtr;
@@ -2217,13 +2286,8 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 
 	// Read all vertices
 	check(basePtr == vertPtr);
-	TArray<FVector4> rawVerts;
-	rawVerts.Reserve(numVerts);
-	for (int i = 0; i < numVerts; ++i)
-	{
-		rawVerts.Add(((FVector4*)basePtr)[i]);
-	}
-	basePtr += sizeof(FVector4) * numVerts;
+	const FVector4f* vertDataPtr = reinterpret_cast<FVector4f*>(vertPtr);
+	basePtr += sizeof(FVector4f) * numVerts;
 
 	// Fixup sections
 	for (FPHYSection& section : out)
@@ -2233,10 +2297,11 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 		{
 			// Lookup face index and vertex
 			const int idx = section.FaceIndices[i];
-			const FVector4 rawVert = rawVerts[idx];
+			check(idx >= 0 && idx < numVerts);
+			const FVector4f& rawVert = vertDataPtr[idx];
 
 			// Convert to UE4 vertex
-			FVector fixedVert;
+			FVector3f fixedVert;
 			if (section.IsCollisionModel)
 			{
 				fixedVert.X = (100.0f / 2.54f) * rawVert.Z;
@@ -2314,7 +2379,7 @@ void UMDLFactory::ReadSkins(const Valve::MDL::studiohdr_t& header, TArray<TArray
 	}
 }
 
-FQuat UMDLFactory::SourceAnglesToQuat(const FVector& angles)
+FQuat4f UMDLFactory::SourceAnglesToQuat(const FVector3f& angles)
 {
 	// https://marc-b-reynolds.github.io/math/2017/04/18/TaitEuler.html
 	const double hy = 0.5 * angles.Z;
@@ -2324,7 +2389,7 @@ FQuat UMDLFactory::SourceAnglesToQuat(const FVector& angles)
 	const double ps = sin(hp), pc = cos(hp);
 	const double rs = sin(hr), rc = cos(hr);
 
-	FQuat quat;
+	FQuat4f quat;
 	quat.W = (float)(rc * pc * yc + rs * ps * ys);
 	quat.X = (float)(rs * pc * yc - rc * ps * ys);
 	quat.Y = (float)(rc * ps * yc + rs * pc * ys);
@@ -2332,7 +2397,7 @@ FQuat UMDLFactory::SourceAnglesToQuat(const FVector& angles)
 	return quat.GetNormalized();
 }
 
-FVector UMDLFactory::QuatToSourceAngles(const FQuat& quat)
+FVector3f UMDLFactory::QuatToSourceAngles(const FQuat4f& quat)
 {
 	// https://marc-b-reynolds.github.io/math/2017/04/18/TaitEuler.html
 	const double x = quat.X, y = quat.Y, z = quat.Z, w = quat.W;
@@ -2345,7 +2410,7 @@ FVector UMDLFactory::QuatToSourceAngles(const FQuat& quat)
 	const double t = xx * xx + xy * xy;        // cos(theta)^2
 	const double yz = 2.0 * (y * z + w * x);      // z of y'
 
-	FVector v;
+	FVector3f v;
 	v.Z = (float)atan2(xy, xx);    // yaw   (psi)
 	v.Y = (float)atan(xz / sqrt(t)); // pitch (theta)
 	if (t != 0)

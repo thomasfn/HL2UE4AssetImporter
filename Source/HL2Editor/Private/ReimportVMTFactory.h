@@ -21,7 +21,7 @@ public:
 private:
 
 	UPROPERTY()
-	class UVMTMaterial* pOriginalMat;
+	class UMaterialInterface* pOriginalMat;
 
 public:
 
@@ -34,6 +34,6 @@ public:
 
 private:
 	//~ Begin UVMTFactory Interface
-	virtual UVMTMaterial* CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags) override;
+	virtual UMaterialInterface* CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags) override;
 	//~ End UVMTFactory Interface
 };

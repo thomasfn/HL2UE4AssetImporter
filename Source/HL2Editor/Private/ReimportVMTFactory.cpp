@@ -13,13 +13,11 @@ UReimportVMTFactory::~UReimportVMTFactory()
 	
 }
 
-UVMTMaterial* UReimportVMTFactory::CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags)
+UMaterialInterface* UReimportVMTFactory::CreateMaterial(UObject* InParent, FName Name, EObjectFlags Flags)
 {
-	UVMTMaterial* pMat = Cast<UVMTMaterial>(pOriginalMat);
-
-	if (pMat)
+	if (pOriginalMat)
 	{
-		return pMat;
+		return pOriginalMat;
 	}
 	else
 	{
@@ -29,7 +27,7 @@ UVMTMaterial* UReimportVMTFactory::CreateMaterial(UObject* InParent, FName Name,
 
 bool UReimportVMTFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilenames)
 {
-	UVMTMaterial* pMat = Cast<UVMTMaterial>(Obj);
+	UMaterialInterface* pMat = Cast<UMaterialInterface>(Obj);
 	if (pMat && pMat->AssetImportData)
 	{
 		TArray<FString> fileNames = pMat->AssetImportData->ExtractFilenames();
@@ -48,7 +46,7 @@ bool UReimportVMTFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilename
 
 void UReimportVMTFactory::SetReimportPaths(UObject* Obj, const TArray<FString>& NewReimportPaths)
 {
-	UVMTMaterial* pMat = Cast<UVMTMaterial>(Obj);
+	UMaterialInterface* pMat = Cast<UMaterialInterface>(Obj);
 	if (pMat && ensure(NewReimportPaths.Num() == 1))
 	{
 		pMat->AssetImportData->UpdateFilenameOnly(NewReimportPaths[0]);
@@ -60,14 +58,14 @@ void UReimportVMTFactory::SetReimportPaths(UObject* Obj, const TArray<FString>& 
 */
 EReimportResult::Type UReimportVMTFactory::Reimport(UObject* Obj)
 {
-	if (!Obj || !Obj->IsA(UVMTMaterial::StaticClass()))
+	if (!Obj || !Obj->IsA(UMaterialInterface::StaticClass()))
 	{
 		return EReimportResult::Failed;
 	}
 
-	UVMTMaterial* pMat = Cast<UVMTMaterial>(Obj);
+	UMaterialInterface* pMat = Cast<UMaterialInterface>(Obj);
 
-	TGuardValue<UVMTMaterial*> OriginalTexGuardValue(pOriginalMat, pMat);
+	TGuardValue<UMaterialInterface*> OriginalTexGuardValue(pOriginalMat, pMat);
 
 	const FString ResolvedSourceFilePath = pMat->AssetImportData->GetFirstFilename();
 	if (!ResolvedSourceFilePath.Len())

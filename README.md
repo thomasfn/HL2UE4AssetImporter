@@ -1,6 +1,6 @@
 # HL2UE4 Asset Importer
 
-A WIP Unreal Engine 4 plugin that adds support for importing various Source engine file format, with a long-term goal of being able to import the entirety of Half-Life 2 into the UE4 editor and play through the full game.
+A WIP Unreal Engine 5 plugin that adds support for importing various Source engine file format, with a long-term goal of being able to import the entirety of Half-Life 2 into the UE5 editor and play through the full game.
 
 ## Project Status
 
@@ -32,19 +32,20 @@ Please see [Project Status](STATUS.md) for a more detailed list.
 
 ## Getting Started
 
-This project is architected as a UE4 plugin, comprising of an editor module and a runtime module.
+This project is architected as a UE5 plugin, comprising of an editor module and a runtime module.
 
 ### Prerequisites
 
-- Unreal Engine 4.25
+- Unreal Engine 5.0
+- Windows 64 bit (Linux/Mac not yet supported)
 - [Half-Life 2](https://store.steampowered.com/app/220/HalfLife_2/) or [Half-Life 2 Update](https://store.steampowered.com/app/290930/HalfLife_2_Update/)
 
 ### Installing
 
-1. Create a new UE4 project - choose a blank empty project with no default assets and no default code. Close the editor.
+1. Create a new UE5 project - choose a blank empty project with no default assets and no default code. Close the editor.
 2. Create a folder in the project folder (next to the .uproject) called "Plugins".
 3. Create a folder inside "Plugins" called "HL2AssetImporter" - clone the repo into there.
-4. Load up the UE4 project. It should talk about compiling the plugin for the first time.
+4. Load up the UE5 project. It should talk about compiling the plugin for the first time.
 5. Go to Edit -> Plugins, go to the "Project" category and find "HL2.AssetImporter".
 6. If "Enabled" is not ticked, tick it and restart the editor.
 7. If all has gone well, you should see a new "HL2" icon in the main tool bar.
@@ -53,7 +54,7 @@ This project is architected as a UE4 plugin, comprising of an editor module and 
 
 ### Importing HL2
 
-Note that the following steps, especially the bulk imports, will take a long time - depending on if your project and extracted HL2 assets are on SSDs or not, and the strength of your CPU. Expect to put aside an hour or more for the whole process.
+Note that the following steps, especially the bulk imports, will take a long time - depending on if your project and extracted HL2 assets are on SSDs or not, and the strength of your CPU. Expect to put aside an hour or more for the whole process. You should also have 32GB of ram or more in your system as the editor likes to feast upon it during the bulk imports.
 
 There may also be certain assets that fail to import. This won't cause issues usually, but you do need to watch it and click ok otherwise it won't continue with the bulk import.
 
@@ -66,7 +67,6 @@ After every step you should save (File -> Save All) otherwise, if it crashes, yo
 5. From the "HL2" toolbar icon, click "Bulk Import Models". Navigate to the extracted HL2 "models" folder.
 6. Create a new empty level.
 7. From the "HL2" toolbar icon, click "Import BSP". Navigate to the extracted HL2 "maps" folder. Select a map like d1_trainstation_01.
-8. Click "Build" to build static lighting (or don't and run with dynamic lighting for now).
 9. TODO: Instructions on how to setup inputs for player interaction.
 
 ## Running the tests

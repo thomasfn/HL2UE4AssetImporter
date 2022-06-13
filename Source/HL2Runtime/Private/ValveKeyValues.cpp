@@ -395,7 +395,7 @@ UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, 
 		{
 			if (arrayValue != nullptr)
 			{
-				arrayValue->MarkPendingKill();
+				arrayValue->MarkAsGarbage();
 				UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting value for array-group, got key at %d"), peekToken.start);
 				return nullptr;
 			}
@@ -420,7 +420,7 @@ UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, 
 			UValveValue* value = ParseValue(src, tokens, nextToken, groupValue);
 			if (value == nullptr)
 			{
-				groupValue->MarkPendingKill();
+				groupValue->MarkAsGarbage();
 				return nullptr;
 			}
 
@@ -434,7 +434,7 @@ UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, 
 		{
 			if (groupValue != nullptr)
 			{
-				groupValue->MarkPendingKill();
+				groupValue->MarkAsGarbage();
 				UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting key for keyvalue-group, got group at %d"), peekToken.start);
 				return nullptr;
 			}
@@ -447,7 +447,7 @@ UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, 
 			UValveValue* value = ParseValue(src, tokens, nextToken, arrayValue);
 			if (value == nullptr)
 			{
-				arrayValue->MarkPendingKill();
+				arrayValue->MarkAsGarbage();
 				return nullptr;
 			}
 
@@ -457,8 +457,8 @@ UValveComplexValue* ParseGroup(const FString& src, const TArray<Token>& tokens, 
 		else
 		{
 			UE_LOG(LogValveKeyValuesParser, Error, TEXT("Expecting key-value or value, got '%s' at %d"), *tokenTypeNames[(int)peekToken.type], peekToken.start);
-			if (groupValue != nullptr) { groupValue->MarkPendingKill(); }
-			if (arrayValue != nullptr) { arrayValue->MarkPendingKill(); }
+			if (groupValue != nullptr) { groupValue->MarkAsGarbage(); }
+			if (arrayValue != nullptr) { arrayValue->MarkAsGarbage(); }
 			return nullptr;
 		}
 	}
@@ -481,12 +481,17 @@ UValveDocument* UValveDocument::Parse(const FString& text, UObject* outer)
 	{ Token token; token.start = 0; token.end = 0; token.type = TokenType::CloseGroup; tokens.Add(token); }
 
 	if (outer == nullptr) { outer = (UObject*)GetTransientPackage(); }
+	static const FName fnValveDoc(TEXT("Valve Document"));
+	UValveDocument* doc = NewObject<UValveDocument>(outer, NAME_None, RF_Standalone);
 
 	int pos = 0;
-	UValveComplexValue* value = ParseGroup(text, tokens, pos, outer);
-	if (value == nullptr) { return nullptr; }
-
-	UValveDocument* doc = NewObject<UValveDocument>(outer);
+	UValveComplexValue* value = ParseGroup(text, tokens, pos, doc);
+	if (value == nullptr)
+	{
+		doc->MarkAsGarbage();
+		return nullptr;
+	}
+	
 	doc->Root = value;
 	return doc;
 }

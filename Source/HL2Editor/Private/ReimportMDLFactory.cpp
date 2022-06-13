@@ -86,9 +86,9 @@ bool UReimportMDLFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilename
 		fileNames = pStaticMesh->AssetImportData->ExtractFilenames();
 	}
 	USkeletalMesh* pSkeletalMesh = Cast<USkeletalMesh>(Obj);
-	if (pSkeletalMesh && pSkeletalMesh->AssetImportData)
+	if (pSkeletalMesh && pSkeletalMesh->GetAssetImportData() != nullptr)
 	{
-		fileNames = pSkeletalMesh->AssetImportData->ExtractFilenames();
+		fileNames = pSkeletalMesh->GetAssetImportData()->ExtractFilenames();
 	}
 	if (fileNames.Num() == 0)
 	{
@@ -115,7 +115,7 @@ void UReimportMDLFactory::SetReimportPaths(UObject* Obj, const TArray<FString>& 
 	USkeletalMesh* pSkeletalMesh = Cast<USkeletalMesh>(Obj);
 	if (pSkeletalMesh && ensure(NewReimportPaths.Num() == 1))
 	{
-		pSkeletalMesh->AssetImportData->UpdateFilenameOnly(NewReimportPaths[0]);
+		pSkeletalMesh->GetAssetImportData()->UpdateFilenameOnly(NewReimportPaths[0]);
 	}
 }
 
@@ -145,12 +145,12 @@ EReimportResult::Type UReimportMDLFactory::Reimport(UObject* Obj)
 	UAssetImportData* assetImportData = nullptr;
 	if (pStaticMesh != nullptr)
 	{
-		assetImportData = pStaticMesh->AssetImportData;
+		assetImportData = pStaticMesh->GetAssetImportData();
 		mesh = pStaticMesh;
 	}
 	else if (pSkeletalMesh != nullptr)
 	{
-		assetImportData = pSkeletalMesh->AssetImportData;
+		assetImportData = pSkeletalMesh->GetAssetImportData();
 		mesh = pSkeletalMesh;
 	}
 	check(mesh);

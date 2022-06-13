@@ -17,7 +17,7 @@ public:
 
 	// The XY size of each cell
 	UPROPERTY()
-	int CellSize = 4096;
+	int CellSize = 2048;
 
 	// Whether to merge displacements and then split into cells like map brush geometry
 	UPROPERTY()
@@ -25,7 +25,22 @@ public:
 
 	// The XY size of each displacement cell
 	UPROPERTY()
-	int DisplacementCellSize = 4096;
+	int DisplacementCellSize = 2048;
+
+	// Whether to use multiple threads to split cells or not.
+	// Should run faster during map import but uses more CPU power and might have strange bugs.
+	UPROPERTY()
+	bool ParallelizeCellSplitting = true;
+
+	// Whether to use generate lightmap coords for static meshes or not.
+	// No longer needed with lumen.
+	UPROPERTY()
+	bool GenerateLightmapCoords = false;
+
+	// Whether to import env_cubemaps and emit reflection captures for them.
+	// No longer needed with lumen.
+	UPROPERTY()
+	bool EmitReflectionCaptures = false;
 
 	// Whether to prevent dependency on HL2Runtime.
 	// If true, a limited set of unreal built-in entities will be used.

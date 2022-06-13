@@ -165,6 +165,9 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 	TAttributesSet<FVertexID>& vertexAttr = meshDesc.VertexAttributes();
 	TMeshAttributesRef<FVertexID, FVector3f> vertexAttrPosition = vertexAttr.GetAttributesRef<FVector3f>(MeshAttribute::Vertex::Position);
 
+	meshDesc.ResetIndexers();
+	meshDesc.BuildIndexers();
+
 	// Delete degenerate polygons
 	if (settings.RemoveDegeneratePolys)
 	{
@@ -373,7 +376,7 @@ void FMeshUtils::Clean(FMeshDescription& meshDesc, const FMeshCleanSettings& set
 	{
 		for (const FVertexID vertID : meshDesc.Vertices().GetElementIDs())
 		{
-			if (meshDesc.GetVertexVertexInstanceIDs(vertID).Num() == 0)
+			if (meshDesc.IsVertexOrphaned(vertID))
 			{
 				meshDesc.DeleteVertex(vertID);
 			}

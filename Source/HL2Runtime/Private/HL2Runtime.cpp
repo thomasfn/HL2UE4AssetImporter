@@ -36,6 +36,12 @@ FName HL2RuntimeImpl::HL2ModelPathToAssetPath(const FString& hl2ModelPath) const
 	return SourceToUnrealPath(GetHL2ModelBasePath(), tmp);
 }
 
+FName HL2RuntimeImpl::HL2SoundPathToAssetPath(const FString& hl2SoundPath) const
+{
+	// e.g. "physics/metal/weapon_impact_hard1.wav" -> "/Content/hl2/sounds/physics/metal/weapon_impact_hard1.wav"
+	return SourceToUnrealPath(GetHL2SoundBasePath(), hl2SoundPath);
+}
+
 FName HL2RuntimeImpl::HL2SurfacePropToAssetPath(const FName& surfaceProp) const
 {
 	// e.g. "metal" -> "/Content/hl2/surfaceprops/metal.metal"
@@ -89,6 +95,16 @@ USkeletalMesh* HL2RuntimeImpl::TryResolveHL2AnimatedProp(const FString& hl2Model
 	if (!assetData.IsValid()) { return nullptr; }
 	// It might not be a USkeletalMesh if the model is not animated, so let Cast just return nullptr in this case
 	return Cast<USkeletalMesh>(assetData.GetAsset());
+}
+
+USoundClass* HL2RuntimeImpl::TryResolveHL2Sound(const FString& hl2SoundPath) const
+{
+	const FName assetPath = HL2SoundPathToAssetPath(hl2SoundPath);
+	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
+	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	if (!assetData.IsValid()) { return nullptr; }
+	return Cast<USoundClass>(assetData.GetAsset());
 }
 
 USurfaceProp* HL2RuntimeImpl::TryResolveHL2SurfaceProp(const FName& surfaceProp) const

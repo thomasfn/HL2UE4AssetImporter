@@ -260,7 +260,7 @@ void HL2EditorImpl::BulkImportSoundsClicked()
 	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
 	TMap<FString, TArray<FString>> groupedFilesToImport;
 	GroupFileListByDirectory(filesToImport, groupedFilesToImport);
-	FScopedSlowTask loopProgress(groupedFilesToImport.Num(), LOCTEXT("SoundsImporting", "Importing wavs..."));
+	FScopedSlowTask loopProgress(groupedFilesToImport.Num(), LOCTEXT("SoundsImporting", "Importing wavs/mp3s..."));
 	loopProgress.MakeDialog();
 	for (const auto& pair : groupedFilesToImport)
 	{
@@ -268,7 +268,7 @@ void HL2EditorImpl::BulkImportSoundsClicked()
 		if (FPaths::MakePathRelativeTo(dir, *rootPath))
 		{
 			loopProgress.EnterProgressFrame();
-			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2TextureBasePath() / dir);
+			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2SoundBasePath() / dir);
 			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}

@@ -18,7 +18,7 @@ public:
 
 	// Begin UFactory Interface
 
-	virtual UObject* FactoryCreateText( 
+	virtual UObject* FactoryCreateText(
 		UClass* InClass,
 		UObject* InParent,
 		FName InName,
@@ -36,7 +36,7 @@ public:
 
 	// End UFactory Interface
 
-	
+
 	virtual UHL2SoundScripts* CreateSoundScripts(UObject* InParent, FName Name, EObjectFlags Flags);
 
 private:
@@ -44,11 +44,5 @@ private:
 	UHL2SoundScripts* ImportSoundScripts(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const TCHAR* Type, const TCHAR*& Buffer, const TCHAR* BufferEnd, FFeedbackContext* Warn);
 
 	void ParseDocumentToEntries(const UValveDocument* Document, TMap<FName, FHL2SoundScriptEntry>& OutEntries, FFeedbackContext* Warn);
-
-	void ParseEntry(const UValveGroupValue* GroupValue, FHL2SoundScriptEntry& OutEntry);
-
-	void ParseEntryChannel(const UValvePrimitiveValue* Value, FHL2SoundScriptEntry& OutEntry);
-
-	void ParseWave(const UValvePrimitiveValue* Value, FString& OutWave, EHL2SoundScriptEntryFlag& OutFlag);
 
 };

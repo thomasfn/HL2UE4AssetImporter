@@ -18,6 +18,7 @@
 #include "TerrainTracer.h"
 #include "Engine/Selection.h"
 #include "SoundScriptFactory.h"
+#include "SoundScapeFactory.h"
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
 
@@ -291,7 +292,7 @@ void HL2EditorImpl::ImportScriptsClicked()
 
 
 	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
-	FScopedSlowTask loopProgress(1, LOCTEXT("ScriptsImporting", "Importing scripts..."));
+	FScopedSlowTask loopProgress(2, LOCTEXT("ScriptsImporting", "Importing scripts..."));
 	loopProgress.MakeDialog();
 
 	// Import sound scripts
@@ -307,6 +308,21 @@ void HL2EditorImpl::ImportScriptsClicked()
 		TArray<UObject*> importedAssets = assetTools.ImportAssetsAutomated(importData);
 		SaveImportedAssets(importedAssets);
 		UE_LOG(LogHL2Editor, Log, TEXT("Imported %d sound script assets"), importedAssets.Num());	
+	}
+
+	// Import soundscapes
+	{
+		USoundScapeFactory* factory = NewObject<USoundScapeFactory>();
+		loopProgress.EnterProgressFrame(1.0f, LOCTEXT("SoundScapes", "Sound scapes"));
+		UAutomatedAssetImportData* importData = NewObject<UAutomatedAssetImportData>();
+		importData->Filenames.Add(rootPath / "soundscapes_manifest.txt");
+		importData->DestinationPath = IHL2Runtime::Get().GetHL2ScriptBasePath();
+		importData->FactoryName = TEXT("SoundScapeFactory");
+		importData->bReplaceExisting = true;
+		importData->Factory = factory;
+		TArray<UObject*> importedAssets = assetTools.ImportAssetsAutomated(importData);
+		SaveImportedAssets(importedAssets);
+		UE_LOG(LogHL2Editor, Log, TEXT("Imported %d sound scape assets"), importedAssets.Num());
 	}
 }
 

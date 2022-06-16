@@ -4,6 +4,8 @@
 
 #include "HL2SoundScripts.generated.h"
 
+class UHL2SoundScapes;
+
 UENUM(BlueprintType)
 enum class EHL2SoundScriptEntryFlag : uint8
 {
@@ -86,6 +88,83 @@ public:
 
 };
 
+UENUM(BlueprintType)
+enum class EHL2SoundScapeRuleType : uint8
+{
+	PlayLooping,
+	PlayRandom,
+};
+
+USTRUCT(BlueprintType)
+struct FHL2SoundScapeRule
+{
+	GENERATED_BODY()
+
+public:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	EHL2SoundScapeRuleType RuleType;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	uint8 Position;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	FHL2SoundScriptEntry SoundScript;
+
+};
+
+USTRUCT(BlueprintType)
+struct FHL2SoundScapeSubSoundScapeRule
+{
+	GENERATED_BODY()
+
+public:
+
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	float Volume;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	uint8 Position;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	FName SubSoundScapeName;
+
+};
+
+USTRUCT(BlueprintType)
+struct FHL2SoundScape
+{
+	GENERATED_BODY()
+
+public:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	FName SoundscapeName;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	uint8 DSPEffect;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	float DSPVolume;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	TArray<FHL2SoundScapeRule> Rules;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	TArray<FHL2SoundScapeSubSoundScapeRule> SubSoundScapeRules;
+
+public:
+
+	void GetCompiledRules(UHL2SoundScapes* soundScapes, TArray<FHL2SoundScapeRule>& outRules) const;
+
+private:
+
+	void GetCompiledRulesInternal(UHL2SoundScapes* soundScapes, TArray<FHL2SoundScapeRule>& outRules, float volume, uint8 position) const;
+
+};
+
+
 UCLASS(BlueprintType)
 class HL2RUNTIME_API UHL2SoundScripts : public UDataAsset
 {
@@ -100,5 +179,23 @@ public:
 public:
 
 	
+
+};
+
+UCLASS(BlueprintType)
+class HL2RUNTIME_API UHL2SoundScapes : public UDataAsset
+{
+	GENERATED_BODY()
+
+public:
+
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	TMap<FName, FHL2SoundScape> Entries;
+
+public:
+
+	UFUNCTION(BlueprintCallable, Category = "HL2")
+	bool LookupSoundScape(UHL2SoundScapes* soundScapes, const FName soundScapeName, FHL2SoundScape& outSoundScape, TArray<FHL2SoundScapeRule>& outRules);
 
 };

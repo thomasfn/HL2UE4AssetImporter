@@ -17,6 +17,7 @@
 #include "SkyboxConverter.h"
 #include "TerrainTracer.h"
 #include "Engine/Selection.h"
+#include "SoundScriptFactory.h"
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
 
@@ -50,6 +51,11 @@ void HL2EditorImpl::StartupModule()
 	utilMenuCommandList->MapAction(
 		FUtilMenuCommands::Get().BulkImportSounds,
 		FExecuteAction::CreateRaw(this, &HL2EditorImpl::BulkImportSoundsClicked),
+		FCanExecuteAction()
+	);
+	utilMenuCommandList->MapAction(
+		FUtilMenuCommands::Get().ImportScripts,
+		FExecuteAction::CreateRaw(this, &HL2EditorImpl::ImportScriptsClicked),
 		FCanExecuteAction()
 	);
 	utilMenuCommandList->MapAction(
@@ -115,6 +121,7 @@ TSharedRef<SWidget> HL2EditorImpl::GenerateUtilityMenu(TSharedRef<FUICommandList
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportMaterials);
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportModels);
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportSounds);
+		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().ImportScripts);
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().ConvertSkyboxes);
 	}
 	menuBuilder.EndSection();
@@ -272,6 +279,34 @@ void HL2EditorImpl::BulkImportSoundsClicked()
 			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
+	}
+}
+
+void HL2EditorImpl::ImportScriptsClicked()
+{
+	// Ask user to select folder to import from
+	IDesktopPlatform* desktopPlatform = FDesktopPlatformModule::Get();
+	FString rootPath;
+	if (!desktopPlatform->OpenDirectoryDialog(nullptr, TEXT("Choose Scripts Location"), TEXT(""), rootPath)) { return; }
+
+
+	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
+	FScopedSlowTask loopProgress(1, LOCTEXT("ScriptsImporting", "Importing scripts..."));
+	loopProgress.MakeDialog();
+
+	// Import sound scripts
+	{
+		USoundScriptFactory* factory = NewObject<USoundScriptFactory>();
+		loopProgress.EnterProgressFrame(1.0f, LOCTEXT("SoundScripts", "Sound scripts"));
+		UAutomatedAssetImportData* importData = NewObject<UAutomatedAssetImportData>();
+		importData->Filenames.Add(rootPath / "game_sounds_manifest.txt");
+		importData->DestinationPath = IHL2Runtime::Get().GetHL2ScriptBasePath();
+		importData->FactoryName = TEXT("SoundScriptFactory");
+		importData->bReplaceExisting = true;
+		importData->Factory = factory;
+		TArray<UObject*> importedAssets = assetTools.ImportAssetsAutomated(importData);
+		SaveImportedAssets(importedAssets);
+		UE_LOG(LogHL2Editor, Log, TEXT("Imported %d sound script assets"), importedAssets.Num());	
 	}
 }
 

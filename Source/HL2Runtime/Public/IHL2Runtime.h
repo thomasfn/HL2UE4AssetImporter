@@ -4,7 +4,7 @@
 #include "Engine/Texture.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
-#include "Sound/SoundClass.h"
+#include "Sound/SoundWave.h"
 #include "BaseEntity.h"
 
 #include "SurfaceProp.h"
@@ -42,6 +42,7 @@ public:
 	virtual const FString& GetHL2MaterialBasePath() const = 0;
 	virtual const FString& GetHL2ModelBasePath() const = 0;
 	virtual const FString& GetHL2SoundBasePath() const = 0;
+	virtual const FString& GetHL2ScriptBasePath() const = 0;
 	virtual const FString& GetHL2SurfacePropBasePath() const = 0;
 	virtual const FString& GetHL2ShaderBasePath(bool pluginContent = true) const = 0;
 	virtual const FString& GetHL2EntityBasePath(bool pluginContent = true) const = 0;
@@ -49,7 +50,8 @@ public:
 	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const = 0;
 	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const = 0;
 	virtual FName HL2ModelPathToAssetPath(const FString& hl2ModelPath) const = 0;
-	virtual FName HL2SoundPathToAssetPath(const FString& hl2ModelPath) const = 0;
+	virtual FName HL2SoundPathToAssetPath(const FString& hl2SoundPath) const = 0;
+	virtual FName HL2ScriptPathToAssetPath(const FString& hl2ScriptPath) const = 0;
 	virtual FName HL2SurfacePropToAssetPath(const FName& surfaceProp) const = 0;
 	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool pluginContent = true) const = 0;
 
@@ -57,7 +59,8 @@ public:
 	virtual UMaterialInterface* TryResolveHL2Material(const FString& hl2TexturePath) const = 0;
 	virtual UStaticMesh* TryResolveHL2StaticProp(const FString& hl2ModelPath) const = 0;
 	virtual USkeletalMesh* TryResolveHL2AnimatedProp(const FString& hl2ModelPath) const = 0;
-	virtual USoundClass* TryResolveHL2Sound(const FString& hl2SoundPath) const = 0;
+	virtual USoundWave* TryResolveHL2Sound(const FString& hl2SoundPath) const = 0;
+	virtual UObject* TryResolveHL2Script(const FString& hl2ScriptPath) const = 0;
 	virtual USurfaceProp* TryResolveHL2SurfaceProp(const FName& surfaceProp) const = 0;
 	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, bool searchGameFirst = true) const = 0;
 

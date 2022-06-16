@@ -42,6 +42,11 @@ FName HL2RuntimeImpl::HL2SoundPathToAssetPath(const FString& hl2SoundPath) const
 	return SourceToUnrealPath(GetHL2SoundBasePath(), hl2SoundPath);
 }
 
+FName HL2RuntimeImpl::HL2ScriptPathToAssetPath(const FString& hl2ScriptPath) const
+{
+	return SourceToUnrealPath(GetHL2ScriptBasePath(), hl2ScriptPath);
+}
+
 FName HL2RuntimeImpl::HL2SurfacePropToAssetPath(const FName& surfaceProp) const
 {
 	// e.g. "metal" -> "/Content/hl2/surfaceprops/metal.metal"
@@ -97,14 +102,24 @@ USkeletalMesh* HL2RuntimeImpl::TryResolveHL2AnimatedProp(const FString& hl2Model
 	return Cast<USkeletalMesh>(assetData.GetAsset());
 }
 
-USoundClass* HL2RuntimeImpl::TryResolveHL2Sound(const FString& hl2SoundPath) const
+USoundWave* HL2RuntimeImpl::TryResolveHL2Sound(const FString& hl2SoundPath) const
 {
 	const FName assetPath = HL2SoundPathToAssetPath(hl2SoundPath);
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
 	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return nullptr; }
-	return Cast<USoundClass>(assetData.GetAsset());
+	return Cast<USoundWave>(assetData.GetAsset());
+}
+
+UObject* HL2RuntimeImpl::TryResolveHL2Script(const FString& hl2ScriptPath) const
+{
+	const FName assetPath = HL2ScriptPathToAssetPath(hl2ScriptPath);
+	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
+	const FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
+	if (!assetData.IsValid()) { return nullptr; }
+	return assetData.GetAsset();
 }
 
 USurfaceProp* HL2RuntimeImpl::TryResolveHL2SurfaceProp(const FName& surfaceProp) const

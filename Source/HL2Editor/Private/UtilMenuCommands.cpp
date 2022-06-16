@@ -19,6 +19,7 @@ void FUtilMenuCommands::RegisterCommands()
 	UI_COMMAND(BulkImportMaterials, "Bulk Import Materials", "Imports all VMTs from the HL2 materials directory at once.", EUserInterfaceActionType::Button, FInputGesture());
 	UI_COMMAND(BulkImportModels, "Bulk Import Models", "Imports all MDLs from the HL2 models directory at once.", EUserInterfaceActionType::Button, FInputGesture());
 	UI_COMMAND(BulkImportSounds, "Bulk Import Sounds", "Imports all WAV/MP3s from the HL2 sounds directory at once.", EUserInterfaceActionType::Button, FInputGesture());
+	UI_COMMAND(ImportScripts, "Import Scripts", "Imports all scripts from the HL2 scripts directory.", EUserInterfaceActionType::Button, FInputGesture());
 	UI_COMMAND(ConvertSkyboxes, "Convert Skyboxes", "Converts all skybox textures into cubemaps.", EUserInterfaceActionType::Button, FInputGesture());
 
 	UI_COMMAND(ImportBSP, "Import BSP", "Imports a BSP map to the currently open level.", EUserInterfaceActionType::Button, FInputGesture());

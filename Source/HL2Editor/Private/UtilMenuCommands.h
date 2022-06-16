@@ -16,6 +16,7 @@ public:
 	TSharedPtr<FUICommandInfo> BulkImportMaterials;
 	TSharedPtr<FUICommandInfo> BulkImportModels;
 	TSharedPtr<FUICommandInfo> BulkImportSounds;
+	TSharedPtr<FUICommandInfo> ImportScripts;
 	TSharedPtr<FUICommandInfo> ConvertSkyboxes;
 
 	TSharedPtr<FUICommandInfo> ImportBSP;

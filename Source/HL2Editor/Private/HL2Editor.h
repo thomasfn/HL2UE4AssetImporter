@@ -46,6 +46,7 @@ private:
 	void BulkImportMaterialsClicked();
 	void BulkImportModelsClicked();
 	void BulkImportSoundsClicked();
+	void ImportScriptsClicked();
 	void ConvertSkyboxes();
 	void ImportBSPClicked();
 	void TraceTerrainClicked();

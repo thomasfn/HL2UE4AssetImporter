@@ -207,11 +207,13 @@ void ABaseEntity::ResolveTargetName(const FName targetNameToResolve, TArray<ABas
 	}
 	else if (targetNameToResolve == tnPlayer)
 	{
-		// TODO
+		// This depends on the player entity BP having the targetname "!player" set
+		IHL2Runtime::Get().FindEntitiesByTargetName(GetWorld(), tnPlayer, out);
 	}
 	else if (targetNameToResolve == tnPVSPlayer)
 	{
-		// TODO
+		// This depends on the player entity BP having the targetname "!player" set
+		IHL2Runtime::Get().FindEntitiesByTargetName(GetWorld(), tnPlayer, out);
 	}
 	else if (targetNameToResolve == tnSpeechTarget)
 	{

@@ -870,6 +870,32 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			for (int sectionIndex = 0; sectionIndex < sections.Num(); ++sectionIndex)
 			{
 				const FPHYSection& section = sections[sectionIndex];
+
+				// Convert from source coord system to unreal
+				TArray<FVector3f> transformedVertices;
+				transformedVertices.Reserve(section.Vertices.Num());
+				for (const FVector3f& originalVertex : section.Vertices)
+				{
+					transformedVertices.Add(SourceToUnreal.Position(originalVertex));
+				}
+				TArray<int> transformedFaceIndices;
+				transformedFaceIndices.Reserve(section.FaceIndices.Num());
+				for (int j = 0; j < section.FaceIndices.Num(); j += 3)
+				{
+					if (SourceToUnreal.ShouldReverseWinding())
+					{
+						transformedFaceIndices.Add(section.FaceIndices[j + 2]);
+						transformedFaceIndices.Add(section.FaceIndices[j + 1]);
+						transformedFaceIndices.Add(section.FaceIndices[j]);
+					}
+					else
+					{
+						transformedFaceIndices.Add(section.FaceIndices[j]);
+						transformedFaceIndices.Add(section.FaceIndices[j + 1]);
+						transformedFaceIndices.Add(section.FaceIndices[j + 2]);
+					}
+				}
+
 				// Filter out any section attached to a bone, as we're a static mesh
 				if (section.BoneIndex == 0)
 				{
@@ -881,19 +907,19 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 
 						// Write to debug mesh
 						TArray<FVertexID> vertIDs;
-						vertIDs.Reserve(section.Vertices.Num());
-						for (int j = 0; j < section.Vertices.Num(); ++j)
+						vertIDs.Reserve(transformedVertices.Num());
+						for (int j = 0; j < transformedVertices.Num(); ++j)
 						{
 							const FVertexID vertID = debugPhysMeshData.meshDescription.CreateVertex();
-							debugPhysMeshData.vertPos[vertID] = section.Vertices[j];
+							debugPhysMeshData.vertPos[vertID] = transformedVertices[j];
 							vertIDs.Add(vertID);
 						}
 						TArray<FVertexInstanceID> verts;
 						for (int j = 0; j < section.FaceIndices.Num(); j += 3)
 						{
-							const int i0 = section.FaceIndices[j];
-							const int i1 = section.FaceIndices[j + 1];
-							const int i2 = section.FaceIndices[j + 2];
+							const int i0 = transformedFaceIndices[j];
+							const int i1 = transformedFaceIndices[j + 1];
+							const int i2 = transformedFaceIndices[j + 2];
 							const FVertexID v0 = vertIDs[i0];
 							const FVertexID v1 = vertIDs[i1];
 							const FVertexID v2 = vertIDs[i2];
@@ -915,7 +941,8 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 					else
 					{
 						// Create primitive
-						FMeshUtils::DecomposeUCXMesh(section.Vertices, section.FaceIndices, staticMesh->GetBodySetup());
+						staticMesh->GetBodySetup()->ClearPhysicsMeshes();
+						FMeshUtils::DecomposeUCXMesh(transformedVertices, transformedFaceIndices, staticMesh->GetBodySetup());
 					}
 				}
 			}

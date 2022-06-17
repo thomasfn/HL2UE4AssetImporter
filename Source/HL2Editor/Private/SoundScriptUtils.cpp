@@ -135,16 +135,13 @@ void FSoundScriptUtils::ParseSoundScriptEntry(const UValveGroupValue* GroupValue
 	if (rndWaveValue != nullptr)
 	{
 		OutEntry.Waves.Reserve(rndWaveValue->Items.Num());
-		OutEntry.WaveFlags.Reserve(rndWaveValue->Items.Num());
 		for (const FValveGroupKeyValue& keyValue : rndWaveValue->Items)
 		{
 			if (keyValue.Key != fnValveWave) { continue; }
 			const UValvePrimitiveValue* itemPrimitive = CastChecked<UValvePrimitiveValue>(keyValue.Value);
-			FString wave;
-			EHL2SoundScriptEntryFlag flag;
-			ParseWave(itemPrimitive, wave, flag);
+			FHL2SoundScriptWave wave;
+			ParseWave(itemPrimitive, wave);
 			OutEntry.Waves.Add(wave);
-			OutEntry.WaveFlags.Add(flag);
 		}
 	}
 	else
@@ -152,27 +149,26 @@ void FSoundScriptUtils::ParseSoundScriptEntry(const UValveGroupValue* GroupValue
 		const UValvePrimitiveValue* waveValue = GroupValue->GetPrimitive(fnValveWave);
 		if (waveValue != nullptr)
 		{
-			FString wave;
-			EHL2SoundScriptEntryFlag flag;
-			ParseWave(waveValue, wave, flag);
+			FHL2SoundScriptWave wave;
+			ParseWave(waveValue, wave);
 			OutEntry.Waves.Add(wave);
-			OutEntry.WaveFlags.Add(flag);
 		}
 	}
 }
 
-void FSoundScriptUtils::ParseWave(const UValvePrimitiveValue* Value, FString& OutWave, EHL2SoundScriptEntryFlag& OutFlag)
+void FSoundScriptUtils::ParseWave(const UValvePrimitiveValue* Value, FHL2SoundScriptWave& OutWave)
 {
-	const FString text = Value->AsString();
+	FString text = Value->AsString();
 	check(text.Len() > 0);
-	const TCHAR firstChar = text[0];
-	const EHL2SoundScriptEntryFlag* flagPtr = CharToFlag.Find(firstChar);
-	if (flagPtr != nullptr)
+
+	EHL2SoundScriptEntryFlag const* flagPtr;
+
+	OutWave.Flags.Empty();
+	while (text.Len() > 0 && (flagPtr = CharToFlag.Find(text[0])) != nullptr)
 	{
-		OutFlag = *flagPtr;
-		OutWave = text.Right(text.Len() - 1);
-		return;
+		OutWave.Flags.Add(*flagPtr);
+		text = text.Right(text.Len() - 1);
 	}
-	OutWave = text;
-	OutFlag = EHL2SoundScriptEntryFlag::None;
+
+	OutWave.Path = text;
 }

@@ -9,8 +9,6 @@ class UHL2SoundScapes;
 UENUM(BlueprintType)
 enum class EHL2SoundScriptEntryFlag : uint8
 {
-	None,
-
 	// * - Streams from the disc, get flushed soon after. Use for one-off dialogue files or music.
     CHAR_STREAM,
 	// # - Bypasses DSP and affected by the user's music volume setting.
@@ -50,6 +48,21 @@ enum class EHL2SoundScriptEntryFlag : uint8
 };
 
 USTRUCT(BlueprintType)
+struct FHL2SoundScriptWave
+{
+	GENERATED_BODY()
+
+public:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	FString Path;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	TSet<EHL2SoundScriptEntryFlag> Flags;
+
+};
+
+USTRUCT(BlueprintType)
 struct FHL2SoundScriptEntry
 {
 	GENERATED_BODY()
@@ -81,10 +94,7 @@ public:
 	uint8 SoundLevelMax;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
-	TArray<FString> Waves;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
-	TArray<EHL2SoundScriptEntryFlag> WaveFlags;
+	TArray<FHL2SoundScriptWave> Waves;
 
 };
 

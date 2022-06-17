@@ -23,7 +23,7 @@ public:
 
 	static void ParseSoundScriptEntry(const UValveGroupValue* GroupValue, FHL2SoundScriptEntry& OutEntry);
 
-	static void ParseWave(const UValvePrimitiveValue* Value, FString& OutWave, EHL2SoundScriptEntryFlag& OutFlag);
+	static void ParseWave(const UValvePrimitiveValue* Value, FHL2SoundScriptWave& OutWave);
 
 };
 

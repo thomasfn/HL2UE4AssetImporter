@@ -23,11 +23,19 @@ void FHL2SoundScape::GetCompiledRulesInternal(UHL2SoundScapes* soundScapes, TArr
 	}
 }
 
-bool UHL2SoundScapes::LookupSoundScape(UHL2SoundScapes* soundScapes, const FName soundScapeName, FHL2SoundScape& outSoundScape, TArray<FHL2SoundScapeRule>& outRules)
+bool UHL2SoundScripts::LookupSoundScript(const FName soundScriptName, FHL2SoundScriptEntry& outSoundScript)
 {
-	const FHL2SoundScape* soundScapePtr = soundScapes->Entries.Find(soundScapeName);
+	const FHL2SoundScriptEntry* soundScriptPtr = Entries.Find(soundScriptName);
+	if (soundScriptPtr == nullptr) { return false; }
+	outSoundScript = *soundScriptPtr;
+	return true;
+}
+
+bool UHL2SoundScapes::LookupSoundScape(const FName soundScapeName, FHL2SoundScape& outSoundScape, TArray<FHL2SoundScapeRule>& outRules)
+{
+	const FHL2SoundScape* soundScapePtr = Entries.Find(soundScapeName);
 	if (soundScapePtr == nullptr) { return false; }
 	outSoundScape = *soundScapePtr;
-	soundScapePtr->GetCompiledRules(soundScapes, outRules);
+	soundScapePtr->GetCompiledRules(this, outRules);
 	return true;
 }

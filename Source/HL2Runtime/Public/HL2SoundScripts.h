@@ -54,10 +54,10 @@ struct FHL2SoundScriptWave
 
 public:
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	FString Path;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	TSet<EHL2SoundScriptEntryFlag> Flags;
 
 };
@@ -69,31 +69,31 @@ struct FHL2SoundScriptEntry
 
 public:
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	FName EntryName;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	uint8 Channel;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	float VolumeMin;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	float VolumeMax;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	uint8 PitchMin;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	uint8 PitchMax;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	uint8 SoundLevelMin;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	uint8 SoundLevelMax;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	TArray<FHL2SoundScriptWave> Waves;
 
 };
@@ -112,13 +112,19 @@ struct FHL2SoundScapeRule
 
 public:
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	EHL2SoundScapeRuleType RuleType;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	uint8 Position;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
+	float TimeMin;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
+	float TimeMax;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	FHL2SoundScriptEntry SoundScript;
 
 };
@@ -131,13 +137,13 @@ struct FHL2SoundScapeSubSoundScapeRule
 public:
 
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	float Volume;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	uint8 Position;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	FName SubSoundScapeName;
 
 };
@@ -149,19 +155,19 @@ struct FHL2SoundScape
 
 public:
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	FName SoundscapeName;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	uint8 DSPEffect;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	float DSPVolume;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	TArray<FHL2SoundScapeRule> Rules;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
 	TArray<FHL2SoundScapeSubSoundScapeRule> SubSoundScapeRules;
 
 public:
@@ -188,7 +194,8 @@ public:
 
 public:
 
-	
+	UFUNCTION(BlueprintCallable, Category = "HL2")
+	bool LookupSoundScript(const FName soundScriptName, FHL2SoundScriptEntry& outSoundScript);
 
 };
 
@@ -206,6 +213,6 @@ public:
 public:
 
 	UFUNCTION(BlueprintCallable, Category = "HL2")
-	bool LookupSoundScape(UHL2SoundScapes* soundScapes, const FName soundScapeName, FHL2SoundScape& outSoundScape, TArray<FHL2SoundScapeRule>& outRules);
+	bool LookupSoundScape(const FName soundScapeName, FHL2SoundScape& outSoundScape, TArray<FHL2SoundScapeRule>& outRules);
 
 };

@@ -165,6 +165,7 @@ void USoundScapeFactory::ParseSoundScapeEntry(const UValveGroupValue* GroupValue
 	static const FName fnValveDSPVolume(TEXT("dsp_volume"));
 	static const FName fnValveVolume(TEXT("volume"));
 	static const FName fnValvePosition(TEXT("position"));
+	static const FName fnValveTime(TEXT("time"));
 	static const FName fnValveName(TEXT("name"));
 
 	ParseGenericNumber<uint8>(GroupValue->GetPrimitive(fnValveDSP), OutEntry.DSPEffect, 0);
@@ -177,6 +178,8 @@ void USoundScapeFactory::ParseSoundScapeEntry(const UValveGroupValue* GroupValue
 			FHL2SoundScapeRule rule;
 			rule.RuleType = EHL2SoundScapeRuleType::PlayLooping;
 			ParseGenericNumber<uint8>(ruleGroup->GetPrimitive(fnValvePosition), rule.Position, 0);
+			rule.TimeMin = 0.0f;
+			rule.TimeMax = 0.0f;
 			FSoundScriptUtils::ParseSoundScriptEntry(ruleGroup, rule.SoundScript);
 			OutEntry.Rules.Add(rule);
 		}
@@ -186,6 +189,7 @@ void USoundScapeFactory::ParseSoundScapeEntry(const UValveGroupValue* GroupValue
 			FHL2SoundScapeRule rule;
 			rule.RuleType = EHL2SoundScapeRuleType::PlayRandom;
 			ParseGenericNumber<uint8>(ruleGroup->GetPrimitive(fnValvePosition), rule.Position, 0);
+			ParseGenericNumber<float>(ruleGroup->GetPrimitive(fnValveTime), rule.TimeMin, rule.TimeMax, 0.0f);
 			FSoundScriptUtils::ParseSoundScriptEntry(ruleGroup, rule.SoundScript);
 			OutEntry.Rules.Add(rule);
 		}

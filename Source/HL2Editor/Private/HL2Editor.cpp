@@ -28,6 +28,8 @@ void HL2EditorImpl::StartupModule()
 {
 	vtfLibDllHandle = FPlatformProcess::GetDllHandle(*GetVTFLibDllPath());
 	check(vtfLibDllHandle);
+	mpg123DllHandle = FPlatformProcess::GetDllHandle(*GetMPG123LibDllPath());
+	check(mpg123DllHandle);
 
 	FUtilMenuStyle::Initialize();
 

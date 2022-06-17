@@ -34,10 +34,12 @@ private:
 	FHL2EditorConfig editorConfig;
 
 	void* vtfLibDllHandle;
+	void* mpg123DllHandle;
 
 private:
 
 	inline FString GetVTFLibDllPath() const;
+	inline FString GetMPG123LibDllPath() const;
 
 	void AddToolbarExtension(FToolBarBuilder& builder);
 	static TSharedRef<SWidget> GenerateUtilityMenu(TSharedRef<FUICommandList> InCommandList);
@@ -64,5 +66,13 @@ inline FString HL2EditorImpl::GetVTFLibDllPath() const
 	const FString Win32(TEXT("Win32"));
 	// Note: if you get a compile error here, you're probably trying to build for linux or mac - we need to add support for these platforms here
 	return pluginBaseDir / TEXT("Source/VTFLib/bin") / UBT_COMPILED_PLATFORM / TEXT("VTFLib.dll");
-	return TEXT("");
+}
+
+inline FString HL2EditorImpl::GetMPG123LibDllPath() const
+{
+	const FString pluginBaseDir = IPluginManager::Get().FindPlugin("HL2AssetImporter")->GetBaseDir();
+	const FString Win64(TEXT("Win64"));
+	const FString Win32(TEXT("Win32"));
+	// Note: if you get a compile error here, you're probably trying to build for linux or mac - we need to add support for these platforms here
+	return pluginBaseDir / TEXT("Source/MPG123/bin") / UBT_COMPILED_PLATFORM / TEXT("libmpg123-0.dll");
 }

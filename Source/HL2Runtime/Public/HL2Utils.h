@@ -32,6 +32,12 @@ public:
 	static USkeletalMesh* TryResolveHL2AnimatedProp(const FString& hl2ModelPath, bool& outSuccess);
 
 	UFUNCTION(BlueprintCallable, Category = "HL2")
+	static USoundWave* TryResolveHL2Sound(const FString& hl2SoundPath, bool& outSuccess);
+
+	UFUNCTION(BlueprintCallable, Category = "HL2")
+	static UObject* TryResolveHL2Script(const FString& hl2ScriptPath, bool& outSuccess);
+
+	UFUNCTION(BlueprintCallable, Category = "HL2")
 	static USurfaceProp* TryResolveHL2SurfaceProp(const FName& surfaceProp, bool& outSuccess);
 
 	UFUNCTION(BlueprintCallable, Category = "HL2")

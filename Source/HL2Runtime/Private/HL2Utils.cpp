@@ -31,6 +31,20 @@ USkeletalMesh* UHL2Utils::TryResolveHL2AnimatedProp(const FString& hl2ModelPath,
 	return skeletalMesh;
 }
 
+USoundWave* UHL2Utils::TryResolveHL2Sound(const FString& hl2SoundPath, bool& outSuccess)
+{
+	USoundWave* soundWave = IHL2Runtime::Get().TryResolveHL2Sound(hl2SoundPath);
+	outSuccess = soundWave != nullptr;
+	return soundWave;
+}
+
+UObject* UHL2Utils::TryResolveHL2Script(const FString& hl2ScriptPath, bool& outSuccess)
+{
+	UObject* scriptObj = IHL2Runtime::Get().TryResolveHL2Script(hl2ScriptPath);
+	outSuccess = scriptObj != nullptr;
+	return scriptObj;
+}
+
 USurfaceProp* UHL2Utils::TryResolveHL2SurfaceProp(const FName& surfaceProp, bool& outSuccess)
 {
 	USurfaceProp* surfacePropObj = IHL2Runtime::Get().TryResolveHL2SurfaceProp(surfaceProp);

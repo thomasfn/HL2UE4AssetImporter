@@ -530,6 +530,7 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	settings.bRemoveDegenerates = false;
 	settings.bUseFullPrecisionUVs = true;
 	settings.MinLightmapResolution = lightmapResolution;
+	settings.MaxLumenMeshCards = 32;
 	staticMesh->SetLightMapResolution(lightmapResolution);
 	FMeshDescription* worldModelMesh = staticMesh->CreateMeshDescription(0);
 	*worldModelMesh = meshDesc;

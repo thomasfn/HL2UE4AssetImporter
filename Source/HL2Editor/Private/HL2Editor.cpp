@@ -17,6 +17,8 @@
 #include "SkyboxConverter.h"
 #include "TerrainTracer.h"
 #include "Engine/Selection.h"
+#include "SoundScriptFactory.h"
+#include "SoundScapeFactory.h"
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
 
@@ -26,6 +28,8 @@ void HL2EditorImpl::StartupModule()
 {
 	vtfLibDllHandle = FPlatformProcess::GetDllHandle(*GetVTFLibDllPath());
 	check(vtfLibDllHandle);
+	mpg123DllHandle = FPlatformProcess::GetDllHandle(*GetMPG123LibDllPath());
+	check(mpg123DllHandle);
 
 	FUtilMenuStyle::Initialize();
 
@@ -45,6 +49,16 @@ void HL2EditorImpl::StartupModule()
 	utilMenuCommandList->MapAction(
 		FUtilMenuCommands::Get().BulkImportModels,
 		FExecuteAction::CreateRaw(this, &HL2EditorImpl::BulkImportModelsClicked),
+		FCanExecuteAction()
+	);
+	utilMenuCommandList->MapAction(
+		FUtilMenuCommands::Get().BulkImportSounds,
+		FExecuteAction::CreateRaw(this, &HL2EditorImpl::BulkImportSoundsClicked),
+		FCanExecuteAction()
+	);
+	utilMenuCommandList->MapAction(
+		FUtilMenuCommands::Get().ImportScripts,
+		FExecuteAction::CreateRaw(this, &HL2EditorImpl::ImportScriptsClicked),
 		FCanExecuteAction()
 	);
 	utilMenuCommandList->MapAction(
@@ -109,6 +123,8 @@ TSharedRef<SWidget> HL2EditorImpl::GenerateUtilityMenu(TSharedRef<FUICommandList
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportTextures);
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportMaterials);
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportModels);
+		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().BulkImportSounds);
+		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().ImportScripts);
 		menuBuilder.AddMenuEntry(FUtilMenuCommands::Get().ConvertSkyboxes);
 	}
 	menuBuilder.EndSection();
@@ -232,6 +248,83 @@ void HL2EditorImpl::BulkImportModelsClicked()
 			SaveImportedAssets(importedAssets);
 			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
 		}
+	}
+}
+
+void HL2EditorImpl::BulkImportSoundsClicked()
+{
+	// Ask user to select folder to import from
+	IDesktopPlatform* desktopPlatform = FDesktopPlatformModule::Get();
+	FString rootPath;
+	if (!desktopPlatform->OpenDirectoryDialog(nullptr, TEXT("Choose Sound Location"), TEXT(""), rootPath)) { return; }
+	rootPath += "/";
+
+	// Scan folder
+	IPlatformFile& platformFile = FPlatformFileManager::Get().GetPlatformFile();
+	TArray<FString> filesToImport;
+	platformFile.FindFilesRecursively(filesToImport, *rootPath, TEXT(".wav"));
+	platformFile.FindFilesRecursively(filesToImport, *rootPath, TEXT(".mp3"));
+	UE_LOG(LogHL2Editor, Log, TEXT("Importing %d files from '%s'..."), filesToImport.Num(), *rootPath);
+
+	// Import all
+	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
+	TMap<FString, TArray<FString>> groupedFilesToImport;
+	GroupFileListByDirectory(filesToImport, groupedFilesToImport);
+	FScopedSlowTask loopProgress(groupedFilesToImport.Num(), LOCTEXT("SoundsImporting", "Importing wavs/mp3s..."));
+	loopProgress.MakeDialog();
+	for (const auto& pair : groupedFilesToImport)
+	{
+		FString dir = pair.Key;
+		if (FPaths::MakePathRelativeTo(dir, *rootPath))
+		{
+			loopProgress.EnterProgressFrame();
+			TArray<UObject*> importedAssets = assetTools.ImportAssets(pair.Value, IHL2Runtime::Get().GetHL2SoundBasePath() / dir);
+			SaveImportedAssets(importedAssets);
+			UE_LOG(LogHL2Editor, Log, TEXT("Imported %d assets to '%s'"), importedAssets.Num(), *dir);
+		}
+	}
+}
+
+void HL2EditorImpl::ImportScriptsClicked()
+{
+	// Ask user to select folder to import from
+	IDesktopPlatform* desktopPlatform = FDesktopPlatformModule::Get();
+	FString rootPath;
+	if (!desktopPlatform->OpenDirectoryDialog(nullptr, TEXT("Choose Scripts Location"), TEXT(""), rootPath)) { return; }
+
+
+	IAssetTools& assetTools = FAssetToolsModule::GetModule().Get();
+	FScopedSlowTask loopProgress(2, LOCTEXT("ScriptsImporting", "Importing scripts..."));
+	loopProgress.MakeDialog();
+
+	// Import sound scripts
+	{
+		USoundScriptFactory* factory = NewObject<USoundScriptFactory>();
+		loopProgress.EnterProgressFrame(1.0f, LOCTEXT("SoundScripts", "Sound scripts"));
+		UAutomatedAssetImportData* importData = NewObject<UAutomatedAssetImportData>();
+		importData->Filenames.Add(rootPath / "game_sounds_manifest.txt");
+		importData->DestinationPath = IHL2Runtime::Get().GetHL2ScriptBasePath();
+		importData->FactoryName = TEXT("SoundScriptFactory");
+		importData->bReplaceExisting = true;
+		importData->Factory = factory;
+		TArray<UObject*> importedAssets = assetTools.ImportAssetsAutomated(importData);
+		SaveImportedAssets(importedAssets);
+		UE_LOG(LogHL2Editor, Log, TEXT("Imported %d sound script assets"), importedAssets.Num());	
+	}
+
+	// Import soundscapes
+	{
+		USoundScapeFactory* factory = NewObject<USoundScapeFactory>();
+		loopProgress.EnterProgressFrame(1.0f, LOCTEXT("SoundScapes", "Sound scapes"));
+		UAutomatedAssetImportData* importData = NewObject<UAutomatedAssetImportData>();
+		importData->Filenames.Add(rootPath / "soundscapes_manifest.txt");
+		importData->DestinationPath = IHL2Runtime::Get().GetHL2ScriptBasePath();
+		importData->FactoryName = TEXT("SoundScapeFactory");
+		importData->bReplaceExisting = true;
+		importData->Factory = factory;
+		TArray<UObject*> importedAssets = assetTools.ImportAssetsAutomated(importData);
+		SaveImportedAssets(importedAssets);
+		UE_LOG(LogHL2Editor, Log, TEXT("Imported %d sound scape assets"), importedAssets.Num());
 	}
 }
 

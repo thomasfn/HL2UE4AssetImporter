@@ -14,7 +14,7 @@ public class HL2Editor : ModuleRules
             "UnrealEd", "Slate", "SlateCore", "EditorStyle", "DesktopPlatform", "AssetTools", "ContentBrowser", "EditorScriptingUtilities", "Projects", "AssetRegistry",
             "MeshDescription", "StaticMeshDescription", "MeshUtilitiesCommon", "MeshDescriptionOperations",
             "Landscape", "Foliage", "BSPUtils",
-            "HL2Runtime", "VTFLib"
+            "HL2Runtime", "VTFLib", "MPG123"
         });
     }
 }

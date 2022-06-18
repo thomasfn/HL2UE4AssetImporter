@@ -16,7 +16,7 @@ Please see [Project Status](STATUS.md) for a more detailed list.
 - :heavy_check_mark: Static Models (.mdl) v44-48
 - :heavy_exclamation_mark: Animated Models (.mdl) v44-48
 - :heavy_exclamation_mark: Maps (.bsp) v19-20
-- :x: Sounds
+- :heavy_exclamation_mark: Sounds
 - :x: Effects and Particles
 
 ### Entities and Logic

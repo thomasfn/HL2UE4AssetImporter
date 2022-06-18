@@ -70,11 +70,16 @@ The HL2 Asset Importer plugin is still very much a work-in-progress and there is
 	- :x: Visibility
 	- :x: Bulk Import
 
-- :x: Sounds
-	- :x: Sound Entities (ambient_generic, env_soundscape)
-	- :x: Sound Script Importing
-	- :x: Soundscapes
-	- :x: Bulk Import
+- :heavy_exclamation_mark: Sounds
+	- :heavy_check_mark: Sound Entities (ambient_generic, env_soundscape)
+	- :heavy_check_mark: Sound Script Importing
+	- :heavy_check_mark: Soundscapes
+	- :heavy_check_mark: Music
+	- :heavy_check_mark: Bulk Import
+	- :heavy_exclamation_mark: Attenuation Tweaking
+	- :x: DSP / effects
+	- :x: Proper Mixing
+	- :x: Voice Subtitles
 
 - :x: Effects and Particles
 	- :x: Particle System Importing
@@ -101,20 +106,22 @@ The HL2 Asset Importer plugin is still very much a work-in-progress and there is
 		- :heavy_check_mark: env_cubemap (see lighting section)
 		- :heavy_exclamation_mark: func_brush
 		- :heavy_exclamation_mark: func_illusionary
-		- :heavy_check_mark: info_player_start
+		- :heavy_check_mark: info_player_start, info_landmark, info_null, info_teleport_destination, info_target
 		- :heavy_check_mark: light (see lighting section)
 		- :heavy_check_mark: light_environment (see lighting section)
 		- :heavy_check_mark: light_spot (see lighting section)
 		- :heavy_check_mark: logic_auto
 		- :heavy_check_mark: logic_relay
-		- :heavy_check_mark: logic_relay
 		- :heavy_exclamation_mark: prop_dynamic
 		- :heavy_exclamation_mark: prop_physics
 		- :heavy_check_mark: prop_static
 		- :heavy_check_mark: sky_camera
-		- :heavy_check_mark: trigger_multiple
-		- :heavy_check_mark: trigger_once
+		- :heavy_check_mark: trigger_once, trigger_multiple
 		- :heavy_check_mark: worldspawn
+		- :heavy_check_mark: point_teleport
+		- :heavy_exclamation_mark: trigger_teleport
+		- :heavy_check_mark: ambient_generic
+		- :heavy_check_mark: env_soundscape, env_soundscape_triggerable, env_soundscape_proxy
 		- :x: Anything else
 
 - :heavy_exclamation_mark: Player

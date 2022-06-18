@@ -3,7 +3,7 @@
 FString FHL2EntityData::GetString(FName key) const
 {
 	FString tmp;
-	TryGetString(key, tmp);
+	if (!TryGetString(key, tmp)) { tmp = FString(); }
 	return tmp;
 }
 
@@ -18,7 +18,7 @@ bool FHL2EntityData::TryGetString(FName key, FString& out) const
 int FHL2EntityData::GetInt(FName key) const
 {
 	int tmp;
-	TryGetInt(key, tmp);
+	if (!TryGetInt(key, tmp)) { tmp = 0; }
 	return tmp;
 }
 
@@ -33,7 +33,7 @@ bool FHL2EntityData::TryGetInt(FName key, int& out) const
 bool FHL2EntityData::GetBool(FName key) const
 {
 	bool tmp;
-	TryGetBool(key, tmp);
+	if (!TryGetBool(key, tmp)) { tmp = false; }
 	return tmp;
 }
 
@@ -48,7 +48,7 @@ bool FHL2EntityData::TryGetBool(FName key, bool& out) const
 float FHL2EntityData::GetFloat(FName key) const
 {
 	float tmp;
-	TryGetFloat(key, tmp);
+	if (!TryGetFloat(key, tmp)) { tmp = 0.0f; }
 	return tmp;
 }
 
@@ -63,7 +63,7 @@ bool FHL2EntityData::TryGetFloat(FName key, float& out) const
 FVector3f FHL2EntityData::GetVector(FName key) const
 {
 	FVector3f tmp;
-	TryGetVector(key, tmp);
+	if (!TryGetVector(key, tmp)) { tmp = FVector3f::ZeroVector; }
 	return tmp;
 }
 
@@ -82,7 +82,7 @@ bool FHL2EntityData::TryGetVector(FName key, FVector3f& out) const
 FVector4f FHL2EntityData::GetVector4(FName key) const
 {
 	FVector4f tmp;
-	TryGetVector4(key, tmp);
+	if (!TryGetVector4(key, tmp)) { tmp = FVector4f::Zero(); }
 	return tmp;
 }
 

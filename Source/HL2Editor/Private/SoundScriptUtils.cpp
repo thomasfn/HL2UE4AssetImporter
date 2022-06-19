@@ -55,6 +55,7 @@ const TMap<FString, uint8> FSoundScriptUtils::SoundLevelNames =
 	// Average home, heavy rainfall
 	{ TEXT("SNDLVL_50dB"), 50 },
 	{ TEXT("SNDLVL_55dB"), 55 },
+	{ TEXT("SNDLVL_60dB"), 60 },
 	// Normal conversation, clothes dryer
 	{ TEXT("SNDLVL_IDLE"), 60 },
 	// Washing machine, dishwasher

@@ -33,6 +33,7 @@
 #include "SourceCoord.h"
 #include "IHL2Editor.h"
 #include "EntityEmitter.h"
+#include "DetailProps.h"
 
 DEFINE_LOG_CATEGORY(LogHL2BSPImporter);
 
@@ -285,6 +286,10 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
 		//RenderFacesToMesh(faces, meshDesc, false);
 		RenderBrushesToMesh(brushes, meshDesc);
+		if (modelIndex == 0)
+		{
+			RenderDetailPropsToMesh(meshDesc);
+		}
 		//RenderDisplacementsToMesh(displacements, meshDesc);
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 		//FMeshUtils::Clean(meshDesc, FMeshCleanSettings::All);
@@ -1050,6 +1055,95 @@ void FBSPImporter::RenderDisplacementsToMesh(const TArray<uint16>& displacements
 					edgeAttrIsHard[edgeID] = false;
 				}
 			}
+		}
+	}
+}
+
+void FBSPImporter::RenderDetailPropsToMesh(FMeshDescription& meshDesc)
+{
+	FStaticMeshAttributes staticMeshAttr(meshDesc);
+
+	TMeshAttributesRef<FVertexID, FVector3f> vertexAttrPosition = staticMeshAttr.GetVertexPositions();
+
+	TMeshAttributesRef<FVertexInstanceID, FVector2f> vertexInstanceAttrUV = staticMeshAttr.GetVertexInstanceUVs();
+	TMeshAttributesRef<FVertexInstanceID, FVector4f> vertexInstanceAttrCol = staticMeshAttr.GetVertexInstanceColors();
+
+	TMeshAttributesRef<FPolygonGroupID, FName> polyGroupMaterial = staticMeshAttr.GetPolygonGroupMaterialSlotNames();
+
+	const FPolygonGroupID polyGroupID = meshDesc.CreatePolygonGroup();
+	polyGroupMaterial[polyGroupID] = FName(TEXT("detail/detailsprites"));
+
+	for (const Valve::BSP::DetailObject_t& detailObject : bspFile.m_Detailobjects)
+	{
+		const FVector3f origin = FVector3f(detailObject.m_Origin(0, 0), detailObject.m_Origin(0, 1), detailObject.m_Origin(0, 2));
+		const FRotator3f rotator = FRotator3f(detailObject.m_Angles(0, 0), detailObject.m_Angles(0, 1), detailObject.m_Angles(0, 2));
+		if (detailObject.m_Type == 0)
+		{
+			// Model
+		}
+		else if (detailObject.m_Type == 1)
+		{
+			// Sprite
+			const Valve::BSP::DetailSpriteDict_t& sprite = bspFile.m_Detailsprites[detailObject.m_DetailModel];
+
+			const FVector2f upperLeft(sprite.m_UL[0], sprite.m_UL[1]);
+			const FVector2f lowerRight(sprite.m_LR[0], sprite.m_LR[1]);
+			const FVector2f upperRight(lowerRight.X, upperLeft.Y);
+			const FVector2f lowerLeft(upperLeft.X, lowerRight.Y);
+
+			const FVertexID vertexIDs[4] =
+			{
+				meshDesc.CreateVertex(),
+				meshDesc.CreateVertex(),
+				meshDesc.CreateVertex(),
+				meshDesc.CreateVertex()
+			};
+			vertexAttrPosition[vertexIDs[0]] = SourceToUnreal.Position(origin + rotator.RotateVector(FVector3f(lowerLeft.X, 0.0f, lowerLeft.Y)));
+			vertexAttrPosition[vertexIDs[1]] = SourceToUnreal.Position(origin + rotator.RotateVector(FVector3f(upperLeft.X, 0.0f, upperLeft.Y)));
+			vertexAttrPosition[vertexIDs[2]] = SourceToUnreal.Position(origin + rotator.RotateVector(FVector3f(upperRight.X, 0.0f, upperRight.Y)));
+			vertexAttrPosition[vertexIDs[3]] = SourceToUnreal.Position(origin + rotator.RotateVector(FVector3f(lowerRight.X, 0.0f, lowerRight.Y)));
+
+			const FVector2f upperLeftUV(sprite.m_TexUL[0], sprite.m_TexUL[1]);
+			const FVector2f lowerRightUV(sprite.m_TexLR[0], sprite.m_TexLR[1]);
+			const FVector2f upperRightUV(lowerRightUV.X, upperLeftUV.Y);
+			const FVector2f lowerLeftUV(upperLeftUV.X, lowerRightUV.Y);
+
+			const FVertexInstanceID vertexInstanceIDs[4] =
+			{
+				meshDesc.CreateVertexInstance(vertexIDs[0]),
+				meshDesc.CreateVertexInstance(vertexIDs[1]),
+				meshDesc.CreateVertexInstance(vertexIDs[2]),
+				meshDesc.CreateVertexInstance(vertexIDs[3])
+			};
+
+			vertexInstanceAttrUV[vertexInstanceIDs[0]] = lowerLeftUV;
+			vertexInstanceAttrUV[vertexInstanceIDs[1]] = upperLeftUV;
+			vertexInstanceAttrUV[vertexInstanceIDs[2]] = upperRightUV;
+			vertexInstanceAttrUV[vertexInstanceIDs[3]] = lowerRightUV;
+
+			vertexInstanceAttrCol[vertexInstanceIDs[0]] = FVector4f::Zero();
+			vertexInstanceAttrCol[vertexInstanceIDs[1]] = FVector4f::One();
+			vertexInstanceAttrCol[vertexInstanceIDs[2]] = FVector4f::One();
+			vertexInstanceAttrCol[vertexInstanceIDs[3]] = FVector4f::Zero();
+
+			const FVertexInstanceID vertexInstanceIDsReverseWinding[4] =
+			{
+				vertexInstanceIDs[3],
+				vertexInstanceIDs[2],
+				vertexInstanceIDs[1],
+				vertexInstanceIDs[0]
+			};
+			
+			meshDesc.CreatePolygon(polyGroupID, TArrayView<const FVertexInstanceID>(vertexInstanceIDs, 4));
+			meshDesc.CreatePolygon(polyGroupID, TArrayView<const FVertexInstanceID>(vertexInstanceIDsReverseWinding, 4));
+		}
+		else if (detailObject.m_Type == 2)
+		{
+			// Shape (cross)
+		}
+		else if (detailObject.m_Type == 3)
+		{
+			// Shape (tri)
 		}
 	}
 }

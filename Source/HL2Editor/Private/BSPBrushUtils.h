@@ -35,5 +35,3 @@ private:
 	static inline void SnapVertex(FVector3f& vertex);
 
 };
-
-

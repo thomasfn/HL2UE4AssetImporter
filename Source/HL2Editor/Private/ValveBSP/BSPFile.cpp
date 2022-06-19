@@ -72,7 +72,8 @@ bool BSPFile::parse( const std::string& bsp_directory, const std::string& bsp_fi
 		parse_lump_data(bsp_binary, LUMP_CUBEMAPS, m_Cubemaps);
 
 		if ( !parse_gamelumps( bsp_binary )
-			|| !parse_staticprops( bsp_binary ) ) {
+			|| !parse_staticprops( bsp_binary )
+            || !parse_detailprops( bsp_binary ) ) {
 			return false;
 		}
 
@@ -381,6 +382,48 @@ bool BSPFile::parse_staticprops( std::ifstream& bsp_binary )
 		return false;
 	}
 	return true;
+}
+
+bool BSPFile::parse_detailprops(std::ifstream& bsp_binary)
+{
+    try {
+
+        auto lump = get_game_lump(GAMELUMP_DETAILPROPS);
+        if (lump.m_ID != GAMELUMP_DETAILPROPS) {
+            return false;
+        }
+        const auto lump_size = lump.m_Filelen;
+        if (!lump_size) {
+            return true;
+        }
+
+        // Model dict
+        int numDictEntries;
+        bsp_binary.seekg(lump.m_Fileofs);
+        bsp_binary.read((char*)&numDictEntries, sizeof(int));
+
+        m_DetailpropsStringTable = std::vector< DetailObjectName_t >(numDictEntries);
+        bsp_binary.read(reinterpret_cast<char*>(m_DetailpropsStringTable.data()), sizeof(DetailObjectName_t) * numDictEntries);
+
+        // Sprite dict
+        int numDetailSprites;
+        bsp_binary.read((char*)&numDetailSprites, sizeof(int));
+
+        m_Detailsprites = std::vector< DetailSpriteDict_t >(numDetailSprites);
+        bsp_binary.read(reinterpret_cast<char*>(m_Detailsprites.data()), sizeof(DetailSpriteDict_t) * numDetailSprites);
+
+        // Detail objects
+        int numDetailObjects;
+        bsp_binary.read((char*)&numDetailObjects, sizeof(int));
+
+        m_Detailobjects = std::vector< DetailObject_t >(numDetailObjects);
+        bsp_binary.read(reinterpret_cast<char*>(m_Detailobjects.data()), sizeof(DetailObject_t) * numDetailObjects);
+    }
+    catch (const std::exception& e) {
+        print_exception("parse_gamelumps", e);
+        return false;
+    }
+    return true;
 }
 
 void BSPFile::print_exception( const std::string& function_name, const std::exception& e ) const

@@ -132,6 +132,13 @@ namespace Valve {
 		 * @return     False if an exception got throwed, True otherwise.
 		 */
 		bool parse_staticprops( std::ifstream& bsp_binary );
+
+        /**
+         * @brief      Parse map detail prop lumps.
+         *
+         * @return     False if an exception got throwed, True otherwise.
+         */
+        bool parse_detailprops(std::ifstream& bsp_binary);
         
         /**
          * @brief      Print function specific exception.
@@ -154,38 +161,41 @@ namespace Valve {
         void parse_lump_data( std::ifstream& bsp_binary, const BSP::eLumpIndex lump_index, std::vector< T >& buffer ) const;
 
     public:
-        std::string                      m_FileName;
-        BSP::dheader_t                   m_BSPHeader;
-		std::vector< char >			     m_Entities;
-        std::vector< BSP::mvertex_t >    m_Vertexes;
-		std::vector< std::vector<int> >  m_Visibility;
-        std::vector< BSP::cplane_t >     m_Planes;
-        std::vector< BSP::dedge_t >      m_Edges;
-        std::vector< int32_t >           m_Surfedges;
-        std::vector< BSP::dleaf_t >      m_Leaves;
-        std::vector< BSP::snode_t >      m_Nodes;
-        std::vector< BSP::dface_t >      m_Surfaces;
-		std::vector< BSP::dface_t >      m_OrigSurfaces;
-        std::vector< BSP::texinfo_t >    m_Texinfos;
-		std::vector< BSP::texdata_t >    m_Texdatas;
-		std::vector< int32_t >           m_TexdataStringTable;
-		std::vector< char >				 m_TexdataStringData;
-        std::vector< BSP::dbrush_t >     m_Brushes;
-        std::vector< BSP::dbrushside_t > m_Brushsides;
-		std::vector< BSP::dmodel_t >	 m_Models;
-        std::vector< uint16_t >          m_Leaffaces;
-        std::vector< uint16_t >          m_Leafbrushes;
-		std::vector< BSP::ddispinfo_t >  m_Dispinfos;
-		std::vector< BSP::ddispvert_t >  m_Dispverts;
-		std::vector< BSP::ddisptri_t >   m_Disptris;
-		std::vector< BSP::dcubemapsample_t >   m_Cubemaps;
-        std::vector< BSP::Polygon >      m_Polygons;
-		std::vector< BSP::dgamelump_t >  m_Gamelumps;
+        std::string                             m_FileName;
+        BSP::dheader_t                          m_BSPHeader;
+		std::vector< char >			            m_Entities;
+        std::vector< BSP::mvertex_t >           m_Vertexes;
+		std::vector< std::vector<int> >         m_Visibility;
+        std::vector< BSP::cplane_t >            m_Planes;
+        std::vector< BSP::dedge_t >             m_Edges;
+        std::vector< int32_t >                  m_Surfedges;
+        std::vector< BSP::dleaf_t >             m_Leaves;
+        std::vector< BSP::snode_t >             m_Nodes;
+        std::vector< BSP::dface_t >             m_Surfaces;
+		std::vector< BSP::dface_t >             m_OrigSurfaces;
+        std::vector< BSP::texinfo_t >           m_Texinfos;
+		std::vector< BSP::texdata_t >           m_Texdatas;
+		std::vector< int32_t >                  m_TexdataStringTable;
+		std::vector< char >				        m_TexdataStringData;
+        std::vector< BSP::dbrush_t >            m_Brushes;
+        std::vector< BSP::dbrushside_t >        m_Brushsides;
+		std::vector< BSP::dmodel_t >	        m_Models;
+        std::vector< uint16_t >                 m_Leaffaces;
+        std::vector< uint16_t >                 m_Leafbrushes;
+		std::vector< BSP::ddispinfo_t >         m_Dispinfos;
+		std::vector< BSP::ddispvert_t >         m_Dispverts;
+		std::vector< BSP::ddisptri_t >          m_Disptris;
+		std::vector< BSP::dcubemapsample_t >    m_Cubemaps;
+        std::vector< BSP::Polygon >             m_Polygons;
+		std::vector< BSP::dgamelump_t >         m_Gamelumps;
 		std::vector< BSP::StaticPropName_t >	m_StaticpropStringTable;
 		std::vector< BSP::StaticProp_v4_t >		m_Staticprops_v4;
 		std::vector< BSP::StaticProp_v5_t >		m_Staticprops_v5;
 		std::vector< BSP::StaticProp_v6_t >		m_Staticprops_v6;
         std::vector< BSP::StaticProp_v10_t >	m_Staticprops_v10;
+        std::vector< BSP::DetailObjectName_t >	m_DetailpropsStringTable;
+        std::vector< BSP::DetailObject_t >	    m_Detailobjects;
+        std::vector< BSP::DetailSpriteDict_t >	m_Detailsprites;
     };
 
     constexpr int blah = sizeof(BSP::StaticProp_v10_t);

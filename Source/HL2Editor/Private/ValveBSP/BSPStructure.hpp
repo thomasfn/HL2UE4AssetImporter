@@ -68,8 +68,8 @@ namespace Valve { namespace BSP {
 
 	enum eGamelumpIndex : int
 	{
-		GAMELUMP_STATICPROPS = 1936749168, // 'sprp'
-		GAMELUMP_DETAILPROPS = 1936749168 // 'dprp'
+		GAMELUMP_STATICPROPS = 0x73707270, // 'sprp'
+		GAMELUMP_DETAILPROPS = 0x64707270, // 'dprp'
 	};
 
     class lump_t
@@ -364,6 +364,54 @@ namespace Valve { namespace BSP {
     };
 
     constexpr int StaticProp_v10_size = sizeof(StaticProp_v10_t);
+
+    class DetailObjectName_t
+    {
+    public:
+        char	m_Str[128];
+    };
+
+    class DetailObject_t
+    {
+    public:
+        Vector3             m_Origin;
+        Vector3             m_Angles;
+        unsigned short      m_DetailModel;
+        unsigned short      m_Leaf;
+        array< char, 4 >    m_Lighting;
+        int                 m_LightStyles;
+        char                m_LightStyleCount;
+        char                m_SwayAmount;
+        char                m_ShapeAngle;
+        char                m_ShapeSize;
+        char                m_Orientation;
+        array< char, 3 >    m_Padding2;
+        char                m_Type;
+        array< char, 3 >    m_Padding3;
+        float               m_flScale;
+    };
+
+    constexpr int DetailObject_size = sizeof(DetailObject_t);
+
+    class DetailSpriteDict_t
+    {
+    public:
+        array< float, 2 > m_UL;
+        array< float, 2 > m_LR;
+        array< float, 2 > m_TexUL;
+        array< float, 2 > m_TexLR;
+    };
+
+    constexpr int DetailSpriteDict_size = sizeof(DetailSpriteDict_t);
+
+    class DetailPropLightstyles_t
+    {
+    public:
+        array< char, 4 > m_Lighting;
+        char m_Style;
+    };
+
+    constexpr int DetailPropLightstyles_size = sizeof(DetailPropLightstyles_t);
 
     class VPlane
     {

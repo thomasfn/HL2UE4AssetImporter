@@ -62,6 +62,8 @@ private:
 	void RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMeshDescription& meshDesc);
 	
 	void RenderDisplacementsToMesh(const TArray<uint16>& displacements, FMeshDescription& meshDesc);
+
+	void RenderDetailPropsToMesh(FMeshDescription& meshDesc);
 	
 	void RenderTreeToVBSPInfo(uint32 nodeIndex);
 

@@ -30,4 +30,7 @@ public:
 	UPROPERTY()
 	FString vmtSurfaceProp;
 
+	UPROPERTY()
+	FString vmtDetailType;
+
 };

@@ -14,7 +14,7 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 
 	const UValveGroupValue* rootGroupValue = CastChecked<UValveGroupValue>(document->Root);
 	check(rootGroupValue->Items.Num() == 1);
-	const FString shaderName = rootGroupValue->Items[0].Key.ToString();
+	FString shaderName = rootGroupValue->Items[0].Key.ToString();
 	const UValveGroupValue* groupValue = CastChecked<UValveGroupValue>(rootGroupValue->Items[0].Value);
 	UVMTMaterial* vmtMaterial = Cast<UVMTMaterial>(mtl);
 	const FHL2EditorMaterialConfig& config = IHL2Editor::Get().GetConfig().Material;
@@ -41,9 +41,22 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 		isDecal = true;
 	}
 
+	// Special case: handle detail sprite
+	const static FName fnBaseTexture(TEXT("$basetexture"));
+	bool isDetailSprites = false;
+	FString baseTexture;
+	if (groupValue->GetString(fnBaseTexture, baseTexture) && baseTexture == TEXT("detail/detailsprites"))
+	{
+		isDetailSprites = true;
+	}
+
 	// Try resolve shader
-	UMaterialInterface* pluginShader = hl2Runtime.TryResolveHL2Shader(isDecal ? TEXT("Decal") : shaderName, false);
-	UMaterialInterface* gameContentShader = hl2Runtime.TryResolveHL2Shader(isDecal ? TEXT("Decal") : shaderName, true);
+	const FString lookupShaderName =
+		isDecal ? TEXT("Decal") :
+		isDetailSprites ? TEXT("DetailSprites") :
+		shaderName;
+	UMaterialInterface* pluginShader = hl2Runtime.TryResolveHL2Shader(lookupShaderName, false);
+	UMaterialInterface* gameContentShader = hl2Runtime.TryResolveHL2Shader(lookupShaderName, true);
 	if (config.Portable)
 	{
 		if (gameContentShader != nullptr && gameContentShader != pluginShader)
@@ -53,7 +66,7 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 		else if (pluginShader != nullptr)
 		{
 			CopyShadersToGame();
-			gameContentShader = hl2Runtime.TryResolveHL2Shader(isDecal ? TEXT("Decal") : shaderName, true);
+			gameContentShader = hl2Runtime.TryResolveHL2Shader(lookupShaderName, true);
 			check(gameContentShader != pluginShader);
 			mtl->Parent = gameContentShader;
 		}
@@ -69,11 +82,12 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 	
 	if (mtl->Parent == nullptr)
 	{
-		UE_LOG(LogHL2Editor, Error, TEXT("Shader '%s' not found"), *shaderName);
+		UE_LOG(LogHL2Editor, Error, TEXT("Shader '%s' not found"), *lookupShaderName);
 		return false;
 	}
 
 	// Set blend mode on the material
+	if (!isDetailSprites)
 	{
 		FMaterialInstanceBasePropertyOverrides& overrides = mtl->BasePropertyOverrides;
 		const static FName fnAdditive(TEXT("$additive"));
@@ -210,6 +224,13 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 		vmtMaterial->vmtSurfaceProp.Empty();
 		const static FName fnSurfaceProp(TEXT("$surfaceprop"));
 		groupValue->GetString(fnSurfaceProp, vmtMaterial->vmtSurfaceProp);
+	}
+
+	// Read detail
+	if (vmtMaterial != nullptr)
+	{
+		const static FName fnDetailType(TEXT("%detailtype"));
+		groupValue->GetString(fnDetailType, vmtMaterial->vmtDetailType);
 	}
 
 	// Update textures

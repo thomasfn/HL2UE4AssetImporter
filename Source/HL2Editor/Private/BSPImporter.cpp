@@ -213,13 +213,17 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		const Valve::BSP::dmodel_t& bspModel = bspFile.m_Models[i];
 		TArray<uint16> faces;
 		GatherFaces(bspModel.m_Headnode, faces);
+		//TArray<uint16> brushes;
+		//GatherBrushes(bspModel.m_Headnode, brushes);
 		FMeshDescription meshDesc;
 		FStaticMeshAttributes staticMeshAttr(meshDesc);
 		staticMeshAttr.Register();
 		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
 		RenderFacesToMesh(faces, meshDesc, false);
+		//RenderBrushesToMesh(brushes, meshDesc);
+		FMeshUtils::Clean(meshDesc);
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
-		meshDesc.TriangulateMesh();
+		//meshDesc.TriangulateMesh();
 		bspModels.Add(RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), i), true, true));
 	}
 
@@ -241,7 +245,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[bspModel.m_Headnode];
 	const FBox3f bspBounds = GetNodeBounds(bspNode, true);
 
-	FScopedSlowTask progress(modelIndex == 0 ? 5 : 4, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
+	FScopedSlowTask progress(modelIndex == 0 ? 6 : 5, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
 	progress.MakeDialog();
 
 	// Render out VBSPInfo
@@ -272,8 +276,8 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		FStaticMeshAttributes staticMeshAttr(meshDesc);
 		staticMeshAttr.Register();
 		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
-		RenderFacesToMesh(faces, meshDesc, false);
-		//RenderBrushesToMesh(brushes, meshDesc);
+		//RenderFacesToMesh(faces, meshDesc, false);
+		RenderBrushesToMesh(brushes, meshDesc);
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 
 		RenderCellsToActors(meshDesc, TEXT("World"), bspConfig.BrushGeometryCells, true, true, out);
@@ -311,7 +315,8 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 
 				FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 
-				RenderCellsToActors(meshDesc, TEXT("Displacement"), bspConfig.DisplacementCells, true, true, out);
+				const FString name = FString::Printf(TEXT("Displacement_%i"), (int)displacementID);
+				RenderCellsToActors(meshDesc, name, bspConfig.DisplacementCells, true, true, out);
 			}
 		}
 	}
@@ -349,6 +354,44 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		staticMeshActor->PostEditChange();
 		staticMeshActor->MarkPackageDirty();
 		out.Add(staticMeshActor);
+	}
+
+	{
+		progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_DETAIL", "Generating collision volumes..."));
+
+		TArray<uint16> solidBrushes;
+		TArray<uint16> playerClipBrushes;
+		TArray<uint16> npcClipBrushes;
+		for (const uint16 brushIndex : brushes)
+		{
+			const Valve::BSP::dbrush_t& bspBrush = bspFile.m_Brushes[brushIndex];
+			if (bspBrush.m_Contents & 0x10000)
+			{
+				// CONTENTS_PLAYERCLIP
+				playerClipBrushes.Add(brushIndex);
+			}
+			else if (bspBrush.m_Contents & 0x20000)
+			{
+				// CONTENTS_MONSTERCLIP
+				npcClipBrushes.Add(brushIndex);
+			}
+		}
+		if (playerClipBrushes.Num() > 0)
+		{
+			AStaticMeshActor* staticMeshActor = RenderBrushesToCollisionActor(playerClipBrushes, TEXT("PlayerClipCollision"));
+			staticMeshActor->SetActorLabel(TEXT("PlayerClipCollision"));
+			staticMeshActor->PostEditChange();
+			staticMeshActor->MarkPackageDirty();
+			out.Add(staticMeshActor);
+		}
+		if (npcClipBrushes.Num() > 0)
+		{
+			AStaticMeshActor* staticMeshActor = RenderBrushesToCollisionActor(npcClipBrushes, TEXT("NpcClipCollision"));
+			staticMeshActor->SetActorLabel(TEXT("NpcClipCollision"));
+			staticMeshActor->PostEditChange();
+			staticMeshActor->MarkPackageDirty();
+			out.Add(staticMeshActor);
+		}
 	}
 }
 
@@ -766,53 +809,51 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 
 void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMeshDescription& meshDesc)
 {
+	static const FName fnBlack("tools/toolsblack");
 	for (const uint16 brushIndex : brushIndices)
 	{
 		const Valve::BSP::dbrush_t& bspBrush = bspFile.m_Brushes[brushIndex];
-		
-		FBSPBrush brush;
-		brush.Sides.Reserve(bspBrush.m_Numsides);
+
+		// Classify the brush
+		int numSkySides = 0, numNoDrawSides = 0, numTextureSides = 0, numSkipSides = 0, numDispSides = 0;
 		for (int i = 0; i < bspBrush.m_Numsides; ++i)
 		{
 			const Valve::BSP::dbrushside_t& bspBrushSide = bspFile.m_Brushsides[bspBrush.m_Firstside + i];
-
-			if (bspBrushSide.m_Bevel == 0)
+			if (bspBrushSide.m_Texinfo < 0)
 			{
-				const Valve::BSP::cplane_t& plane = bspFile.m_Planes[bspBrushSide.m_Planenum];
-				FBSPBrushSide side;
-				side.Plane = FPlane4f(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
-				side.EmitGeometry = false;
-				side.TextureU = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
-				side.TextureV = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
-				side.TextureW = 0;
-				side.TextureH = 0;
-				side.Material = NAME_None;
-				if (bspBrushSide.m_Texinfo >= 0)
-				{
-					const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspBrushSide.m_Texinfo];
-					constexpr int32 rejectedSurfFlags = Valve::BSP::SURF_NODRAW | Valve::BSP::SURF_SKY | Valve::BSP::SURF_SKY2D | Valve::BSP::SURF_SKIP | Valve::BSP::SURF_HINT;
-					if (bspTexInfo.m_Texdata >= 0 && !(bspTexInfo.m_Flags & rejectedSurfFlags))
-					{
-						const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
-						const char* bspMaterialName = &bspFile.m_TexdataStringData[0] + bspFile.m_TexdataStringTable[bspTexData.m_NameStringTableID];
-						FString parsedMaterialName = ParseMaterialName(bspMaterialName);
-						side.TextureU = FVector4f(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2], bspTexInfo.m_TextureVecs[0][3]);
-						side.TextureV = FVector4f(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2], bspTexInfo.m_TextureVecs[1][3]);
-						side.TextureW = (uint16)bspTexData.m_Width;
-						side.TextureH = (uint16)bspTexData.m_Height;
-						side.Material = FName(*parsedMaterialName);
-						side.EmitGeometry = true;
-					}
-				}
-				if (bspBrushSide.m_Dispinfo > 0)
-				{
-					side.EmitGeometry = false;
-				}
-				side.SmoothingGroups = 0;
-				brush.Sides.Add(side);
+				++numSkipSides;
+				continue;
+			}
+			const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspBrushSide.m_Texinfo];
+			if (bspTexInfo.m_Flags & Valve::BSP::SURF_NODRAW)
+			{
+				++numNoDrawSides;
+			}
+			else if (bspTexInfo.m_Flags & (Valve::BSP::SURF_SKY | Valve::BSP::SURF_SKY2D))
+			{
+				++numSkySides;
+			}
+			else if (bspTexInfo.m_Flags & (Valve::BSP::SURF_SKIP | Valve::BSP::SURF_HINT))
+			{
+				++numSkipSides;
+			}
+			else
+			{
+				++numTextureSides;
+			}
+			if (bspBrushSide.m_Dispinfo > 0)
+			{
+				++numDispSides;
 			}
 		}
 
+		// If the brush contributes to world geometry in some way, excluding displacements, always emit the non-visible sides as black
+		// This is to ensure that the geometry is closed so that unreal can generate correct distance fields to avoid light leaking
+		const bool closeGeometry = numSkySides == 0 && numTextureSides > 0 && numDispSides == 0;
+		constexpr int32 rejectedSurfFlags = Valve::BSP::SURF_NODRAW | Valve::BSP::SURF_SKY | Valve::BSP::SURF_SKY2D | Valve::BSP::SURF_SKIP | Valve::BSP::SURF_HINT;
+		
+		FBSPBrush brush;
+		ProcessBrush(brushIndex, closeGeometry, rejectedSurfFlags, brush);
 		FBSPBrushUtils::BuildBrushGeometry(brush, meshDesc);
 	}
 }
@@ -1199,6 +1240,125 @@ void FBSPImporter::RenderTreeToVBSPInfo(uint32 nodeIndex)
 
 	vbspInfo->PostEditChange();
 	vbspInfo->MarkPackageDirty();
+}
+
+UStaticMesh* FBSPImporter::RenderBrushesToCollisionStaticMesh(const TArray<uint16>& brushIndices, const FString& assetName)
+{
+	FString packageName = TEXT("/Game/hl2/maps") / mapName / assetName;
+	UPackage* package = CreatePackage(*packageName);
+
+	UStaticMesh* staticMesh = NewObject<UStaticMesh>(package, FName(*(FPaths::GetBaseFilename(assetName))), RF_Public | RF_Standalone);
+	FStaticMeshSourceModel& staticMeshSourceModel = staticMesh->AddSourceModel();
+	FMeshBuildSettings& settings = staticMeshSourceModel.BuildSettings;
+	settings.bRecomputeNormals = false;
+	settings.bRecomputeTangents = false;
+	settings.bGenerateLightmapUVs = false;
+	settings.bRemoveDegenerates = false;
+	settings.bUseFullPrecisionUVs = true;
+	settings.MaxLumenMeshCards = 0;
+	FMeshDescription* worldModelMesh = staticMesh->CreateMeshDescription(0);
+	{
+		FStaticMeshAttributes staticMeshAttr(*worldModelMesh);
+		staticMeshAttr.Register();
+		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
+		RenderBrushesToMesh(brushIndices, *worldModelMesh);
+	}
+	staticMesh->bGenerateMeshDistanceField = false;
+	const auto& importedMaterialSlotNameAttr = worldModelMesh->PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
+	TArray<FStaticMaterial> staticMaterials;
+	TMap<FPolygonGroupID, int> polygonGroupToMaterialIndex;
+	for (const FPolygonGroupID& polyGroupID : worldModelMesh->PolygonGroups().GetElementIDs())
+	{
+		const FName materialName = importedMaterialSlotNameAttr[polyGroupID];
+		const FStaticMaterial staticMaterial(
+			Cast<UMaterialInterface>(IHL2Runtime::Get().TryResolveHL2Material(materialName.ToString())),
+			materialName,
+			materialName
+		);
+		polygonGroupToMaterialIndex.Add(polyGroupID, staticMaterials.Add(staticMaterial));
+	}
+	staticMesh->SetStaticMaterials(staticMaterials);
+	for (const FPolygonGroupID& polyGroupID : worldModelMesh->PolygonGroups().GetElementIDs())
+	{
+		const int meshSlot = polygonGroupToMaterialIndex[polyGroupID];
+		staticMesh->GetSectionInfoMap().Set(0, meshSlot, FMeshSectionInfo(meshSlot));
+	}
+	staticMesh->CommitMeshDescription(0);
+	staticMesh->bCustomizedCollision = true;
+	staticMesh->CreateBodySetup();
+	staticMesh->GetBodySetup()->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseSimpleAsComplex;
+	for (const uint16 brushIndex : brushIndices)
+	{
+		FBSPBrush brush;
+		ProcessBrush(brushIndex, true, 0, brush);
+		FBSPBrushUtils::BuildBrushCollision(brush, staticMesh->GetBodySetup());
+	}
+	staticMesh->Build();
+	staticMesh->PostEditChange();
+	FAssetRegistryModule::AssetCreated(staticMesh);
+	staticMesh->MarkPackageDirty();
+
+	return staticMesh;
+}
+
+AStaticMeshActor* FBSPImporter::RenderBrushesToCollisionActor(const TArray<uint16>& brushIndices, const FString& assetName)
+{
+	UStaticMesh* staticMesh = RenderBrushesToCollisionStaticMesh(brushIndices, assetName);
+
+	AStaticMeshActor* staticMeshActor = world->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), FTransform::Identity);
+	UStaticMeshComponent* staticMeshComponent = staticMeshActor->GetStaticMeshComponent();
+	staticMeshComponent->SetStaticMesh(staticMesh);
+	staticMeshComponent->SetVisibility(false);
+
+	staticMeshActor->PostEditChange();
+	return staticMeshActor;
+}
+
+void FBSPImporter::ProcessBrush(uint16 brushIndex, bool closeGeometry, int rejectedSurfFlags, FBSPBrush& outBSPBrush)
+{
+	static const FName fnBlack("tools/toolsblack");
+	const Valve::BSP::dbrush_t& bspBrush = bspFile.m_Brushes[brushIndex];
+
+	outBSPBrush.Sides.Reserve(bspBrush.m_Numsides);
+	for (int i = 0; i < bspBrush.m_Numsides; ++i)
+	{
+		const Valve::BSP::dbrushside_t& bspBrushSide = bspFile.m_Brushsides[bspBrush.m_Firstside + i];
+
+		if (bspBrushSide.m_Bevel == 0)
+		{
+			const Valve::BSP::cplane_t& plane = bspFile.m_Planes[bspBrushSide.m_Planenum];
+			FBSPBrushSide side;
+			side.Plane = FPlane4f(plane.m_Normal(0, 0), plane.m_Normal(0, 1), plane.m_Normal(0, 2), plane.m_Distance);
+			side.EmitGeometry = closeGeometry;
+			side.TextureU = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+			side.TextureV = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+			side.TextureW = 0;
+			side.TextureH = 0;
+			side.Material = closeGeometry ? fnBlack : NAME_None;
+			if (bspBrushSide.m_Texinfo >= 0)
+			{
+				const Valve::BSP::texinfo_t& bspTexInfo = bspFile.m_Texinfos[bspBrushSide.m_Texinfo];
+				if (bspTexInfo.m_Texdata >= 0 && !(bspTexInfo.m_Flags & rejectedSurfFlags))
+				{
+					const Valve::BSP::texdata_t& bspTexData = bspFile.m_Texdatas[bspTexInfo.m_Texdata];
+					const char* bspMaterialName = &bspFile.m_TexdataStringData[0] + bspFile.m_TexdataStringTable[bspTexData.m_NameStringTableID];
+					FString parsedMaterialName = ParseMaterialName(bspMaterialName);
+					side.TextureU = FVector4f(bspTexInfo.m_TextureVecs[0][0], bspTexInfo.m_TextureVecs[0][1], bspTexInfo.m_TextureVecs[0][2], bspTexInfo.m_TextureVecs[0][3]);
+					side.TextureV = FVector4f(bspTexInfo.m_TextureVecs[1][0], bspTexInfo.m_TextureVecs[1][1], bspTexInfo.m_TextureVecs[1][2], bspTexInfo.m_TextureVecs[1][3]);
+					side.TextureW = (uint16)bspTexData.m_Width;
+					side.TextureH = (uint16)bspTexData.m_Height;
+					side.Material = FName(*parsedMaterialName);
+					side.EmitGeometry = true;
+				}
+			}
+			if (bspBrushSide.m_Dispinfo > 0)
+			{
+				side.EmitGeometry = false;
+			}
+			side.SmoothingGroups = 0;
+			outBSPBrush.Sides.Add(side);
+		}
+	}
 }
 
 float FBSPImporter::FindFaceArea(const Valve::BSP::dface_t& bspFace, bool unrealCoordSpace)

@@ -28,7 +28,9 @@ private:
 
 public:
 
-	static void BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription& meshDesc);
+	static void BuildBrushGeometry(const FBSPBrush& brush, FMeshDescription& meshDesc, FName overrideMaterial = NAME_None, bool alwaysEmitFaces = false);
+
+	static void BuildBrushCollision(const FBSPBrush& brush, UBodySetup* bodySetup);
 
 private:
 

@@ -37,7 +37,7 @@ public:
 
 	// Whether to split displacement geometry into cells
 	UPROPERTY()
-	FHL2EditorCellsConfig DisplacementCells;
+	FHL2EditorCellsConfig DisplacementCells = FHL2EditorCellsConfig { false, 2048, true };
 
 	// Whether to split detail prop geometry into cells
 	UPROPERTY()

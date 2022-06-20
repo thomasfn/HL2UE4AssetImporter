@@ -70,6 +70,12 @@ private:
 	
 	void RenderTreeToVBSPInfo(uint32 nodeIndex);
 
+	UStaticMesh* RenderBrushesToCollisionStaticMesh(const TArray<uint16>& brushIndices, const FString& assetName);
+
+	AStaticMeshActor* RenderBrushesToCollisionActor(const TArray<uint16>& brushIndices, const FString& assetName);
+
+	void ProcessBrush(uint16 brushIndex, bool closeGeometry, int rejectedSurfFlags, FBSPBrush& outBSPBrush);
+
 	float FindFaceArea(const Valve::BSP::dface_t& bspFace, bool unrealCoordSpace = true);
 
 	static FBox3f GetModelBounds(const Valve::BSP::dmodel_t& model, bool unrealCoordSpace = true);

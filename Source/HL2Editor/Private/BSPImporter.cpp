@@ -145,18 +145,20 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 	const static FName fnModel(TEXT("model"));
 	const static FName fnSkin(TEXT("skin"));
 	const static FName fnAngles(TEXT("angles"));
+	const static FName fnFlags(TEXT("flags"));
 	// TODO: Find a way to not have all these dumb loops
 	for (const Valve::BSP::StaticProp_v4_t staticProp : bspFile.m_Staticprops_v4)
 	{
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
 		entityData.Origin = FVector3f(staticProp.m_Origin(0, 0), staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
-		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
+		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
 		const auto& modelRaw = StringCast<TCHAR, 128>(modelStr);
-		entityData.KeyValues[fnModel] = FString(modelRaw.Length(), modelRaw.Get());
-		entityData.KeyValues[fnAngles] = FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2));
-		entityData.KeyValues[fnSkin] = FString::FromInt(staticProp.m_Skin);
+		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
+		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
+		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
+		entityData.KeyValues.Add(fnFlags, FString::FromInt(staticProp.m_Flags));
 		entityDatas.Add(entityData);
 	}
 	for (const Valve::BSP::StaticProp_v5_t staticProp : bspFile.m_Staticprops_v5)
@@ -164,12 +166,13 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
 		entityData.Origin = FVector3f(staticProp.m_Origin(0, 0), staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
-		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
+		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
 		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
 		const auto& modelRaw = StringCast<TCHAR, 128>(modelStr);
-		entityData.KeyValues[fnModel] = FString(modelRaw.Length(), modelRaw.Get());
-		entityData.KeyValues[fnAngles] = FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2));
-		entityData.KeyValues[fnSkin] = FString::FromInt(staticProp.m_Skin);
+		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
+		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
+		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
+		entityData.KeyValues.Add(fnFlags, FString::FromInt(staticProp.m_Flags));
 		entityDatas.Add(entityData);
 	}
 	for (const Valve::BSP::StaticProp_v6_t staticProp : bspFile.m_Staticprops_v6)
@@ -183,6 +186,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
 		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
 		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
+		entityData.KeyValues.Add(fnFlags, FString::FromInt(staticProp.m_Flags));
 		entityDatas.Add(entityData);
 	}
 	for (const Valve::BSP::StaticProp_v10_t staticProp : bspFile.m_Staticprops_v10)
@@ -196,23 +200,8 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
 		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
 		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
+		entityData.KeyValues.Add(fnFlags, FString::FromInt(staticProp.m_Flags));
 		entityDatas.Add(entityData);
-	}
-
-	// Parse cubemaps
-	const FHL2EditorBSPConfig& bspConfig = IHL2Editor::Get().GetConfig().BSP;
-	if (bspConfig.EmitReflectionCaptures)
-	{
-		const static FName fnCubemap(TEXT("env_cubemap"));
-		const static FName fnSize(TEXT("size"));
-		for (const Valve::BSP::dcubemapsample_t cubemap : bspFile.m_Cubemaps)
-		{
-			FHL2EntityData entityData;
-			entityData.Classname = fnCubemap;
-			entityData.Origin = FVector3f(cubemap.m_Origin[0], cubemap.m_Origin[1], cubemap.m_Origin[2]);
-			entityData.KeyValues.Add(fnSize, FString::FromInt(cubemap.m_Size));
-			entityDatas.Add(entityData);
-		}
 	}
 
 	// Generate models
@@ -231,8 +220,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		RenderFacesToMesh(faces, meshDesc, false);
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 		meshDesc.TriangulateMesh();
-		const int lightmapResolution = 128;
-		bspModels.Add(RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), i), lightmapResolution));
+		bspModels.Add(RenderMeshToStaticMesh(meshDesc, FString::Printf(TEXT("Models/Model_%d"), i), true, true));
 	}
 
 	// Convert into actors
@@ -252,161 +240,51 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 	// Determine cell mins and maxs
 	const Valve::BSP::snode_t& bspNode = bspFile.m_Nodes[bspModel.m_Headnode];
 	const FBox3f bspBounds = GetNodeBounds(bspNode, true);
-	const int cellMinX = FMath::FloorToInt(bspBounds.Min.X / bspConfig.CellSize);
-	const int cellMaxX = FMath::CeilToInt(bspBounds.Max.X / bspConfig.CellSize);
-	const int cellMinY = FMath::FloorToInt(bspBounds.Min.Y / bspConfig.CellSize);
-	const int cellMaxY = FMath::CeilToInt(bspBounds.Max.Y / bspConfig.CellSize);
 
-	FScopedSlowTask progress((cellMaxX - cellMinX + 1) * (cellMaxY - cellMinY + 1) + 33, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
+	FScopedSlowTask progress(modelIndex == 0 ? 5 : 4, LOCTEXT("MapGeometryImporting", "Importing map geometry..."));
 	progress.MakeDialog();
 
 	// Render out VBSPInfo
 	//progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_VBSPINFO", "Generating VBSPInfo..."));
 	//RenderTreeToVBSPInfo(bspModel.m_Headnode);
-
-	// Gather all faces and displacements from tree
-	progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_GATHER", "Gathering faces and displacements..."));
+	
 	TArray<uint16> faces;
-	faces.Reserve(bspModel.m_Numfaces);
-	for (int i = 0; i < bspModel.m_Numfaces; ++i)
-	{
-		faces.Add(bspModel.m_Firstface + i);
-	}
 	TArray<uint16> brushes;
-	GatherBrushes(bspModel.m_Headnode, brushes);
 	TArray<uint16> displacements;
-	GatherDisplacements(faces, displacements);
+	{
+		progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_GATHER", "Gathering faces and displacements..."));
+
+		// Gather all faces and displacements from tree
+		faces.Reserve(bspModel.m_Numfaces);
+		for (int i = 0; i < bspModel.m_Numfaces; ++i)
+		{
+			faces.Add(bspModel.m_Firstface + i);
+		}
+		GatherBrushes(bspModel.m_Headnode, brushes);
+		GatherDisplacements(faces, displacements);
+	}
 
 	{
+		progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_GENERATE", "Generating map geometry..."));
+
 		// Render whole tree to a single mesh
-		progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_GENERATE", "Generating map geometry..."));
 		FMeshDescription meshDesc;
 		FStaticMeshAttributes staticMeshAttr(meshDesc);
 		staticMeshAttr.Register();
 		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
-		//RenderFacesToMesh(faces, meshDesc, false);
-		RenderBrushesToMesh(brushes, meshDesc);
-		if (modelIndex == 0)
-		{
-			RenderDetailPropsToMesh(meshDesc);
-		}
-		//RenderDisplacementsToMesh(displacements, meshDesc);
+		RenderFacesToMesh(faces, meshDesc, false);
+		//RenderBrushesToMesh(brushes, meshDesc);
 		FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
-		//FMeshUtils::Clean(meshDesc, FMeshCleanSettings::All);
 
-		if (bspConfig.UseCells)
-		{
-			// Split mesh into cells in parallel
-			progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_CELL", "Splitting cells..."));
-			TArray<FMeshDescription> cellMeshes;
-			TArray<int> lightmapResolutions;
-			const int cellCountX = (cellMaxX - cellMinX) + 1;
-			const int cellCountY = (cellMaxY - cellMinY) + 1;
-			const int cellCount = cellCountX * cellCountY;
-			cellMeshes.AddDefaulted(cellCount);
-			lightmapResolutions.AddDefaulted(cellCount);
-			auto iterFunc = [&](int cellIndex)
-			{
-				int cellX = cellMinX + cellIndex / cellCountX;
-				int cellY = cellMinY + cellIndex % cellCountX;
-				FMeshDescription& cellMeshDesc = cellMeshes[cellIndex];
-				cellMeshDesc = meshDesc;
-
-				// Establish bounding planes for cell
-				TArray<FPlane4f> boundingPlanes;
-				boundingPlanes.Add(FPlane4f(FVector3f(cellX * bspConfig.CellSize), FVector3f::ForwardVector));
-				boundingPlanes.Add(FPlane4f(FVector3f((cellX + 1) * bspConfig.CellSize), FVector3f::BackwardVector));
-				boundingPlanes.Add(FPlane4f(FVector3f(cellY * bspConfig.CellSize), FVector3f::RightVector));
-				boundingPlanes.Add(FPlane4f(FVector3f((cellY + 1) * bspConfig.CellSize), FVector3f::LeftVector));
-
-				// Clip the mesh by the planes
-				FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
-
-				// Check if it has anything
-				if (cellMeshDesc.Triangles().Num() > 0)
-				{
-					// Evaluate mesh surface area and calculate an appropiate lightmap resolution
-					const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(cellMeshDesc);
-					constexpr float luxelsPerSquareUnit = 1.0f / 8.0f;
-					const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
-					lightmapResolutions[cellIndex] = lightmapResolution;
-
-					// Generate lightmap UVs
-					if (bspConfig.GenerateLightmapCoords)
-					{
-						FMeshUtils::GenerateLightmapCoords(cellMeshDesc, lightmapResolution);
-					}
-				}
-			};
-			if (bspConfig.ParallelizeCellSplitting)
-			{
-				ParallelFor(cellCount, iterFunc);
-			}
-			else
-			{
-				for (int cellIndex = 0; cellIndex < cellCount; ++cellIndex)
-				{
-					iterFunc(cellIndex);
-				}
-			}
-
-			// Generate static mesh actors for cells
-			for (int cellIndex = 0; cellIndex < cellCount; ++cellIndex)
-			{
-				int cellX = cellMinX + cellIndex / cellCountX;
-				int cellY = cellMinY + cellIndex % cellCountX;
-				const FMeshDescription& cellMeshDesc = cellMeshes[cellIndex];
-				progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_CELL", "Splitting cells..."));
-
-				// Check if it has anything
-				if (cellMeshDesc.Triangles().Num() > 0)
-				{
-					// Create a static mesh for it
-					AStaticMeshActor* staticMeshActor = RenderMeshToActor(cellMeshDesc, FString::Printf(TEXT("Cells/Cell_%d"), cellIndex), lightmapResolutions[cellIndex]);
-					staticMeshActor->SetActorLabel(FString::Printf(TEXT("Cell_%d_%d"), cellX, cellY));
-					out.Add(staticMeshActor);
-
-					// TODO: Insert to VBSPInfo
-				}
-			}
-		}
-		else
-		{
-			// Clean
-			//FMeshCleanSettings cleanSettings = FMeshCleanSettings::None;
-			//cleanSettings.Retriangulate = true;
-			FMeshUtils::Clean(meshDesc);
-
-			// TODO: Evaluate mesh surface area and calculate an appropiate lightmap resolution
-			// Evaluate mesh surface area and calculate an appropiate lightmap resolution
-			const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(meshDesc);
-			constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
-			const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
-
-			// Generate lightmap UVs
-			if (bspConfig.GenerateLightmapCoords)
-			{
-				FMeshUtils::GenerateLightmapCoords(meshDesc, lightmapResolution);
-			}
-
-			// Create a static mesh for it
-			AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("WorldGeometry"), lightmapResolution);
-			staticMeshActor->SetActorLabel(TEXT("WorldGeometry"));
-			out.Add(staticMeshActor);
-		}
+		RenderCellsToActors(meshDesc, TEXT("World"), bspConfig.BrushGeometryCells, true, true, out);
 	}
 
 	{
-		progress.EnterProgressFrame(10.0f, LOCTEXT("MapGeometryImporting_DISPLACEMENTS", "Generating displacement geometry..."));
-		
-		if (bspConfig.UseDisplacementCells)
-		{
-			// Render all displacements to a single static mesh, and split into cells
-			const int dcellMinX = FMath::FloorToInt(bspBounds.Min.X / bspConfig.DisplacementCellSize);
-			const int dcellMaxX = FMath::CeilToInt(bspBounds.Max.X / bspConfig.DisplacementCellSize);
-			const int dcellMinY = FMath::FloorToInt(bspBounds.Min.Y / bspConfig.DisplacementCellSize);
-			const int dcellMaxY = FMath::CeilToInt(bspBounds.Max.Y / bspConfig.DisplacementCellSize);
+		progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_DISPLACEMENTS", "Generating displacement geometry..."));
 
+		if (bspConfig.DisplacementCells.UseCells)
+		{
+			// Render all displacements to a single static mesh
 			FMeshDescription meshDesc;
 			{
 				FStaticMeshAttributes staticMeshAttr(meshDesc);
@@ -415,50 +293,7 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 			}
 			RenderDisplacementsToMesh(displacements, meshDesc);
 
-			// Iterate each cell
-			int cellIndex = 0;
-			for (int cellX = cellMinX; cellX <= cellMaxX; ++cellX)
-			{
-				for (int cellY = cellMinY; cellY <= cellMaxY; ++cellY)
-				{
-					// Establish bounding planes for cell
-					TArray<FPlane4f> boundingPlanes;
-					boundingPlanes.Add(FPlane4f(FVector3f(cellX * bspConfig.CellSize), FVector3f::ForwardVector));
-					boundingPlanes.Add(FPlane4f(FVector3f((cellX + 1) * bspConfig.CellSize), FVector3f::BackwardVector));
-					boundingPlanes.Add(FPlane4f(FVector3f(cellY * bspConfig.CellSize), FVector3f::RightVector));
-					boundingPlanes.Add(FPlane4f(FVector3f((cellY + 1) * bspConfig.CellSize), FVector3f::LeftVector));
-
-					// Clip the mesh by the planes into a new one
-					FMeshDescription cellMeshDesc = meshDesc;
-					FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
-
-					FStaticMeshOperations::ComputeTangentsAndNormals(cellMeshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
-
-					// Check if it has anything
-					if (cellMeshDesc.Polygons().Num() > 0)
-					{
-						const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(cellMeshDesc);
-						constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
-						const int lightmapResolution = (int)FMath::Max(4.0f, FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit)))));
-
-						if (bspConfig.GenerateLightmapCoords)
-						{
-							FStaticMeshAttributes staticMeshAttr(cellMeshDesc);
-							staticMeshAttr.GetVertexInstanceUVs().SetNumChannels(2);
-							FOverlappingCorners overlappingCorners;
-							FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, cellMeshDesc, 1.0f / 512.0f);
-							FStaticMeshOperations::CreateLightMapUVLayout(cellMeshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
-						}
-
-						// Create a static mesh for it
-						AStaticMeshActor* staticMeshActor = RenderMeshToActor(cellMeshDesc, FString::Printf(TEXT("Cells/DisplacementCell_%d"), cellIndex++), lightmapResolution);
-						staticMeshActor->SetActorLabel(FString::Printf(TEXT("DisplacementCell_%d_%d"), cellX, cellY));
-						out.Add(staticMeshActor);
-
-						// TODO: Insert to VBSPInfo
-					}
-				}
-			}
+			RenderCellsToActors(meshDesc, TEXT("Displacement"), bspConfig.DisplacementCells, true, true, out);
 		}
 		else
 		{
@@ -476,24 +311,23 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 
 				FStaticMeshOperations::ComputeTangentsAndNormals(meshDesc, EComputeNTBsFlags::Normals & EComputeNTBsFlags::Tangents);
 
-				const float totalSurfaceArea = FMeshUtils::FindSurfaceArea(meshDesc);
-				constexpr float luxelsPerSquareUnit = 1.0f / 16.0f;
-				const int lightmapResolution = FMath::Pow(2.0f, FMath::RoundToFloat(FMath::Log2((int)FMath::Sqrt(totalSurfaceArea * luxelsPerSquareUnit))));
-
-				if (bspConfig.GenerateLightmapCoords)
-				{
-					staticMeshAttr.GetVertexInstanceUVs().SetNumChannels(2);
-					FOverlappingCorners overlappingCorners;
-					FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, meshDesc, 1.0f / 512.0f);
-					FStaticMeshOperations::CreateLightMapUVLayout(meshDesc, 0, 1, lightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
-				}
-
-				// Create a static mesh for it
-				AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, FString::Printf(TEXT("Displacements/Displacement_%d"), displacementIndex++), lightmapResolution);
-				staticMeshActor->SetActorLabel(FString::Printf(TEXT("Displacement_%d"), displacementID));
-				out.Add(staticMeshActor);
+				RenderCellsToActors(meshDesc, TEXT("Displacement"), bspConfig.DisplacementCells, true, true, out);
 			}
 		}
+	}
+
+	if (modelIndex == 0)
+	{
+		progress.EnterProgressFrame(1.0f, LOCTEXT("MapGeometryImporting_DETAIL", "Generating detail prop geometry..."));
+
+		// Render detail props to a single mesh
+		FMeshDescription meshDesc;
+		FStaticMeshAttributes staticMeshAttr(meshDesc);
+		staticMeshAttr.Register();
+		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
+		RenderDetailPropsToMesh(meshDesc);
+
+		RenderCellsToActors(meshDesc, TEXT("Detail"), bspConfig.DetailPropCells, false, false, out);
 	}
 
 	{
@@ -509,9 +343,8 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		meshDesc.TriangulateMesh();
 
 		// Create actor for it
-		AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("SkyboxMesh"), 16);
+		AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, TEXT("SkyboxMesh"), false, false);
 		staticMeshActor->SetActorLabel(TEXT("Skybox"));
-		staticMeshActor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
 		staticMeshActor->GetStaticMeshComponent()->CastShadow = false;
 		staticMeshActor->PostEditChange();
 		staticMeshActor->MarkPackageDirty();
@@ -519,7 +352,92 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 	}
 }
 
-UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName, int lightmapResolution)
+void FBSPImporter::RenderCellsToActors(const FMeshDescription& meshDesc, const FString& prefix, const FHL2EditorCellsConfig& config, bool enableLumen, bool enableCollisions, TArray<AStaticMeshActor*>& outActors)
+{
+	const FBox meshBoundingBox = meshDesc.ComputeBoundingBox();
+	if (config.UseCells)
+	{
+		const int cellMinX = FMath::FloorToInt(meshBoundingBox.Min.X / config.CellSize);
+		const int cellMaxX = FMath::CeilToInt(meshBoundingBox.Max.X / config.CellSize);
+		const int cellMinY = FMath::FloorToInt(meshBoundingBox.Min.Y / config.CellSize);
+		const int cellMaxY = FMath::CeilToInt(meshBoundingBox.Max.Y / config.CellSize);
+
+		const int cellCountX = (cellMaxX - cellMinX) + 1;
+		const int cellCountY = (cellMaxY - cellMinY) + 1;
+		const int cellCount = cellCountX * cellCountY;
+
+		FScopedSlowTask progress(cellCount * 2, LOCTEXT("GeneratingCells", "Generating cells..."));
+
+		// Split mesh into cells
+		TArray<FMeshDescription> cellMeshes;
+		cellMeshes.AddDefaulted(cellCount);
+		auto iterFunc = [&](int cellIndex)
+		{
+			int cellX = cellMinX + cellIndex / cellCountX;
+			int cellY = cellMinY + cellIndex % cellCountX;
+			FMeshDescription& cellMeshDesc = cellMeshes[cellIndex];
+			cellMeshDesc = meshDesc;
+
+			// Establish bounding planes for cell
+			TArray<FPlane4f> boundingPlanes;
+			boundingPlanes.Add(FPlane4f(FVector3f(cellX * config.CellSize), FVector3f::ForwardVector));
+			boundingPlanes.Add(FPlane4f(FVector3f((cellX + 1) * config.CellSize), FVector3f::BackwardVector));
+			boundingPlanes.Add(FPlane4f(FVector3f(cellY * config.CellSize), FVector3f::RightVector));
+			boundingPlanes.Add(FPlane4f(FVector3f((cellY + 1) * config.CellSize), FVector3f::LeftVector));
+
+			// Clip the mesh by the planes
+			FMeshUtils::Clip(cellMeshDesc, boundingPlanes);
+		};
+		if (config.ParallelizeCellSplitting)
+		{
+			progress.EnterProgressFrame(cellCount, LOCTEXT("GeneratingCells_Split", "Splitting cells..."));
+			ParallelFor(cellCount, iterFunc);
+		}
+		else
+		{
+			for (int cellIndex = 0; cellIndex < cellCount; ++cellIndex)
+			{
+				progress.EnterProgressFrame(1.0f, LOCTEXT("GeneratingCells_Split", "Splitting cells..."));
+				iterFunc(cellIndex);
+			}
+		}
+
+		// Generate static mesh actors for cells
+		for (int cellIndex = 0; cellIndex < cellCount; ++cellIndex)
+		{
+			int cellX = cellMinX + cellIndex / cellCountX;
+			int cellY = cellMinY + cellIndex % cellCountX;
+			const FMeshDescription& cellMeshDesc = cellMeshes[cellIndex];
+			progress.EnterProgressFrame(1.0f, LOCTEXT("GeneratingCells_Emit", "Emitting static meshes..."));
+
+			// Check if it has anything
+			if (cellMeshDesc.Triangles().Num() > 0)
+			{
+				// Create a static mesh for it
+				const FString name = FString::Printf(TEXT("%s_Cells/Cell_%d"), *prefix, cellIndex);
+				AStaticMeshActor* staticMeshActor = RenderMeshToActor(cellMeshDesc, name, enableLumen, enableCollisions);
+				staticMeshActor->SetActorLabel(name);
+				outActors.Add(staticMeshActor);
+
+				// TODO: Insert to VBSPInfo
+			}
+		}
+	}
+	else
+	{
+		// Clean
+		FMeshDescription cleanedMeshDesc = meshDesc;
+		FMeshUtils::Clean(cleanedMeshDesc);
+
+		// Create a static mesh for it
+		const FString name = FString::Printf(TEXT("%s_Geometry"), *prefix);
+		AStaticMeshActor* staticMeshActor = RenderMeshToActor(meshDesc, name, enableLumen, enableCollisions);
+		staticMeshActor->SetActorLabel(name);
+		outActors.Add(staticMeshActor);
+	}
+}
+
+UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName, bool enableLumen, bool enableCollisions)
 {
 	FString packageName = TEXT("/Game/hl2/maps") / mapName / assetName;
 	UPackage* package = CreatePackage(*packageName);
@@ -530,15 +448,12 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	settings.bRecomputeNormals = false;
 	settings.bRecomputeTangents = false;
 	settings.bGenerateLightmapUVs = false;
-	settings.SrcLightmapIndex = 0;
-	settings.DstLightmapIndex = 1;
 	settings.bRemoveDegenerates = false;
 	settings.bUseFullPrecisionUVs = true;
-	settings.MinLightmapResolution = lightmapResolution;
-	settings.MaxLumenMeshCards = 32;
-	staticMesh->SetLightMapResolution(lightmapResolution);
+	settings.MaxLumenMeshCards = enableLumen ? 32 : 0;
 	FMeshDescription* worldModelMesh = staticMesh->CreateMeshDescription(0);
 	*worldModelMesh = meshDesc;
+	staticMesh->bGenerateMeshDistanceField = enableLumen;
 	const auto& importedMaterialSlotNameAttr = worldModelMesh->PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
 	TArray<FStaticMaterial> staticMaterials;
 	TMap<FPolygonGroupID, int> polygonGroupToMaterialIndex;
@@ -561,8 +476,11 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	staticMesh->CommitMeshDescription(0);
 	staticMesh->SetLightMapCoordinateIndex(1);
 	staticMesh->Build();
-	staticMesh->CreateBodySetup();
-	staticMesh->GetBodySetup()->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseComplexAsSimple;
+	if (enableCollisions)
+	{
+		staticMesh->CreateBodySetup();
+		staticMesh->GetBodySetup()->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseComplexAsSimple;
+	}
 
 	staticMesh->PostEditChange();
 	FAssetRegistryModule::AssetCreated(staticMesh);
@@ -571,15 +489,17 @@ UStaticMesh* FBSPImporter::RenderMeshToStaticMesh(const FMeshDescription& meshDe
 	return staticMesh;
 }
 
-AStaticMeshActor* FBSPImporter::RenderMeshToActor(const FMeshDescription& meshDesc, const FString& assetName, int lightmapResolution)
+AStaticMeshActor* FBSPImporter::RenderMeshToActor(const FMeshDescription& meshDesc, const FString& assetName, bool enableLumen, bool enableCollisions)
 {
-	UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, assetName, lightmapResolution);
+	UStaticMesh* staticMesh = RenderMeshToStaticMesh(meshDesc, assetName, enableLumen, enableCollisions);
 
 	AStaticMeshActor* staticMeshActor = world->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), FTransform::Identity);
 	UStaticMeshComponent* staticMeshComponent = staticMeshActor->GetStaticMeshComponent();
 	staticMeshComponent->SetStaticMesh(staticMesh);
 	FLightmassPrimitiveSettings& lightmassSettings = staticMeshComponent->LightmassSettings;
-	lightmassSettings.bUseEmissiveForStaticLighting = true;
+	lightmassSettings.bUseEmissiveForStaticLighting = enableLumen;
+	staticMeshComponent->bAffectDistanceFieldLighting = enableLumen;
+	staticMeshComponent->bAffectDynamicIndirectLighting = enableLumen;
 	staticMeshComponent->bCastShadowAsTwoSided = true;
 
 	staticMeshActor->PostEditChange();

@@ -5,13 +5,13 @@
 #include "HL2EditorConfig.generated.h"
 
 USTRUCT()
-struct FHL2EditorBSPConfig
+struct FHL2EditorCellsConfig
 {
 	GENERATED_BODY()
 
 public:
 
-	// Whether to split the map brush geometry into a 2D grid of cells
+	// Whether to split the geometry into cells
 	UPROPERTY()
 	bool UseCells = true;
 
@@ -19,28 +19,29 @@ public:
 	UPROPERTY()
 	int CellSize = 2048;
 
-	// Whether to merge displacements and then split into cells like map brush geometry
-	UPROPERTY()
-	bool UseDisplacementCells = true;
-
-	// The XY size of each displacement cell
-	UPROPERTY()
-	int DisplacementCellSize = 2048;
-
 	// Whether to use multiple threads to split cells or not.
-	// Should run faster during map import but uses more CPU power and might have strange bugs.
 	UPROPERTY()
 	bool ParallelizeCellSplitting = true;
+};
 
-	// Whether to use generate lightmap coords for static meshes or not.
-	// No longer needed with lumen.
-	UPROPERTY()
-	bool GenerateLightmapCoords = false;
+USTRUCT()
+struct FHL2EditorBSPConfig
+{
+	GENERATED_BODY()
 
-	// Whether to import env_cubemaps and emit reflection captures for them.
-	// No longer needed with lumen.
+public:
+
+	// Whether to split the map brush geometry into cells
 	UPROPERTY()
-	bool EmitReflectionCaptures = false;
+	FHL2EditorCellsConfig BrushGeometryCells;
+
+	// Whether to split displacement geometry into cells
+	UPROPERTY()
+	FHL2EditorCellsConfig DisplacementCells;
+
+	// Whether to split detail prop geometry into cells
+	UPROPERTY()
+	FHL2EditorCellsConfig DetailPropCells;
 
 	// Whether to prevent dependency on HL2Runtime.
 	// If true, a limited set of unreal built-in entities will be used.

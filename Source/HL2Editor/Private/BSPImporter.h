@@ -7,6 +7,7 @@
 #include "EntityParser.h"
 #include "BaseEntity.h"
 #include "VBSPInfo.h"
+#include "HL2EditorConfig.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogHL2BSPImporter, Log, All);
 
@@ -52,10 +53,12 @@ private:
 	FPlane4f ValveToUnrealPlane(const Valve::BSP::cplane_t& plane);
 	
 	void RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 modelIndex);
-	
-	UStaticMesh* RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName, int lightmapResolution);
 
-	AStaticMeshActor* RenderMeshToActor(const FMeshDescription& meshDesc, const FString& assetName, int lightmapResolution);
+	void RenderCellsToActors(const FMeshDescription& meshDesc, const FString& prefix, const FHL2EditorCellsConfig& config, bool enableLumen, bool enableCollisions, TArray<AStaticMeshActor*>& outActors);
+	
+	UStaticMesh* RenderMeshToStaticMesh(const FMeshDescription& meshDesc, const FString& assetName, bool enableLumen, bool enableCollisions);
+
+	AStaticMeshActor* RenderMeshToActor(const FMeshDescription& meshDesc, const FString& assetName, bool enableLumen, bool enableCollisions);
 	
 	void RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter);
 

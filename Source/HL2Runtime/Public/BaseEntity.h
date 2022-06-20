@@ -106,6 +106,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HL2")
 	void ResolveTargetName(const FName targetNameToResolve, TArray<ABaseEntity*>& out, ABaseEntity* caller = nullptr, ABaseEntity* activator = nullptr) const;
 
+	/**
+	 * Sets the parent of this entity to a given target name.
+	 * The target name may also refer to an attachment, e.g. "parent,attachment".
+	 * The target name can be blank to clear the parent.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HL2")
+	void SetParent(const FString& parent, ABaseEntity* caller = nullptr, ABaseEntity* activator = nullptr);
+
+	/**
+	 * Gets if this entity has the specified spawnflag.
+	 * Shortcut for fetching the spawnflag int from entity data and performing bitwise and.
+	 */
+	UFUNCTION(BlueprintPure, Category = "HL2")
+	bool HasSpawnFlag(int flag) const;
+
 protected:
 
 	UFUNCTION()

@@ -36,6 +36,12 @@ void ABaseEntity::BeginPlay()
 {
 	Super::BeginPlay();
 	ResetLogicOutputs();
+	static const FName fnParentName(TEXT("parentname"));
+	FString parent;
+	if (EntityData.TryGetString(fnParentName, parent))
+	{
+		SetParent(parent, this, nullptr);
+	}
 }
 	
 
@@ -58,6 +64,10 @@ bool ABaseEntity::FireInput(const FName inputName, const TArray<FString>& args, 
 	static const FName inFireUser2(TEXT("FireUser2"));
 	static const FName inFireUser3(TEXT("FireUser3"));
 	static const FName inFireUser4(TEXT("FireUser4"));
+	static const FName inSetParent(TEXT("SetParent"));
+	static const FName inSetParentAttachment(TEXT("SetParentAttachment"));
+	static const FName inSetParentAttachmentMaintainOffset(TEXT("SetParentAttachmentMaintainOffset"));
+	static const FName inClearParent(TEXT("ClearParent"));
 	static const FName onFireUser1(TEXT("OnUser1"));
 	static const FName onFireUser2(TEXT("OnUser2"));
 	static const FName onFireUser3(TEXT("OnUser3"));
@@ -70,6 +80,7 @@ bool ABaseEntity::FireInput(const FName inputName, const TArray<FString>& args, 
 	else if (inputName == inAddOutput)
 	{
 		// Not yet supported!
+		UE_LOG(LogHL2IOSystem, Log, TEXT("Entity %s:%s receiving 'AddOutput' which is not yet implemented"), *TargetName.ToString(), *EntityData.Classname.ToString());
 		return false;
 	}
 	else if (inputName == inFireUser1)
@@ -90,6 +101,37 @@ bool ABaseEntity::FireInput(const FName inputName, const TArray<FString>& args, 
 	else if (inputName == inFireUser4)
 	{
 		FireOutput(onFireUser4, args, this, caller);
+		return true;
+	}
+	else if (inputName == inSetParent)
+	{
+		if (args.Num() == 0)
+		{
+			SetParent(TEXT(""), caller, activator);
+		}
+		else
+		{
+			SetParent(args[0], caller, activator);
+		}
+		return true;
+	}
+	else if (inputName == inSetParentAttachment)
+	{
+		AActor* attachedActor = GetAttachParentActor();
+		if (!IsValid(attachedActor) || args.Num() == 0) { return true; }
+		AttachToActor(attachedActor, FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false), FName(*args[0]));
+		return true;
+	}
+	else if (inputName == inSetParentAttachmentMaintainOffset)
+	{
+		AActor* attachedActor = GetAttachParentActor();
+		if (!IsValid(attachedActor) || args.Num() == 0) { return true; }
+		AttachToActor(attachedActor, FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false), FName(*args[0]));
+		return true;
+	}
+	else if (inputName == inClearParent)
+	{
+		SetParent(TEXT(""), caller, activator);
 		return true;
 	}
 	else
@@ -227,6 +269,55 @@ void ABaseEntity::ResolveTargetName(const FName targetNameToResolve, TArray<ABas
 	{
 		IHL2Runtime::Get().FindEntitiesByTargetName(GetWorld(), targetNameToResolve, out);
 	}
+}
+
+/**
+ * Sets the parent of this entity to a given target name.
+ * The target name may also refer to an attachment, e.g. "parent,attachment".
+ */
+void ABaseEntity::SetParent(const FString& parent, ABaseEntity* caller, ABaseEntity* activator)
+{
+	TArray<FString> segments;
+	parent.ParseIntoArray(segments, TEXT(","), true);
+	ABaseEntity* newParent = nullptr;
+	FName attachment = NAME_None;
+	if (segments.Num() > 0)
+	{
+		for (FString& segment : segments)
+		{
+			segment.TrimStartAndEndInline();
+		}
+		TArray<ABaseEntity*> candidates;
+		ResolveTargetName(*segments[0], candidates, caller, activator);
+		for (ABaseEntity* candidate : candidates)
+		{
+			if (candidate == this) { continue; }
+			newParent = candidate;
+			break;
+		}
+		if (segments.Num() > 1)
+		{
+			attachment = *segments[1];
+		}
+	}
+	if (newParent == nullptr)
+	{
+		DetachFromActor(FDetachmentTransformRules(EDetachmentRule::KeepWorld, true));
+	}
+	else
+	{
+		AttachToActor(newParent, FAttachmentTransformRules(EAttachmentRule::KeepWorld, false), attachment);
+	}
+}
+
+/**
+ * Gets if this entity has the specified spawnflag.
+ * Shortcut for fetching the spawnflag int from entity data and performing bitwise and.
+ */
+bool ABaseEntity::HasSpawnFlag(int flag) const
+{
+	const int spawnFlags = EntityData.GetInt("spawnflags");
+	return (spawnFlags & flag) != 0;
 }
 
 void ABaseEntity::FireOutputInternal(const FPendingFireOutput& data)

@@ -810,8 +810,6 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			settings.bRecomputeNormals = false;
 			settings.bRecomputeTangents = false;
 			settings.bGenerateLightmapUVs = false;
-			settings.SrcLightmapIndex = 0;
-			settings.DstLightmapIndex = 1;
 			settings.bRemoveDegenerates = false;
 			settings.bUseFullPrecisionUVs = true;
 			settings.MinLightmapResolution = 64;
@@ -820,21 +818,6 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 			// Fetch and prepare our mesh description
 			FMeshDescription& localMeshDescription = localMeshDatas[lodIndex].meshDescription;
 			FMeshUtils::Clean(localMeshDescription);
-
-			// Generate lightmap coords
-			{
-				localMeshDescription.VertexInstanceAttributes().SetAttributeChannelCount(MeshAttribute::VertexInstance::TextureCoordinate, 2);
-				FOverlappingCorners overlappingCorners;
-				FStaticMeshOperations::FindOverlappingCorners(overlappingCorners, localMeshDescription, 0.00001f);
-				FStaticMeshOperations::CreateLightMapUVLayout(localMeshDescription, settings.SrcLightmapIndex, settings.DstLightmapIndex, settings.MinLightmapResolution, ELightmapUVVersion::Latest, overlappingCorners);
-			}
-
-			// Clean again but this time weld - we do weld after lightmap uv layout because welded vertices sometimes break that algorithm for whatever reason
-			{
-				//FMeshCleanSettings cleanSettings = FMeshCleanSettings::Default;
-				//cleanSettings.WeldVertices = true;
-				//FMeshUtils::Clean(localMeshDescription, cleanSettings);
-			}
 
 			// Copy to static mesh
 			FMeshDescription* meshDescription = staticMesh->CreateMeshDescription(lodIndex);
@@ -856,6 +839,12 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 		if (!debugPhysics)
 		{
 			staticMesh->bCustomizedCollision = true;
+			UBodySetup* oldBodySetup = staticMesh->GetBodySetup();
+			if (IsValid(oldBodySetup))
+			{
+				oldBodySetup->MarkAsGarbage();
+			}
+			staticMesh->SetBodySetup(nullptr);
 			staticMesh->CreateBodySetup();
 		}
 
@@ -941,7 +930,6 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 					else
 					{
 						// Create primitive
-						staticMesh->GetBodySetup()->ClearPhysicsMeshes();
 						FMeshUtils::DecomposeUCXMesh(transformedVertices, transformedFaceIndices, staticMesh->GetBodySetup());
 					}
 				}
@@ -971,7 +959,6 @@ UStaticMesh* UMDLFactory::ImportStaticMesh
 		}
 	}
 
-	staticMesh->SetLightMapCoordinateIndex(1);
 	staticMesh->Build();
 
 	// Resolve skins
@@ -2331,8 +2318,8 @@ void UMDLFactory::ReadPHYSolid(uint8*& basePtr, TArray<FPHYSection>& out)
 			FVector3f fixedVert;
 			if (section.IsCollisionModel)
 			{
-				fixedVert.X = (100.0f / 2.54f) * rawVert.Z;
-				fixedVert.Y = (100.0f / 2.54f) * -rawVert.X;
+				fixedVert.X = (100.0f / 2.54f) * -rawVert.Z;
+				fixedVert.Y = (100.0f / 2.54f) * rawVert.X;
 				fixedVert.Z = (100.0f / 2.54f) * -rawVert.Y;
 			}
 			else

@@ -98,9 +98,9 @@ const FSourceCoord SourceToUnreal(
 	FVector3f(0.0f, 0.0f, 1.0f) * SOURCE_UNIT_SCALE  // map source +Z to unreal +Z axis
 );
 const FSourceCoord StudioMdlToUnreal(
-	FVector3f(1.0f, 0.0f, 0.0f) * SOURCE_UNIT_SCALE,
-	FVector3f(0.0f, -1.0f, 0.0f) * SOURCE_UNIT_SCALE,
-	FVector3f(0.0f, 0.0f, 1.0f) * SOURCE_UNIT_SCALE
+	FVector3f(1.0f, 0.0f, 0.0f) * SOURCE_UNIT_SCALE, // map studiomodel +X to unreal +X axis
+	FVector3f(0.0f, -1.0f, 0.0f) * SOURCE_UNIT_SCALE, // map studiomodel +Y to unreal -Y axis
+	FVector3f(0.0f, 0.0f, 1.0f) * SOURCE_UNIT_SCALE // map studiomodel +Z to unreal -Z axis
 );
 
 const FSourceCoord UnrealToSource(

@@ -72,7 +72,7 @@ bool ABaseEntity::FireInput(const FName inputName, const TArray<FString>& args, 
 	static const FName onFireUser2(TEXT("OnUser2"));
 	static const FName onFireUser3(TEXT("OnUser3"));
 	static const FName onFireUser4(TEXT("OnUser4"));
-	if (inputName == inKill || inputName == inKillHierarchy)
+	if ((inputName == inKill || inputName == inKillHierarchy) && !CustomKill)
 	{
 		Destroy();
 		return true;

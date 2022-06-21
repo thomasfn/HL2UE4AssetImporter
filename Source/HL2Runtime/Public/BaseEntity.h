@@ -64,8 +64,12 @@ public:
 protected:
 
 	/** All current logic outputs, valid or not, on this entity. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HL2")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HL2")
 	TArray<FEntityLogicOutput> LogicOutputs;
+
+	/** Whether the implementation has custom logic for handling the Kill input. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HL2")
+	bool CustomKill = false;
 
 	UPROPERTY()
 	TArray<FTimerHandle> PendingOutputs;

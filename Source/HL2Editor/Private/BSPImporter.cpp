@@ -378,7 +378,8 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		}
 		if (playerClipBrushes.Num() > 0)
 		{
-			AStaticMeshActor* staticMeshActor = RenderBrushesToCollisionActor(playerClipBrushes, TEXT("PlayerClipCollision"));
+			static const FName fnToolsPlayerClip(TEXT("tools/toolsplayerclip"));
+			AStaticMeshActor* staticMeshActor = RenderBrushesToCollisionActor(playerClipBrushes, TEXT("PlayerClipCollision"), fnToolsPlayerClip);
 			staticMeshActor->SetActorLabel(TEXT("PlayerClipCollision"));
 			staticMeshActor->PostEditChange();
 			staticMeshActor->MarkPackageDirty();
@@ -386,8 +387,10 @@ void FBSPImporter::RenderModelToActors(TArray<AStaticMeshActor*>& out, uint32 mo
 		}
 		if (npcClipBrushes.Num() > 0)
 		{
-			AStaticMeshActor* staticMeshActor = RenderBrushesToCollisionActor(npcClipBrushes, TEXT("NpcClipCollision"));
+			static const FName fnToolsNpcClip(TEXT("tools/toolsnpcclip"));
+			AStaticMeshActor* staticMeshActor = RenderBrushesToCollisionActor(npcClipBrushes, TEXT("NpcClipCollision"), fnToolsNpcClip);
 			staticMeshActor->SetActorLabel(TEXT("NpcClipCollision"));
+			staticMeshActor->GetStaticMeshComponent()->SetCollisionObjectType(ECollisionChannel::ECC_WorldStatic);
 			staticMeshActor->PostEditChange();
 			staticMeshActor->MarkPackageDirty();
 			out.Add(staticMeshActor);
@@ -807,7 +810,7 @@ void FBSPImporter::RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDes
 	}
 }
 
-void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMeshDescription& meshDesc)
+void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMeshDescription& meshDesc, FName overrideMaterial, bool alwaysEmitFaces)
 {
 	static const FName fnBlack("tools/toolsblack");
 	for (const uint16 brushIndex : brushIndices)
@@ -854,7 +857,7 @@ void FBSPImporter::RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMesh
 		
 		FBSPBrush brush;
 		ProcessBrush(brushIndex, closeGeometry, rejectedSurfFlags, brush);
-		FBSPBrushUtils::BuildBrushGeometry(brush, meshDesc);
+		FBSPBrushUtils::BuildBrushGeometry(brush, meshDesc, overrideMaterial, alwaysEmitFaces);
 	}
 }
 
@@ -1242,7 +1245,7 @@ void FBSPImporter::RenderTreeToVBSPInfo(uint32 nodeIndex)
 	vbspInfo->MarkPackageDirty();
 }
 
-UStaticMesh* FBSPImporter::RenderBrushesToCollisionStaticMesh(const TArray<uint16>& brushIndices, const FString& assetName)
+UStaticMesh* FBSPImporter::RenderBrushesToCollisionStaticMesh(const TArray<uint16>& brushIndices, const FString& assetName, FName editorMaterial)
 {
 	FString packageName = TEXT("/Game/hl2/maps") / mapName / assetName;
 	UPackage* package = CreatePackage(*packageName);
@@ -1261,7 +1264,7 @@ UStaticMesh* FBSPImporter::RenderBrushesToCollisionStaticMesh(const TArray<uint1
 		FStaticMeshAttributes staticMeshAttr(*worldModelMesh);
 		staticMeshAttr.Register();
 		staticMeshAttr.RegisterTriangleNormalAndTangentAttributes();
-		RenderBrushesToMesh(brushIndices, *worldModelMesh);
+		RenderBrushesToMesh(brushIndices, *worldModelMesh, editorMaterial, true);
 	}
 	staticMesh->bGenerateMeshDistanceField = false;
 	const auto& importedMaterialSlotNameAttr = worldModelMesh->PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
@@ -1284,15 +1287,8 @@ UStaticMesh* FBSPImporter::RenderBrushesToCollisionStaticMesh(const TArray<uint1
 		staticMesh->GetSectionInfoMap().Set(0, meshSlot, FMeshSectionInfo(meshSlot));
 	}
 	staticMesh->CommitMeshDescription(0);
-	staticMesh->bCustomizedCollision = true;
 	staticMesh->CreateBodySetup();
-	staticMesh->GetBodySetup()->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseSimpleAsComplex;
-	for (const uint16 brushIndex : brushIndices)
-	{
-		FBSPBrush brush;
-		ProcessBrush(brushIndex, true, 0, brush);
-		FBSPBrushUtils::BuildBrushCollision(brush, staticMesh->GetBodySetup());
-	}
+	staticMesh->GetBodySetup()->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseComplexAsSimple;
 	staticMesh->Build();
 	staticMesh->PostEditChange();
 	FAssetRegistryModule::AssetCreated(staticMesh);
@@ -1301,14 +1297,14 @@ UStaticMesh* FBSPImporter::RenderBrushesToCollisionStaticMesh(const TArray<uint1
 	return staticMesh;
 }
 
-AStaticMeshActor* FBSPImporter::RenderBrushesToCollisionActor(const TArray<uint16>& brushIndices, const FString& assetName)
+AStaticMeshActor* FBSPImporter::RenderBrushesToCollisionActor(const TArray<uint16>& brushIndices, const FString& assetName, FName editorMaterial)
 {
-	UStaticMesh* staticMesh = RenderBrushesToCollisionStaticMesh(brushIndices, assetName);
+	UStaticMesh* staticMesh = RenderBrushesToCollisionStaticMesh(brushIndices, assetName, editorMaterial);
 
 	AStaticMeshActor* staticMeshActor = world->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), FTransform::Identity);
 	UStaticMeshComponent* staticMeshComponent = staticMeshActor->GetStaticMeshComponent();
 	staticMeshComponent->SetStaticMesh(staticMesh);
-	staticMeshComponent->SetVisibility(false);
+	staticMeshComponent->bHiddenInGame = true;
 
 	staticMeshActor->PostEditChange();
 	return staticMeshActor;

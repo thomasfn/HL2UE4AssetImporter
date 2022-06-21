@@ -246,9 +246,18 @@ void FBSPBrushUtils::BuildBrushCollision(const FBSPBrush& brush, UBodySetup* bod
 		indices.Reserve(indices.Num() + 3 * numTris);
 		for (int j = 0; j < numTris; ++j)
 		{
-			indices.Add(contour[0]);
-			indices.Add(contour[j + 1]);
-			indices.Add(contour[j + 2]);
+			if (SourceToUnreal.ShouldReverseWinding())
+			{
+				indices.Add(contour[j + 2]);
+				indices.Add(contour[j + 1]);
+				indices.Add(contour[0]);
+			}
+			else
+			{
+				indices.Add(contour[0]);
+				indices.Add(contour[j + 1]);
+				indices.Add(contour[j + 2]);
+			}
 		}
 	}
 

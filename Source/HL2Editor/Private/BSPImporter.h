@@ -62,7 +62,7 @@ private:
 	
 	void RenderFacesToMesh(const TArray<uint16>& faceIndices, FMeshDescription& meshDesc, bool skyboxFilter);
 
-	void RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMeshDescription& meshDesc);
+	void RenderBrushesToMesh(const TArray<uint16>& brushIndices, FMeshDescription& meshDesc, FName overrideMaterial = NAME_None, bool alwaysEmitFaces = false);
 	
 	void RenderDisplacementsToMesh(const TArray<uint16>& displacements, FMeshDescription& meshDesc);
 
@@ -70,9 +70,9 @@ private:
 	
 	void RenderTreeToVBSPInfo(uint32 nodeIndex);
 
-	UStaticMesh* RenderBrushesToCollisionStaticMesh(const TArray<uint16>& brushIndices, const FString& assetName);
+	UStaticMesh* RenderBrushesToCollisionStaticMesh(const TArray<uint16>& brushIndices, const FString& assetName, FName editorMaterial);
 
-	AStaticMeshActor* RenderBrushesToCollisionActor(const TArray<uint16>& brushIndices, const FString& assetName);
+	AStaticMeshActor* RenderBrushesToCollisionActor(const TArray<uint16>& brushIndices, const FString& assetName, FName editorMaterial);
 
 	void ProcessBrush(uint16 brushIndex, bool closeGeometry, int rejectedSurfFlags, FBSPBrush& outBSPBrush);
 

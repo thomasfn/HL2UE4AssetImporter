@@ -150,12 +150,12 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
 		entityData.Origin = FVector3f(staticProp.m_Origin(0, 0), staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
-		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
-		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
-		const auto& modelRaw = StringCast<TCHAR, 128>(modelStr);
-		entityData.KeyValues[fnModel] = FString(modelRaw.Length(), modelRaw.Get());
-		entityData.KeyValues[fnAngles] = FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2));
-		entityData.KeyValues[fnSkin] = FString::FromInt(staticProp.m_Skin);
+		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
+		const char *modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
+		const auto &modelRaw = StringCast<TCHAR, 128>(modelStr);
+		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
+		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
+		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
 		entityDatas.Add(entityData);
 	}
 	for (const Valve::BSP::StaticProp_v5_t staticProp : bspFile.m_Staticprops_v5)
@@ -163,12 +163,12 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 		FHL2EntityData entityData;
 		entityData.Classname = fnStaticProp;
 		entityData.Origin = FVector3f(staticProp.m_Origin(0, 0), staticProp.m_Origin(0, 1), staticProp.m_Origin(0, 2));
-		entityData.KeyValues[fnSolidity] = FString::FromInt((int)staticProp.m_Solid);
-		const char* modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
-		const auto& modelRaw = StringCast<TCHAR, 128>(modelStr);
-		entityData.KeyValues[fnModel] = FString(modelRaw.Length(), modelRaw.Get());
-		entityData.KeyValues[fnAngles] = FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2));
-		entityData.KeyValues[fnSkin] = FString::FromInt(staticProp.m_Skin);
+		entityData.KeyValues.Add(fnSolidity, FString::FromInt((int)staticProp.m_Solid));
+		const char *modelStr = bspFile.m_StaticpropStringTable[staticProp.m_PropType].m_Str;
+		const auto &modelRaw = StringCast<TCHAR, 128>(modelStr);
+		entityData.KeyValues.Add(fnModel, FString(modelRaw.Length(), modelRaw.Get()));
+		entityData.KeyValues.Add(fnAngles, FString::Printf(TEXT("%f %f %f"), staticProp.m_Angles(0, 0), staticProp.m_Angles(0, 1), staticProp.m_Angles(0, 2)));
+		entityData.KeyValues.Add(fnSkin, FString::FromInt(staticProp.m_Skin));
 		entityDatas.Add(entityData);
 	}
 	for (const Valve::BSP::StaticProp_v6_t staticProp : bspFile.m_Staticprops_v6)

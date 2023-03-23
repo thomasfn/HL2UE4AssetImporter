@@ -18,7 +18,7 @@ private:
 
 	static inline void ProcessVMTNode(
 		UMaterialInstanceConstant* mtl,
-		TMap<FName, FName>& vmtTextures,
+		TMap<FName, FSoftObjectPath>& vmtTextures,
 		const TArray<FMaterialParameterInfo>& textureParams,
 		const TArray<FMaterialParameterInfo>& scalarParams,
 		const TArray<FMaterialParameterInfo>& vectorParams,

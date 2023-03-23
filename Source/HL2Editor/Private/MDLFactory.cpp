@@ -73,7 +73,7 @@ UObject* UMDLFactory::FactoryCreateFile(
 
 	if (ScriptFactoryCreateFile(task))
 	{
-		return task->Result[0];
+		return task->GetObjects()[0];
 	}
 
 	FString fileExt = FPaths::GetExtension(filename);

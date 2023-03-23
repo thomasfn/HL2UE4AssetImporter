@@ -106,7 +106,7 @@ bool UHL2Utils::ApplySkinToStaticMesh(UStaticMeshComponent* target, int index)
 
 bool UHL2Utils::ApplyBodygroupToSkeletalMesh(USkeletalMeshComponent* target, const FName bodygroupName, int index)
 {
-	USkeletalMesh* skeletalMesh = target->SkeletalMesh;
+	USkeletalMesh* skeletalMesh = CastChecked<USkeletalMesh>(target->GetSkinnedAsset());
 	if (skeletalMesh == nullptr) { return false; }
 	UHL2ModelData* modelData = skeletalMesh->GetAssetUserDataChecked<UHL2ModelData>();
 	return modelData->ApplyBodygroupToSkeletalMesh(target, bodygroupName, index);
@@ -114,7 +114,7 @@ bool UHL2Utils::ApplyBodygroupToSkeletalMesh(USkeletalMeshComponent* target, con
 
 bool UHL2Utils::ApplySkinToSkeletalMesh(USkeletalMeshComponent* target, int index)
 {
-	USkeletalMesh* skeletalMesh = target->SkeletalMesh;
+	USkeletalMesh* skeletalMesh = CastChecked<USkeletalMesh>(target->GetSkinnedAsset());
 	if (skeletalMesh == nullptr) { return false; }
 	UHL2ModelData* modelData = skeletalMesh->GetAssetUserDataChecked<UHL2ModelData>();
 	return modelData->ApplySkinToSkeletalMesh(target, index);

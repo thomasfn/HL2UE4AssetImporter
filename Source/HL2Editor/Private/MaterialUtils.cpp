@@ -1,7 +1,7 @@
 #include "MaterialUtils.h"
 #include "IHL2Runtime.h"
 #include "Internationalization/Regex.h"
-#include "AssetRegistryModule.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "IHL2Editor.h"
 #include "EditorAssetLibrary.h"
 #include "IAssetTools.h"
@@ -140,7 +140,7 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 	FStaticParameterSet staticParamSet;
 
 	// Iterate all vmt params and try to push them to the material
-	TMap<FName, FName> vmtTextures;
+	TMap<FName, FSoftObjectPath> vmtTextures;
 	for (const FValveGroupKeyValue& kv : groupValue->Items)
 	{
 		ProcessVMTNode(mtl, vmtTextures, textureParams, scalarParams, vectorParams, staticSwitchParams, staticParamSet, kv);
@@ -175,14 +175,14 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 		{
 			const static FName fnBumpMap(TEXT("bumpmap"));
 			const static FName fnEnvMapMask(TEXT("envmapmask"));
-			const FName* bumpMapName = vmtTextures.Find(fnBumpMap);
+			const FSoftObjectPath* bumpMapName = vmtTextures.Find(fnBumpMap);
 			FMaterialParameterInfo info;
 			if (GetMaterialParameterByKey(textureParams, TEXT("envmapmask"), info) && bumpMapName != nullptr)
 			{
 				const FString bumpMapPath = bumpMapName->ToString();
 				const FString envMapBaseName = FPaths::GetBaseFilename(bumpMapPath) + TEXT("_a");
 				const FString envMapPathStr = FPaths::GetPath(bumpMapPath) / envMapBaseName + TEXT(".") + envMapBaseName;
-				const FName envMapPath = vmtTextures.FindOrAdd(info.Name, NAME_None) = FName(*envMapPathStr);
+				const FSoftObjectPath envMapPath = vmtTextures.FindOrAdd(info.Name, FSoftObjectPath()) = FSoftObjectPath(envMapPathStr);
 				const FAssetData assetData = assetRegistry.GetAssetByObjectPath(envMapPath);
 				UTexture* texture = assetData.IsValid() ? CastChecked<UTexture>(assetData.GetAsset()) : nullptr;
 				if (texture == nullptr)
@@ -195,7 +195,8 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 					staticSwitchParam.bOverride = true;
 					staticSwitchParam.ParameterInfo = info;
 					staticSwitchParam.Value = true;
-					staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
+					staticParamSet.EditorOnly.StaticSwitchParameters.Add(staticSwitchParam);
+					
 				}
 				mtl->SetTextureParameterValueEditorOnly(info, texture);
 			}
@@ -248,7 +249,7 @@ bool FMaterialUtils::SetFromVMT(UMaterialInstanceConstant* mtl, const UValveDocu
 
 void FMaterialUtils::ProcessVMTNode(
 	UMaterialInstanceConstant* mtl,
-	TMap<FName, FName>& vmtTextures,
+	TMap<FName, FSoftObjectPath>& vmtTextures,
 	const TArray<FMaterialParameterInfo>& textureParams,
 	const TArray<FMaterialParameterInfo>& scalarParams,
 	const TArray<FMaterialParameterInfo>& vectorParams,
@@ -274,7 +275,7 @@ void FMaterialUtils::ProcessVMTNode(
 		// Texture
 		else if (GetMaterialParameterByKey(textureParams, key, info))
 		{
-			vmtTextures.FindOrAdd(key, NAME_None) = IHL2Runtime::Get().HL2TexturePathToAssetPath(value);
+			vmtTextures.FindOrAdd(key, FSoftObjectPath()) = IHL2Runtime::Get().HL2TexturePathToAssetPath(value);
 			UTexture* texture = IHL2Runtime::Get().TryResolveHL2Texture(value);
 			if (texture == nullptr)
 			{
@@ -287,7 +288,7 @@ void FMaterialUtils::ProcessVMTNode(
 				staticSwitchParam.bOverride = true;
 				staticSwitchParam.ParameterInfo = info;
 				staticSwitchParam.Value = true;
-				staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
+				staticParamSet.EditorOnly.StaticSwitchParameters.Add(staticSwitchParam);
 			}
 		}
 		// Static switch
@@ -297,7 +298,7 @@ void FMaterialUtils::ProcessVMTNode(
 			staticSwitchParam.bOverride = true;
 			staticSwitchParam.ParameterInfo = info;
 			staticSwitchParam.Value = value.ToBool();
-			staticParamSet.StaticSwitchParameters.Add(staticSwitchParam);
+			staticParamSet.EditorOnly.StaticSwitchParameters.Add(staticSwitchParam);
 		}
 		// Vector
 		else if (GetMaterialParameterByKey(vectorParams, key, info))
@@ -345,7 +346,7 @@ void FMaterialUtils::CopyShadersToGame()
 	{
 		FARFilter filter;
 		filter.bRecursivePaths = true;
-		filter.ClassNames.Add(UMaterial::StaticClass()->GetFName());
+		filter.ClassPaths.Add(UMaterial::StaticClass()->GetClassPathName());
 		FString path = hl2Runtime.GetHL2ShaderBasePath(true);
 		FPaths::NormalizeDirectoryName(path);
 		filter.PackagePaths.Add(FName(*path));
@@ -377,7 +378,7 @@ void FMaterialUtils::CopyShadersToGame()
 			FString relativePath = packagePath.ToString();
 			const FString objectPath = relativePath + '.' + FPaths::GetBaseFilename(relativePath);
 			FPaths::MakePathRelativeTo(relativePath, *hl2Runtime.GetHL2ShaderBasePath(true));
-			const FAssetData assetData = assetRegistry.GetAssetByObjectPath(FName(*objectPath));
+			const FAssetData assetData = assetRegistry.GetAssetByObjectPath(FSoftObjectPath(objectPath));
 			check(assetData.IsValid());
 			if (assetData.GetClass()->IsChildOf(UTexture::StaticClass()))
 			{

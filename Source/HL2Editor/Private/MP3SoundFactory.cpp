@@ -82,11 +82,7 @@ UObject* UMP3SoundFactory::FactoryCreateBinary(UClass* Class, UObject* InParent,
 
 	//actual decoding
 	Decoder.Decode(RawWavBuffer);
-
-	Sound->RawData.Lock(LOCK_READ_WRITE);
-	void* LockedData = Sound->RawData.Realloc(RawWavBuffer.Num() * RawWavBuffer.GetTypeSize());
-	FMemory::Memcpy(LockedData, RawWavBuffer.GetData(), RawWavBuffer.Num() * RawWavBuffer.GetTypeSize());
-	Sound->RawData.Unlock();
+	Sound->RawData.UpdatePayload(FSharedBuffer::MakeView(RawWavBuffer.GetData(), RawWavBuffer.Num() * RawWavBuffer.GetTypeSize()));
 	RawWavBuffer.Empty();
 
 	// Calculate duration.

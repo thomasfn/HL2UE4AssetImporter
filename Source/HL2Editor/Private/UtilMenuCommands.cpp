@@ -2,9 +2,10 @@
 
 #include "UtilMenuCommands.h"
 #include "LevelEditor.h"
+#include "EditorStyleSet.h"
 
 FUtilMenuCommands::FUtilMenuCommands()
-	: TCommands<FUtilMenuCommands>(TEXT("HL2AssetImporterPlugin"), NSLOCTEXT("Contexts", "HL2AssetImporterPlugin", "HL2AssetImporterPlugin Plugin"), NAME_None, FEditorStyle::GetStyleSetName())
+	: TCommands<FUtilMenuCommands>(TEXT("HL2AssetImporterPlugin"), NSLOCTEXT("Contexts", "HL2AssetImporterPlugin", "HL2AssetImporterPlugin Plugin"), NAME_None, FAppStyle::GetAppStyleSetName())
 {
 
 }

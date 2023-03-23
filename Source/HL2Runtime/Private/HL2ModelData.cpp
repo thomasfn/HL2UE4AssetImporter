@@ -38,7 +38,7 @@ bool UHL2ModelData::ApplyBodygroupToSkeletalMesh(USkeletalMeshComponent* target,
 	if (bodygroup == nullptr) { return false; }
 	if (!bodygroup->Mappings.IsValidIndex(index)) { return false; }
 	const FModelBodygroupMapping& mapping = bodygroup->Mappings[index];
-	const int lodCount = target->SkeletalMesh->GetLODNum();
+	const int lodCount = target->GetSkinnedAsset()->GetLODNum();
 	for (const int sectionIndex : bodygroup->AllSections)
 	{
 		for (int lodIndex = 0; lodIndex < lodCount; ++lodIndex)

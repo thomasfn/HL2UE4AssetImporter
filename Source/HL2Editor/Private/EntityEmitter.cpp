@@ -8,7 +8,7 @@
 #include "IHL2Editor.h"
 #include "IHL2Runtime.h"
 #include "SourceCoord.h"
-#include "AssetRegistryModule.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Internationalization/Regex.h"
 #include "HL2EntityDataUtils.h"
 #include "Animation/SkeletalMeshActor.h"
@@ -48,7 +48,7 @@ void FEntityEmitter::GenerateActors(const TArrayView<FHL2EntityData>& entityData
 {
 	const FHL2EditorBSPConfig& bspConfig = IHL2Editor::Get().GetConfig().BSP;
 
-	const FFolder entitiesFolder(bspConfig.Portable ? fnEntities : fnHL2Entities);
+	const FFolder entitiesFolder(FFolder::GetInvalidRootObject(), bspConfig.Portable ? fnEntities : fnHL2Entities);
 	FActorFolders& folders = FActorFolders::Get();
 	folders.CreateFolder(*world, entitiesFolder);
 
@@ -93,10 +93,10 @@ void FEntityEmitter::GenerateActors(const TArrayView<FHL2EntityData>& entityData
 ABaseEntity* FEntityEmitter::ImportEntityToWorld(const FHL2EntityData& entityData)
 {
 	// Resolve blueprint
-	const FString assetPath = IHL2Runtime::Get().GetHL2EntityBasePath() + entityData.Classname.ToString() + TEXT(".") + entityData.Classname.ToString();
+	const FSoftObjectPath assetPath = FSoftObjectPath(IHL2Runtime::Get().GetHL2EntityBasePath() + entityData.Classname.ToString() + TEXT(".") + entityData.Classname.ToString());
 	FAssetRegistryModule& assetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& assetRegistry = assetRegistryModule.Get();
-	FAssetData assetData = assetRegistry.GetAssetByObjectPath(FName(*assetPath));
+	FAssetData assetData = assetRegistry.GetAssetByObjectPath(assetPath);
 	if (!assetData.IsValid()) { return false; }
 	UBlueprint* blueprint = CastChecked<UBlueprint>(assetData.GetAsset());
 
@@ -174,7 +174,7 @@ AActor* FEntityEmitter::ImportPortableProp(const FHL2EntityData& entityData)
 			ASkeletalMeshActor* actor = world->SpawnActor<ASkeletalMeshActor>(FVector(pos), rot);
 			if (actor == nullptr) { return nullptr; }
 			USkeletalMeshComponent* skeletalMeshComponent = CastChecked<USkeletalMeshComponent>(actor->GetRootComponent());
-			skeletalMeshComponent->SkeletalMesh = skeletalMesh;
+			skeletalMeshComponent->SetSkinnedAsset(skeletalMesh);
 			skeletalMeshComponent->PostEditChange();
 			return Cast<AActor>(actor);
 		}

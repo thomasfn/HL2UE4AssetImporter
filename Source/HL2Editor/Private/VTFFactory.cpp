@@ -103,7 +103,6 @@ UObject* UVTFFactory::FactoryCreateBinary(
 		ExistingNoAlpha = ExistingTexture->CompressionNoAlpha;
 		ExistingDeferCompression = ExistingTexture->DeferCompression;
 		ExistingFlipGreenChannel = ExistingTexture->bFlipGreenChannel;
-		ExistingDitherMipMapAlpha = ExistingTexture->bDitherMipMapAlpha;
 		ExistingAlphaCoverageThresholds = ExistingTexture->AlphaCoverageThresholds;
 		ExistingAdjustBrightness = ExistingTexture->AdjustBrightness;
 		ExistingAdjustBrightnessCurve = ExistingTexture->AdjustBrightnessCurve;
@@ -191,7 +190,6 @@ UObject* UVTFFactory::FactoryCreateBinary(
 	Texture->CompressionNone = NoCompression;
 	Texture->CompressionNoAlpha = NoAlpha;
 	Texture->DeferCompression = bDeferCompression;
-	Texture->bDitherMipMapAlpha = bDitherMipMapAlpha;
 	Texture->AlphaCoverageThresholds = AlphaCoverageThresholds;
 
 	if (Texture->MipGenSettings == TMGS_FromTextureGroup)
@@ -226,7 +224,6 @@ UObject* UVTFFactory::FactoryCreateBinary(
 		Texture->CompressionNone = ExistingNoCompression;
 		Texture->CompressionNoAlpha = ExistingNoAlpha;
 		Texture->DeferCompression = ExistingDeferCompression;
-		Texture->bDitherMipMapAlpha = ExistingDitherMipMapAlpha;
 		Texture->AlphaCoverageThresholds = ExistingAlphaCoverageThresholds;
 		Texture->bFlipGreenChannel = ExistingFlipGreenChannel;
 		Texture->AdjustBrightness = ExistingAdjustBrightness;

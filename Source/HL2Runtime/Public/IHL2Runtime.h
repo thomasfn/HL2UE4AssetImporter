@@ -47,13 +47,13 @@ public:
 	virtual const FString& GetHL2ShaderBasePath(bool pluginContent = true) const = 0;
 	virtual const FString& GetHL2EntityBasePath(bool pluginContent = true) const = 0;
 
-	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const = 0;
-	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const = 0;
-	virtual FName HL2ModelPathToAssetPath(const FString& hl2ModelPath) const = 0;
-	virtual FName HL2SoundPathToAssetPath(const FString& hl2SoundPath) const = 0;
-	virtual FName HL2ScriptPathToAssetPath(const FString& hl2ScriptPath) const = 0;
-	virtual FName HL2SurfacePropToAssetPath(const FName& surfaceProp) const = 0;
-	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool pluginContent = true) const = 0;
+	virtual FSoftObjectPath HL2TexturePathToAssetPath(const FString& hl2TexturePath) const = 0;
+	virtual FSoftObjectPath HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const = 0;
+	virtual FSoftObjectPath HL2ModelPathToAssetPath(const FString& hl2ModelPath) const = 0;
+	virtual FSoftObjectPath HL2SoundPathToAssetPath(const FString& hl2SoundPath) const = 0;
+	virtual FSoftObjectPath HL2ScriptPathToAssetPath(const FString& hl2ScriptPath) const = 0;
+	virtual FSoftObjectPath HL2SurfacePropToAssetPath(const FName& surfaceProp) const = 0;
+	virtual FSoftObjectPath HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool pluginContent = true) const = 0;
 
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const = 0;
 	virtual UMaterialInterface* TryResolveHL2Material(const FString& hl2TexturePath) const = 0;
@@ -65,7 +65,7 @@ public:
 	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, bool searchGameFirst = true) const = 0;
 
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UMaterialInterface*>& out) const = 0;
-	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UMaterialInterface*>& out) const = 0;
+	virtual void FindAllMaterialsThatReferenceTexture(FSoftObjectPath assetPath, TArray<UMaterialInterface*>& out) const = 0;
 
 	virtual void FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities) const = 0;
 

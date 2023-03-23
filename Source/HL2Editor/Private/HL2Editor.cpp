@@ -19,6 +19,8 @@
 #include "Engine/Selection.h"
 #include "SoundScriptFactory.h"
 #include "SoundScapeFactory.h"
+#include "BlueprintEditorModule.h"
+#include "HL2VariableDetailsCustomization.h"
 
 DEFINE_LOG_CATEGORY(LogHL2Editor);
 
@@ -82,6 +84,12 @@ void HL2EditorImpl::StartupModule()
 
 	FLevelEditorModule& levelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
 	levelEditorModule.GetToolBarExtensibilityManager()->AddExtender(myExtender);
+
+	FBlueprintEditorModule& BlueprintEditorModule = FModuleManager::LoadModuleChecked<FBlueprintEditorModule>("Kismet");
+	BlueprintEditorModule.RegisterVariableCustomization(
+		FProperty::StaticClass(),
+		FOnGetVariableCustomizationInstance::CreateStatic(&FHL2VariableDetailsCustomization::MakeInstance)
+	);
 }
 
 void HL2EditorImpl::ShutdownModule()
@@ -375,7 +383,7 @@ void HL2EditorImpl::ConvertSkyboxes()
 	{
 		loopProgress.EnterProgressFrame(1.0f, FText::Format(LOCTEXT("SkyboxesConverting_Individual", "{0}"), FText::FromString(skyboxName)));
 		FString packageName = IHL2Runtime::Get().GetHL2TextureBasePath() / TEXT("skybox") / skyboxName;
-		FAssetData existingAsset = assetRegistry.GetAssetByObjectPath(FName(*(packageName + TEXT(".") + skyboxName)));
+		FAssetData existingAsset = assetRegistry.GetAssetByObjectPath(FSoftObjectPath(packageName + TEXT(".") + skyboxName));
 		if (existingAsset.IsValid())
 		{
 			UTextureCube* existingTexture = CastChecked<UTextureCube>(existingAsset.GetAsset());

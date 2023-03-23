@@ -137,9 +137,10 @@ bool ABaseEntity::FireInput(const FName inputName, const TArray<FString>& args, 
 	else
 	{
 		// Let components handle it
-		for (UActorComponent* component : GetComponentsByClass(UBaseEntityComponent::StaticClass()))
+		for (UActorComponent* component : GetComponents())
 		{
-			UBaseEntityComponent* baseEntityComponent = CastChecked<UBaseEntityComponent>(component);
+			UBaseEntityComponent* baseEntityComponent = Cast<UBaseEntityComponent>(component);
+			if (baseEntityComponent == nullptr) { continue; }
 			baseEntityComponent->OnInputFired(inputName, args, caller, activator);
 		}
 

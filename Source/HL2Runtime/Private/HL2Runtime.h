@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Modules/ModuleManager.h"
-#include "AssetRegistryModule.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 
 #include "IHL2Runtime.h"
 
@@ -36,7 +36,7 @@ private:
 
 private:
 
-	static inline FName SourceToUnrealPath(const FString& basePath, const FString& sourcePath);
+	static inline FSoftObjectPath SourceToUnrealPath(const FString& basePath, const FString& sourcePath);
 
 public:
 
@@ -54,13 +54,13 @@ public:
 	virtual const FString& GetHL2ShaderBasePath(bool pluginContent = true) const override { return pluginContent ? pluginShaderBasePath : hl2ShaderBasePath; }
 	virtual const FString& GetHL2EntityBasePath(bool pluginContent = true) const override { return pluginContent ? pluginEntityBasePath : hl2EntityBasePath; }
 
-	virtual FName HL2TexturePathToAssetPath(const FString& hl2TexturePath) const override;
-	virtual FName HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const override;
-	virtual FName HL2ModelPathToAssetPath(const FString& hl2ModelPath) const override;
-	virtual FName HL2SoundPathToAssetPath(const FString& hl2SoundPath) const override;
-	virtual FName HL2ScriptPathToAssetPath(const FString& hl2ScriptPath) const override;
-	virtual FName HL2SurfacePropToAssetPath(const FName& surfaceProp) const override;
-	virtual FName HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool pluginContent = true) const override;
+	virtual FSoftObjectPath HL2TexturePathToAssetPath(const FString& hl2TexturePath) const override;
+	virtual FSoftObjectPath HL2MaterialPathToAssetPath(const FString& hl2MaterialPath) const override;
+	virtual FSoftObjectPath HL2ModelPathToAssetPath(const FString& hl2ModelPath) const override;
+	virtual FSoftObjectPath HL2SoundPathToAssetPath(const FString& hl2SoundPath) const override;
+	virtual FSoftObjectPath HL2ScriptPathToAssetPath(const FString& hl2ScriptPath) const override;
+	virtual FSoftObjectPath HL2SurfacePropToAssetPath(const FName& surfaceProp) const override;
+	virtual FSoftObjectPath HL2ShaderPathToAssetPath(const FString& hl2ShaderPath, bool pluginContent = true) const override;
 	
 	virtual UTexture* TryResolveHL2Texture(const FString& hl2TexturePath) const override;
 	virtual UMaterialInterface* TryResolveHL2Material(const FString& hl2TexturePath) const override;
@@ -72,7 +72,7 @@ public:
 	virtual UMaterial* TryResolveHL2Shader(const FString& hl2ShaderPath, bool searchGameFirst = true) const override;
 	
 	virtual void FindAllMaterialsThatReferenceTexture(const FString& hl2TexturePath, TArray<UMaterialInterface*>& out) const override;
-	virtual void FindAllMaterialsThatReferenceTexture(FName assetPath, TArray<UMaterialInterface*>& out) const override;
+	virtual void FindAllMaterialsThatReferenceTexture(FSoftObjectPath assetPath, TArray<UMaterialInterface*>& out) const override;
 
 	/* Supports wildcards and classnames. */
 	virtual void FindEntitiesByTargetName(UWorld* world, const FName targetName, TArray<ABaseEntity*>& outEntities) const override;
@@ -81,10 +81,10 @@ public:
 
 };
 
-inline FName HL2RuntimeImpl::SourceToUnrealPath(const FString& basePath, const FString& sourcePath)
+inline FSoftObjectPath HL2RuntimeImpl::SourceToUnrealPath(const FString& basePath, const FString& sourcePath)
 {
 	// e.g. "path/to/asset" -> "{basePath}/path/to/asset.asset"
 	FString tmp = sourcePath;
 	tmp.ReplaceCharInline('\\', '/');
-	return FName(*(basePath / FPaths::GetPath(tmp) / FPaths::GetBaseFilename(tmp) + '.' + FPaths::GetBaseFilename(tmp)));
+	return FSoftObjectPath(FTopLevelAssetPath(basePath / FPaths::GetPath(tmp) / FPaths::GetBaseFilename(tmp) + '.' + FPaths::GetBaseFilename(tmp)));
 }

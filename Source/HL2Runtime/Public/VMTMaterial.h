@@ -12,7 +12,7 @@ class HL2RUNTIME_API UVMTMaterial : public UMaterialInstanceConstant
 
 public:
 	
-	bool DoesReferenceTexture(FName assetPath) const;
+	bool DoesReferenceTexture(FSoftObjectPath assetPath) const;
 
 	virtual void PostInitProperties() override;
 
@@ -22,7 +22,7 @@ public:
 #endif
 
 	UPROPERTY()
-	TMap<FName, FName> vmtTextures;
+	TMap<FName, FSoftObjectPath> vmtTextures;
 
 	UPROPERTY()
 	TArray<FString> vmtKeywords;

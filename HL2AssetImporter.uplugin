@@ -16,7 +16,8 @@
     },
     {
       "Name": "HL2Editor",
-      "Type": "Editor"
+      "Type": "Editor",
+	  "LoadingPhase": "PostEngineInit"
     }
   ],
 

@@ -37,7 +37,7 @@ void UVMTMaterial::Serialize(FArchive& Ar)
 }
 #endif
 
-bool UVMTMaterial::DoesReferenceTexture(FName assetPath) const
+bool UVMTMaterial::DoesReferenceTexture(FSoftObjectPath assetPath) const
 {
 	for (const auto pair : vmtTextures)
 	{

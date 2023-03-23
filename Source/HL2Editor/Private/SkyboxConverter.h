@@ -113,7 +113,7 @@ inline FSkyboxTextureData::FSkyboxTextureData(UTexture2D* texture, bool compress
 	height = texture->Source.GetSizeY();
 	switch (texture->Source.GetFormat())
 	{
-	case TSF_RGBA8: format = compressedHDR ? ESkyboxTextureDataFormat::RGBA8_CompressedHDR : ESkyboxTextureDataFormat::RGBA8; break;
+//	case TSF_RGBA8: format = compressedHDR ? ESkyboxTextureDataFormat::RGBA8_CompressedHDR : ESkyboxTextureDataFormat::RGBA8; break;
 	case TSF_BGRA8: format = compressedHDR ? ESkyboxTextureDataFormat::BGRA8_CompressedHDR : ESkyboxTextureDataFormat::BGRA8; break;
 	case TSF_RGBA16: format = ESkyboxTextureDataFormat::RGBA16; break;
 	case TSF_RGBA16F: format = ESkyboxTextureDataFormat::RGBA16F; break;

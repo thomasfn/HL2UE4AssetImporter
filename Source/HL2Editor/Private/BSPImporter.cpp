@@ -23,7 +23,7 @@
 #include "MeshAttributes.h"
 #include "MeshUtils.h"
 #include "UObject/ConstructorHelpers.h"
-#include "AssetRegistryModule.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Internationalization/Regex.h"
 #include "Misc/ScopedSlowTask.h"
 #include "EngineUtils.h"
@@ -90,9 +90,9 @@ bool FBSPImporter::ImportGeometryToWorld(UWorld* targetWorld)
 {
 	world = targetWorld;
 
-	const FFolder geometryFolder(TEXT("HL2Geometry"));
-	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing geometry..."));
 	FActorFolders& folders = FActorFolders::Get();
+	const FFolder geometryFolder(FFolder::GetInvalidRootObject(), TEXT("HL2Geometry"));
+	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing geometry..."));
 	folders.CreateFolder(*world, geometryFolder);
 
 	const Valve::BSP::dmodel_t& bspWorldModel = bspFile.m_Models[0];
@@ -128,7 +128,7 @@ bool FBSPImporter::ImportEntitiesToWorld(UWorld* targetWorld)
 {
 	world = targetWorld;
 
-	const FFolder entitiesFolder(TEXT("HL2Entities"));
+	const FFolder entitiesFolder(FFolder::GetInvalidRootObject(), TEXT("HL2Entities"));
 	UE_LOG(LogHL2BSPImporter, Log, TEXT("Importing entities..."));
 
 	// Read entities lump
